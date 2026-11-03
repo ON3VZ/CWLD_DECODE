@@ -1,0 +1,10 @@
+[package]
+name = "cwld-decoder"
+description = "Probabilistic CW decoder for CWLD, plus the test bench that measures it"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cwld-types = { path = "../cwld-types" }
+cwld-dsp = { path = "../cwld-dsp" }

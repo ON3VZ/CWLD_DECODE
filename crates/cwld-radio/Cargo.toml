@@ -1,0 +1,12 @@
+[package]
+name = "cwld-radio"
+description = "Radio layer for CWLD: the Rig trait, the transmit guard and a radio simulator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cwld-types = { path = "../cwld-types" }
+serialport = { version = "4.10.1", default-features = false }
+thiserror.workspace = true
+serde.workspace = true

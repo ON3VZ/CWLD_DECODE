@@ -1,0 +1,11 @@
+//! Signal processing for CWLD. No Tauri, no audio devices: plain functions on sample slices,
+//! so the test bench and the command line tools can use them too.
+
+pub mod frontend;
+pub mod gen;
+pub mod rng;
+pub mod wav;
+
+pub use frontend::{Frontend, FrontendConfig, FRAME_RATE};
+pub use gen::{generate, CwSpec};
+pub use rng::Rng;

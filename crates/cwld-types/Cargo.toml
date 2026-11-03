@@ -1,0 +1,10 @@
+[package]
+name = "cwld-types"
+description = "Shared types for CWLD: transmit policy, radio commands, settings, Morse timing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

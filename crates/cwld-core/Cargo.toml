@@ -1,0 +1,13 @@
+[package]
+name = "cwld-core"
+description = "Application core of CWLD: state, mode switching and the safe sending path"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cwld-types = { path = "../cwld-types" }
+cwld-radio = { path = "../cwld-radio" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

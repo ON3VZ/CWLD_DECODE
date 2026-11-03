@@ -1,0 +1,9 @@
+[package]
+name = "cwld-dsp"
+description = "Signal processing for CWLD: synthetic CW generator, tone front-end, WAV files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cwld-types = { path = "../cwld-types" }
