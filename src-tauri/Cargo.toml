@@ -1,0 +1,25 @@
+[package]
+name = "cwld"
+description = "CWLD, a modern CW station app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "cwld_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cwld"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+cwld-core = { path = "../crates/cwld-core" }
+cwld-types = { path = "../crates/cwld-types" }
+cwld-radio = { path = "../crates/cwld-radio" }
+serde.workspace = true
+serde_json.workspace = true
