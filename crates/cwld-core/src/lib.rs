@@ -1,6 +1,11 @@
 //! Application core. The Tauri shell is a thin layer on top of [`AppCore`], so all rules
 //! (mode switching, the transmit path, validation) are testable without a window.
 
+pub mod audio;
+
+pub use audio::{AudioStatus, DecodeSource};
+pub use cwld_audio::{InputDevice, Source as AudioSource, TentativeOut};
+
 use cwld_radio::{
     list_ports, GuardedRig, IcomRig, NullRig, PortInfo, QmxRig, Rig, RigError, SerialTransport, SimRig, SystemClock,
 };
@@ -28,6 +33,8 @@ pub enum CoreError {
     Rig(RigError),
     #[error("settings could not be saved: {0}")]
     Settings(String),
+    #[error("audio: {0}")]
+    Audio(String),
 }
 
 impl CoreError {
@@ -40,6 +47,7 @@ impl CoreError {
             CoreError::FrequencyOutOfRange => "frequency_out_of_range",
             CoreError::Rig(e) => e.code(),
             CoreError::Settings(_) => "settings",
+            CoreError::Audio(_) => "audio",
         }
     }
 }
@@ -67,6 +75,7 @@ pub struct Snapshot {
     pub status: RadioStatus,
     pub radio_name: String,
     pub settings: Settings,
+    pub audio: AudioStatus,
 }
 
 /// The SWR protection has stopped the radio. Sending stays blocked until the operator
@@ -91,6 +100,14 @@ pub enum CoreEvent {
     Policy { policy: TxPolicy },
     /// Decoder certainty for the meter in the status bar.
     Decoder { stats: cwld_types::DecoderStats },
+    /// Decoded text: new final characters with their confidence, and the uncertain tail.
+    Decode { source: DecodeSource, text: String, conf: Vec<f32>, tentative: Vec<TentativeOut>, wpm: f32 },
+    /// One waterfall row, 0..255 per bin, starting at `lo_hz`.
+    Waterfall { bins: Vec<u8>, lo_hz: f64, hz_per_bin: f64 },
+    /// Input level, dB below full scale.
+    AudioLevel { dbfs: f32 },
+    /// Audio started, stopped, failed, or a recording changed.
+    Audio { status: AudioStatus },
 }
 
 pub struct AppCore {
@@ -99,6 +116,9 @@ pub struct AppCore {
     settings: Mutex<Settings>,
     settings_path: Option<PathBuf>,
     swr: Mutex<SwrState>,
+    audio: Mutex<audio::AudioState>,
+    tx_track: Mutex<audio::TxTrack>,
+    recordings_dir: Mutex<Option<PathBuf>>,
 }
 
 #[derive(Default)]
@@ -119,7 +139,16 @@ impl AppCore {
             _ => Box::new(NullRig::new()),
         };
         let rig = GuardedRig::new(first, policy.clone());
-        AppCore { policy, rig: Mutex::new(rig), settings: Mutex::new(settings), settings_path, swr: Mutex::new(SwrState::default()) }
+        AppCore {
+            policy,
+            rig: Mutex::new(rig),
+            settings: Mutex::new(settings),
+            settings_path,
+            swr: Mutex::new(SwrState::default()),
+            audio: Mutex::new(audio::AudioState::default()),
+            tx_track: Mutex::new(audio::TxTrack::default()),
+            recordings_dir: Mutex::new(None),
+        }
     }
 
     pub fn list_ports(&self) -> Vec<PortInfo> {
@@ -170,6 +199,7 @@ impl AppCore {
             status: rig.status(),
             radio_name: rig.info().name,
             settings: self.settings.lock().unwrap().clone(),
+            audio: self.audio_status(),
         }
     }
 
@@ -201,7 +231,12 @@ impl AppCore {
                 if self.swr.lock().unwrap().alert.is_some() {
                     return Err(CoreError::SwrLatched);
                 }
-                self.rig.lock().unwrap().execute(&RadioCommand::SendCw(text.to_string()))?;
+                let wpm = {
+                    let mut rig = self.rig.lock().unwrap();
+                    rig.execute(&RadioCommand::SendCw(text.to_string()))?;
+                    rig.status().cw_wpm
+                };
+                self.note_app_transmission(text, wpm);
                 Ok(SendOutcome::Sent)
             }
             TxPolicy::Practice => {
@@ -305,6 +340,13 @@ impl AppCore {
     }
 
     pub fn update_settings(&self, new: Settings) -> Result<(), CoreError> {
+        // New own callsigns, name or QTH: tell the decoder's word model.
+        let mut words: Vec<String> = new.station.calls.clone();
+        words.extend(new.station.name.split_whitespace().map(|w| w.to_string()));
+        words.extend(new.station.qth.split_whitespace().map(|w| w.to_string()));
+        if let Some(e) = &self.audio.lock().unwrap().engine_ref() {
+            e.add_words(words);
+        }
         *self.settings.lock().unwrap() = new;
         self.save_settings()
     }

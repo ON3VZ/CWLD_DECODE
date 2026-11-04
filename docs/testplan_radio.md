@@ -1,4 +1,4 @@
-# CWLD: testplan voor je radio's (fase 2)
+# CWLD: testplan voor je radio's (fase 2 en 3)
 
 Doel: de punten meten die in de bronnen niet duidelijk staan. Alles hieronder is bij het bouwen als **[TEST]** gemarkeerd. Begin altijd met **laag vermogen en een kunstantenne** (dummy load), en laat de app op **LUISTEREN** staan tot een test zendt.
 
@@ -46,6 +46,23 @@ Noteer bij elke test: wat je deed, wat je zag, en of het klopte. Stuur de lijst 
 | Q10 | Ontvangen CW in USB-audio | Zet een signaal of baken op, neem "USB Audio CODEC" op. | Zit het ontvangen signaal in de audio, of alleen je eigen meeluistertoon? |
 | Q12 | SWR via CAT (`SW;`) | Lees pagina 7 van de QMX CAT-handleiding (cat_1_02_006.pdf of nieuwer). Zend met minimaal vermogen in een dummy load en vergelijk de SWR in CWLD met het QMX-scherm. Controleer ook dat de QMX in ontvangst geen waarde teruggeeft. | Bestaat `SW;` echt in jouw firmware? Komt het antwoord `SWnnn;` snel genoeg voor 100 ms? Is de waarde honderdsten? Zo niet, dan werkt de bewaking op de QMX niet en vertrouw je op de eigen bescherming van de radio. |
 | Q11 | Poorten | Kijk hoeveel COM-poorten Windows toont. | Twee? Dan kan Log4OM later de tweede krijgen. |
+
+## C2. Audio en decoder (fase 3)
+
+Eerst I10 en Q10 hierboven: die bepalen of de decoder het ontvangen signaal krijgt.
+
+| Nr | Test | Zo doe je het | Wat ik wil weten |
+|---|---|---|---|
+| A1 | Ingang vinden | Klik op het tandwiel, scroll naar "Audio en decoder" en open de keuzelijst "Audio-ingang". | Staat "USB Audio CODEC" erbij met "(radio)"? Start het luisteren met "Automatisch"? |
+| A2 | Windows-instellingen | Klik met rechts op het luidsprekericoon rechtsonder, kies Geluidsinstellingen, dan Meer geluidsinstellingen. Tab Opnemen, dubbelklik "USB Audio CODEC". Zet op het tabblad Verbeteringen (als het er is) alles uit en kies op het tabblad Geavanceerd 48000 Hz. | Welke standaardindeling stond er? Waren er verbeteringen aan? |
+| A3 | Niveau | Zoek een sterk CW-signaal. Kijk naar de niveaubalk onder "Audio en decoder". Pas `USB AF Output Level` op de radio aan (MENU, SET, Connectors) tot de tekst "Niveau is goed" staat. | Welke waarde op de radio gaf een goed niveau? |
+| A4 | Waterfall en klik | Kijk naar de waterfall bovenaan. Klik op een CW-signaal. | Zie je de signalen? Springt de rode lijn naar het signaal? Volgt de decoder het? |
+| A5 | Decoderen | Laat een sterk en een zwak signaal een minuut lopen. Vergelijk met wat je zelf hoort en met de decoder van de radio. | Hoeveel tekens gingen mis? Toont de zekerheidsmeter een lage waarde bij het zwakke signaal? |
+| A6 | Opname | Klik bovenaan op "OPNAME", laat een QSO een minuut lopen, klik "Stop". Open Documenten\CWLD in Verkenner. | Staat het bestand er, met datum, tijd en frequentie in de naam? Speelt het af? |
+| A7 | Vergelijking met CwGet | Laat CwGet hetzelfde WAV-bestand decoderen. Laat CWLD het ook decoderen: Instellingen, "Een WAV-bestand decoderen", plak het volledige pad, klik Decoderen. | Welke tekst geven beide? Schrijf erbij wat er werkelijk gezonden werd als je dat weet. |
+| A8 | Eigen tekst niet dubbel | LIVE, dummy load, laag vermogen: verstuur een chip. | Verschijnt de tekst maar één keer in het gesprek? |
+| A9 | Paddle via audio (Icom) | Sein met de paddle "TEST DE ON3VZ". | Komt het als "Jij (paddle)"? Dat lukt alleen als I10 toonde dat de meeluistertoon in de USB-audio zit. |
+| A10 | Kabel los | Trek tijdens het luisteren de USB-kabel uit. | Verschijnt "Audio uit" bovenaan, zonder dat CWLD vastloopt? Start het weer na "Luisteren starten"? |
 
 ## D. Wat ik met de uitkomst doe
 

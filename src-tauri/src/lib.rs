@@ -1,6 +1,6 @@
 //! Thin Tauri shell around `cwld-core`. All rules live in the core, so they are tested there.
 
-use cwld_core::{AppCore, CoreError, CoreEvent, SendOutcome, Snapshot};
+use cwld_core::{AppCore, AudioStatus, CoreError, CoreEvent, InputDevice, SendOutcome, Snapshot};
 use cwld_radio::PortInfo;
 use cwld_types::{RadioSettings, Settings, TxPolicy};
 use serde::Serialize;
@@ -82,6 +82,43 @@ fn ack_swr(core: Core) -> Vec<CoreEvent> {
     core.ack_swr()
 }
 
+#[tauri::command]
+fn list_audio_inputs(core: Core) -> Vec<InputDevice> {
+    core.list_audio_inputs()
+}
+
+#[tauri::command]
+fn start_audio(core: Core) -> Result<AudioStatus, Failure> {
+    Ok(core.start_audio()?)
+}
+
+#[tauri::command]
+fn stop_audio(core: Core) -> AudioStatus {
+    core.stop_audio()
+}
+
+#[tauri::command]
+fn decode_file(core: Core, path: String) -> Result<AudioStatus, Failure> {
+    Ok(core.start_audio_file(path.into())?)
+}
+
+#[tauri::command]
+fn set_tone(core: Core, hz: f64) -> Result<(), Failure> {
+    core.set_tone(hz)?;
+    let _ = core.save_settings();
+    Ok(())
+}
+
+#[tauri::command]
+fn start_recording(core: Core) -> Result<String, Failure> {
+    Ok(core.start_recording()?)
+}
+
+#[tauri::command]
+fn stop_recording(core: Core) {
+    core.stop_recording()
+}
+
 /// Every 100 ms the safety readings (SWR), every fifth round the full status.
 fn start_ticker(app: AppHandle, core: Arc<AppCore>) {
     std::thread::spawn(move || {
@@ -90,6 +127,7 @@ fn start_ticker(app: AppHandle, core: Arc<AppCore>) {
             std::thread::sleep(Duration::from_millis(100));
             round = round.wrapping_add(1);
             let mut events: Vec<CoreEvent> = core.fast_tick();
+            events.extend(core.audio_tick());
             if round % 5 == 0 {
                 events.extend(core.tick());
             }
@@ -105,6 +143,13 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_config_dir()?;
             let core = Arc::new(AppCore::new(Some(dir.join("settings.json"))));
+            if let Ok(docs) = app.path().document_dir() {
+                core.set_default_recordings_dir(docs.join("CWLD"));
+            }
+            if core.settings().audio.auto_start {
+                // A missing sound card is not fatal: the status shows the error.
+                let _ = core.start_audio();
+            }
             app.manage(core.clone());
             start_ticker(app.handle().clone(), core);
             Ok(())
@@ -120,7 +165,14 @@ pub fn run() {
             list_ports,
             connect,
             disconnect,
-            ack_swr
+            ack_swr,
+            list_audio_inputs,
+            start_audio,
+            stop_audio,
+            decode_file,
+            set_tone,
+            start_recording,
+            stop_recording
         ])
         .run(tauri::generate_context!())
         .expect("error while running CWLD");

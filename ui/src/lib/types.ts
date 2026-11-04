@@ -39,6 +39,38 @@ export interface PortInfo {
   hint: RadioKind | null;
 }
 
+export interface AudioSettings {
+  /** Sound card input name. Empty: a radio-looking input, else the system default. */
+  input: string;
+  tone_hz: number;
+  auto_start: boolean;
+  record_dir: string;
+}
+
+export interface AudioStatus {
+  running: boolean;
+  source: string;
+  rate: number;
+  tone_hz: number;
+  error: string | null;
+  recording: boolean;
+  record_seconds: number;
+  record_path: string;
+  overruns: number;
+}
+
+export interface InputDevice {
+  name: string;
+  default: boolean;
+  suggested: boolean;
+}
+
+export interface TentativeChar {
+  best: string;
+  confidence: number;
+  alts: [string, number][];
+}
+
 export interface Settings {
   schema_version: number;
   language: Language;
@@ -46,6 +78,7 @@ export interface Settings {
   station: Station;
   radio: RadioSettings;
   swr: SwrSettings;
+  audio: AudioSettings;
   last_policy: TxPolicy;
   first_run_done: boolean;
   signals_panel: boolean;
@@ -67,6 +100,7 @@ export interface Snapshot {
   status: RadioStatus;
   radio_name: string;
   settings: Settings;
+  audio: AudioStatus;
 }
 
 export type RigEvent =
@@ -93,6 +127,10 @@ export type CoreEvent =
   | { type: 'rig'; event: RigEvent }
   | { type: 'policy'; policy: TxPolicy }
   | { type: 'decoder'; stats: DecoderStats }
+  | { type: 'decode'; source: 'rx' | 'paddle'; text: string; conf: number[]; tentative: TentativeChar[]; wpm: number }
+  | { type: 'waterfall'; bins: number[]; lo_hz: number; hz_per_bin: number }
+  | { type: 'audio_level'; dbfs: number }
+  | { type: 'audio'; status: AudioStatus }
   | { type: 'swr_alert'; alert: SwrAlert }
   | { type: 'swr_cleared' };
 
@@ -117,6 +155,17 @@ export interface Api {
   disconnect(): Promise<Snapshot>;
   /** The operator confirms an SWR alert. */
   ackSwr(): Promise<void>;
+  listAudioInputs(): Promise<InputDevice[]>;
+  startAudio(): Promise<AudioStatus>;
+  stopAudio(): Promise<AudioStatus>;
+  /** Decodes a WAV file at real speed, as if it came from the radio. */
+  decodeFile(path: string): Promise<AudioStatus>;
+  setTone(hz: number): Promise<void>;
+  /** Returns the path of the new recording. */
+  startRecording(): Promise<string>;
+  stopRecording(): Promise<void>;
+  /** True for the browser stand-in: the conversation starts with example text. */
+  readonly demo: boolean;
   /** Poll for events (the Tauri shell pushes them, the mock generates them). */
   onEvents(handler: (events: CoreEvent[]) => void): () => void;
 }

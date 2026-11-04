@@ -1,4 +1,4 @@
-import type { Api, CoreEvent, PortInfo, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
+import type { Api, AudioStatus, CoreEvent, InputDevice, PortInfo, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -21,6 +21,14 @@ export async function createTauriApi(): Promise<Api> {
     ackSwr: async () => {
       await invoke<unknown>('ack_swr');
     },
+    listAudioInputs: () => invoke<InputDevice[]>('list_audio_inputs'),
+    startAudio: () => invoke<AudioStatus>('start_audio'),
+    stopAudio: () => invoke<AudioStatus>('stop_audio'),
+    decodeFile: (path: string) => invoke<AudioStatus>('decode_file', { path }),
+    setTone: (hz: number) => invoke<void>('set_tone', { hz }),
+    startRecording: () => invoke<string>('start_recording'),
+    stopRecording: () => invoke<void>('stop_recording'),
+    demo: false,
     onEvents(handler) {
       let off: (() => void) | null = null;
       let cancelled = false;

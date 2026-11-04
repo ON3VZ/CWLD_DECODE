@@ -88,6 +88,38 @@ impl SwrSettings {
     }
 }
 
+/// Where the decoder listens.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AudioSettings {
+    /// Name of the sound card input. Empty: a radio-looking input ("USB Audio CODEC"), else
+    /// the system default.
+    pub input: String,
+    /// The CW pitch the decoder listens to, in Hz. Clicking the waterfall changes it.
+    pub tone_hz: f32,
+    /// Start listening when CWLD starts.
+    pub auto_start: bool,
+    /// Folder for recordings. Empty: the default folder (Documents/CWLD).
+    pub record_dir: String,
+}
+
+impl Default for AudioSettings {
+    fn default() -> Self {
+        AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new() }
+    }
+}
+
+impl AudioSettings {
+    /// The pitch, kept in a range where CW tones live, even after a hand-edited file.
+    pub fn safe_tone(&self) -> f32 {
+        if self.tone_hz.is_nan() {
+            700.0
+        } else {
+            self.tone_hz.clamp(200.0, 1500.0)
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Station {
@@ -135,6 +167,7 @@ pub struct Settings {
     pub station: Station,
     pub radio: RadioSettings,
     pub swr: SwrSettings,
+    pub audio: AudioSettings,
     /// The policy that was active when the app was last closed.
     pub last_policy: TxPolicy,
     pub first_run_done: bool,
@@ -150,6 +183,7 @@ impl Default for Settings {
             station: Station::default(),
             radio: RadioSettings::default(),
             swr: SwrSettings::default(),
+            audio: AudioSettings::default(),
             last_policy: TxPolicy::ListenOnly,
             first_run_done: false,
             signals_panel: false,

@@ -88,7 +88,7 @@ pub struct Generated {
 /// Key-down timeline as (down?, seconds) pairs.
 fn timeline(spec: &CwSpec, text: &str, rng: &mut Rng) -> Vec<(bool, f64)> {
     let unit = 1.2 / spec.wpm;
-    let mut jit = |x: f64, rng: &mut Rng| (x * (1.0 + spec.jitter * rng.gauss())).max(x * 0.4);
+    let jit = |x: f64, rng: &mut Rng| (x * (1.0 + spec.jitter * rng.gauss())).max(x * 0.4);
     let mut out: Vec<(bool, f64)> = Vec::new();
     let words: Vec<&str> = text.split_whitespace().collect();
     for (wi, word) in words.iter().enumerate() {

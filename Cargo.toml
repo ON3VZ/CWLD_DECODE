@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/cwld-types", "crates/cwld-radio", "crates/cwld-core", "crates/cwld-dsp", "crates/cwld-decoder", "src-tauri"]
+members = ["crates/cwld-types", "crates/cwld-radio", "crates/cwld-core", "crates/cwld-dsp", "crates/cwld-decoder", "crates/cwld-audio", "src-tauri"]
 
 [workspace.package]
 version = "0.1.0"

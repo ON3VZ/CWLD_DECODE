@@ -12,7 +12,18 @@
 
   $effect(() => {
     app.refreshPorts();
+    app.refreshInputs();
   });
+  let wavPath = $state('');
+  // Input level as a bar: -60 dBFS empty, 0 dBFS full.
+  const levelPct = $derived(app.audioLevel === null ? 0 : Math.max(0, Math.min(100, ((app.audioLevel + 60) / 60) * 100)));
+  const levelHint = $derived(app.audioLevel === null ? '' : app.audioLevel > -6 ? 'audio.level.high' : app.audioLevel < -45 ? 'audio.level.low' : 'audio.level.ok');
+
+  async function applyAudio() {
+    // The input is part of the settings: save first, then (re)start with it.
+    await app.saveSettings(draft);
+    await app.startAudio();
+  }
 
   function readAddress(): number | null {
     const v = parseInt(addressText.trim().replace(/^0x/i, ''), 16);
@@ -166,6 +177,55 @@
       <p class="muted note">{t('swr.qmx_unverified')}</p>
     {/if}
 
+    <h3>{t('audio.title')}</h3>
+    <label>{t('audio.input')}
+      <div class="row">
+        <select bind:value={draft.audio.input}>
+          <option value="">{t('audio.input.auto')}</option>
+          {#each app.inputs as d (d.name)}
+            <option value={d.name}>{d.name}{d.suggested ? ` (${t('audio.input.radio')})` : ''}{d.default ? ` (${t('audio.input.default')})` : ''}</option>
+          {/each}
+        </select>
+        <button class="btn" type="button" onclick={() => app.refreshInputs()}>{t('radio.port.refresh')}</button>
+      </div>
+      <small class="muted">{t('audio.input.help')}</small>
+    </label>
+    <label>{t('audio.tone')}
+      <input class="mono short" type="number" min="200" max="1500" step="10" bind:value={draft.audio.tone_hz} />
+      <small class="muted">{t('audio.tone.help')}</small>
+    </label>
+    <label class="check"><input type="checkbox" bind:checked={draft.audio.auto_start} /> {t('audio.autostart')}</label>
+    <label>{t('audio.recdir')}
+      <input class="mono" bind:value={draft.audio.record_dir} placeholder={t('audio.recdir.default')} />
+      <small class="muted">{t('audio.recdir.help')}</small>
+    </label>
+    <div class="row">
+      {#if app.audio?.running}
+        <button class="btn" type="button" onclick={() => app.stopAudio()}>{t('audio.stop')}</button>
+        <button class="btn" type="button" onclick={applyAudio}>{t('audio.restart')}</button>
+      {:else}
+        <button class="btn primary" type="button" onclick={applyAudio}>{t('audio.start')}</button>
+      {/if}
+      <span class="muted status">
+        {app.audio?.running ? t('audio.running', { source: app.audio.source, rate: String(app.audio.rate) }) : app.audio?.error ? t('audio.failed', { error: app.audio.error }) : t('audio.stopped')}
+      </span>
+    </div>
+    {#if app.audio?.running}
+      <div class="level" title={t('audio.level')}>
+        <span class="bar"><span class="fill" style:width={`${levelPct}%`}></span></span>
+        <span class="mono muted">{app.audioLevel === null ? '' : `${app.audioLevel.toFixed(0)} dBFS`}</span>
+      </div>
+      {#if levelHint}<small class="muted">{t(levelHint)}</small>{/if}
+      {#if app.audio.overruns > 0}<small class="err">{t('audio.overruns', { n: String(app.audio.overruns) })}</small>{/if}
+    {/if}
+    <label>{t('audio.file')}
+      <div class="row">
+        <input class="mono" bind:value={wavPath} placeholder="C:\Users\...\opname.wav" />
+        <button class="btn" type="button" disabled={!wavPath.trim()} onclick={() => app.decodeFile(wavPath)}>{t('audio.file.decode')}</button>
+      </div>
+      <small class="muted">{t('audio.file.help')}</small>
+    </label>
+
     {#if problem}<p class="err" role="alert">{problem}</p>{/if}
 
     <div class="act">
@@ -195,4 +255,7 @@
   .check small { flex-basis: 100%; }
   .link { background: none; border: none; padding: 0; color: var(--accent); text-align: left; font-size: 13px; }
   .err { color: var(--live); margin: 0; font-weight: 600; }
+  .level { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .level .bar { flex: 1; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+  .level .fill { display: block; height: 100%; background: linear-gradient(90deg, #2e9e5b 70%, #d98e04 90%, #c0392b); }
 </style>

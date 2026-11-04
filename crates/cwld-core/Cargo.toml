@@ -11,3 +11,11 @@ cwld-radio = { path = "../cwld-radio" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+cwld-audio = { path = "../cwld-audio" }
+
+[dev-dependencies]
+cwld-dsp = { path = "../cwld-dsp" }
+
+[features]
+# Real sound cards (cpal). The Tauri app turns it on, tests do not need it.
+device = ["cwld-audio/device"]

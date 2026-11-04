@@ -1,4 +1,4 @@
-import type { Api, CoreEvent, CoreFailure, DecoderStats, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TxPolicy } from './types';
+import type { Api, AudioStatus, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy } from './types';
 import { i18n, t } from './i18n.svelte';
 import { demoMessages, demoSignals, type Message, type Signal } from './demo';
 import { expand } from './template';
@@ -14,6 +14,15 @@ export interface Qso {
 
 const emptyQso = (): Qso => ({ call: '', name: '', rst: '599', qth: '' });
 
+export interface WaterfallRow {
+  bins: number[];
+  lo_hz: number;
+  hz_per_bin: number;
+}
+
+/** A pause longer than this starts a new bubble for decoded text. */
+export const BUBBLE_PAUSE_MS = 8000;
+
 function codeOf(e: unknown): string {
   if (e && typeof e === 'object' && 'code' in e) return String((e as CoreFailure).code);
   return 'unknown';
@@ -21,6 +30,8 @@ function codeOf(e: unknown): string {
 
 class AppState {
   ready = $state(false);
+  /** Running against the browser stand-in (example conversation and waterfall). */
+  demo = $state(false);
   policy = $state<TxPolicy>('listen_only');
   status = $state<RadioStatus>({
     connected: false, frequency_hz: 0, mode: 'cw', filter: null, cw_wpm: 20, transmitting: false, s_meter: 0,
@@ -50,6 +61,17 @@ class AppState {
   warning = $state<string | null>(null);
   ports = $state<PortInfo[]>([]);
   connecting = $state(false);
+  /** Audio input and decoder state. */
+  audio = $state<AudioStatus | null>(null);
+  audioLevel = $state<number | null>(null);
+  inputs = $state<InputDevice[]>([]);
+  /** Characters the decoder is not sure about yet, shown faded after the last bubble. */
+  tail = $state<{ from: 'rx' | 'paddle'; chars: TentativeChar[] } | null>(null);
+  /** True once real waterfall rows arrive (otherwise the waterfall shows the demo). */
+  waterfallLive = $state(false);
+  /** Waterfall rows not drawn yet. Plain array on purpose: 20 rows a second need no reactivity. */
+  waterfallRows: WaterfallRow[] = [];
+  private lastDecodeAt: Record<'rx' | 'paddle', number> = { rx: 0, paddle: 0 };
   private lastPaddleAt = 0;
 
   private api!: Api;
@@ -66,10 +88,16 @@ class AppState {
     this.status = snap.status;
     this.radioName = snap.radio_name;
     this.swrAlert = snap.swr_alert;
+    this.audio = snap.audio ?? null;
+    this.demo = api.demo;
     this.messages = [];
+    this.tail = null;
+    this.waterfallRows = [];
+    this.waterfallLive = false;
+    this.lastDecodeAt = { rx: 0, paddle: 0 };
     this.qso = emptyQso();
     this.callLocked = false;
-    for (const m of demoMessages) this.ingest(m.from, m.text, m.time);
+    if (api.demo) for (const m of demoMessages) this.ingest(m.from, m.text, m.time);
     this.ready = true;
     this.off?.();
     this.off = api.onEvents((ev) => this.onEvents(ev));
@@ -103,6 +131,24 @@ class AppState {
         this.decoder = ev.stats;
         continue;
       }
+      if (ev.type === 'decode') {
+        this.decoded(ev.source, ev.text, ev.conf, ev.tentative);
+        continue;
+      }
+      if (ev.type === 'waterfall') {
+        this.waterfallRows.push({ bins: ev.bins, lo_hz: ev.lo_hz, hz_per_bin: ev.hz_per_bin });
+        if (this.waterfallRows.length > 200) this.waterfallRows.splice(0, this.waterfallRows.length - 200);
+        if (!this.waterfallLive) this.waterfallLive = true;
+        continue;
+      }
+      if (ev.type === 'audio_level') {
+        this.audioLevel = ev.dbfs;
+        continue;
+      }
+      if (ev.type === 'audio') {
+        this.audio = ev.status;
+        continue;
+      }
       if (ev.type === 'swr_alert') {
         this.swrAlert = ev.alert;
         this.status.transmitting = false;
@@ -131,6 +177,39 @@ class AppState {
         case 'paddle_text': this.paddle(e.value); break;
       }
     }
+  }
+
+  /**
+   * Decoded text from the audio decoder. Text that follows within a few seconds continues the
+   * same bubble, a longer pause starts a new one. `conf` holds one confidence per character,
+   * the interface fades the unsure ones. The tentative tail is shown faded after the bubble.
+   */
+  decoded(source: 'rx' | 'paddle', text: string, conf: number[], tentative: TentativeChar[], now = Date.now()) {
+    if (text) {
+      const last = this.messages[this.messages.length - 1];
+      const goesOn = last && last.from === source && now - this.lastDecodeAt[source] < BUBBLE_PAUSE_MS;
+      let target: Message | undefined;
+      if (goesOn) {
+        const before = last.conf ?? [...last.text].map(() => 1);
+        last.text += text;
+        last.conf = [...before, ...conf];
+        target = last;
+      } else {
+        const clean = text.replace(/^\s+/, '');
+        if (clean) {
+          const cut = text.length - clean.length;
+          this.messages.push({ id: this.nextId++, from: source, text: clean, conf: conf.slice(cut), time: new Date(now).toTimeString().slice(0, 5) });
+          target = this.messages[this.messages.length - 1];
+        }
+      }
+      this.lastDecodeAt[source] = now;
+      if (target && source === 'rx') {
+        const h = heardIn(target.text, this.settings?.station.calls ?? []);
+        if (h.call) target.call = h.call;
+        this.applyHeard(target.text);
+      }
+    }
+    this.tail = tentative.length ? { from: source, chars: tentative } : this.tail?.from === source ? null : this.tail;
   }
 
   /**
@@ -366,6 +445,75 @@ class AppState {
       await this.api.saveSettings($state.snapshot(s) as Settings);
       this.apply(s);
       this.notice = t('settings.saved');
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async refreshInputs() {
+    try {
+      this.inputs = await this.api.listAudioInputs();
+    } catch {
+      this.inputs = [];
+    }
+  }
+
+  async startAudio() {
+    this.error = null;
+    try {
+      this.audio = await this.api.startAudio();
+    } catch (e) {
+      this.fail(e);
+      const detail = e && typeof e === 'object' && 'message' in e ? String((e as CoreFailure).message ?? '') : '';
+      if (detail) this.error = `${this.error} (${detail})`;
+    }
+  }
+
+  async stopAudio() {
+    try {
+      this.audio = await this.api.stopAudio();
+      this.audioLevel = null;
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async decodeFile(path: string) {
+    this.error = null;
+    try {
+      this.audio = await this.api.decodeFile(path.trim());
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** The decoder listens to another pitch (a click on the waterfall). */
+  async setTone(hz: number) {
+    const v = Math.round(Math.min(1500, Math.max(200, hz)));
+    try {
+      await this.api.setTone(v);
+      if (this.audio) this.audio.tone_hz = v;
+      if (this.settings) this.settings.audio.tone_hz = v;
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async toggleRecording() {
+    this.error = null;
+    try {
+      if (this.audio?.recording) {
+        await this.api.stopRecording();
+        if (this.audio) this.audio.recording = false;
+        this.notice = t('rec.saved', { path: this.audio?.record_path ?? '' });
+      } else {
+        const path = await this.api.startRecording();
+        if (this.audio) {
+          this.audio.recording = true;
+          this.audio.record_seconds = 0;
+          this.audio.record_path = path;
+        }
+      }
     } catch (e) {
       this.fail(e);
     }

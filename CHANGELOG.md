@@ -1,3 +1,19 @@
+## 0.3.4 (icon and Windows build)
+
+- New application icon (set in `src-tauri/icons`, favicon for the UI).
+- GitHub Actions workflow `windows-build` produces a Windows installer as a downloadable artifact.
+- Dutch install guide in `docs/installatie_windows.md`.
+
+## 0.3.3 (audio input and live decoding)
+
+- New crate `cwld-audio`: sound card input (cpal), lock-free ring buffer, resampler to 8 kHz, waterfall (own FFT), WAV recording, audio thread with events.
+- The waterfall shows the real spectrum; a click on a signal sets the decoder pitch.
+- Decoded text appears live in the conversation, unsure characters faded, the uncertain tail in italics.
+- Own typed text is not shown twice; other text heard while transmitting is the paddle.
+- Record button in the status bar (Documents\CWLD, date, time and frequency in the file name).
+- Settings: audio input, pitch, auto start, recording folder, input level meter, decode a WAV file.
+- The certainty meter shows real values.
+
 ## 0.3.2 (decoder: interference and weak signals)
 
 - Noise blanker against short strong clicks, automatic notch against steady carriers near the tone.

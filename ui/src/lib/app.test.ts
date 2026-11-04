@@ -226,3 +226,67 @@ describe('decoder certainty meter', () => {
     expect(app.decoder?.accuracy).toBeNull();
   });
 });
+
+describe('live decoding', () => {
+  beforeEach(async () => {
+    await fresh();
+    app.messages = [];
+  });
+
+  it('pieces of decoded text continue one bubble and fill {CALL}', () => {
+    app.decoded('rx', 'CQ CQ DE ', [1, 1, 1, 1, 1, 1, 1, 1, 1], [], 1000);
+    app.decoded('rx', 'F4XYZ K', [1, 1, 0.6, 1, 1, 1, 1], [], 3000);
+    expect(app.messages).toHaveLength(1);
+    expect(app.messages[0].text).toBe('CQ CQ DE F4XYZ K');
+    expect(app.messages[0].conf?.[11]).toBeCloseTo(0.6);
+    expect(app.messages[0].call).toBe('F4XYZ');
+    expect(app.vars.CALL).toBe('F4XYZ');
+  });
+
+  it('a long pause starts a new bubble without a leading space', () => {
+    app.decoded('rx', 'TEST', [1, 1, 1, 1], [], 1000);
+    app.decoded('rx', ' AGN', [1, 1, 1, 1], [], 1000 + 9000);
+    expect(app.messages.map((m) => m.text)).toEqual(['TEST', 'AGN']);
+    expect(app.messages[1].conf).toHaveLength(3);
+  });
+
+  it('paddle text from the audio gets its own bubble', () => {
+    app.decoded('rx', 'QRZ?', [1, 1, 1, 1], [], 1000);
+    app.decoded('paddle', 'ON3VZ', [1, 1, 1, 1, 1], [], 2000);
+    expect(app.messages.map((m) => m.from)).toEqual(['rx', 'paddle']);
+  });
+
+  it('the tentative tail is kept until final text replaces it', () => {
+    app.decoded('rx', '', [], [{ best: 'K', confidence: 0.5, alts: [['R', 0.3]] }], 1000);
+    expect(app.tail?.chars[0].best).toBe('K');
+    app.decoded('rx', 'K', [0.95], [], 1500);
+    expect(app.tail).toBeNull();
+  });
+
+  it('events from the core reach the conversation and the waterfall', async () => {
+    const mock = await fresh();
+    app.messages = [];
+    mock.decode('rx', 'DE DL1ABC');
+    mock.waterfallRow([0, 10, 200, 10]);
+    mock.flush();
+    expect(app.messages[0].text).toBe('DE DL1ABC');
+    expect(app.waterfallLive).toBe(true);
+    expect(app.waterfallRows).toHaveLength(1);
+  });
+
+  it('clicking a pitch retunes and remembers it, within limits', async () => {
+    await app.setTone(615.4);
+    expect(app.audio?.tone_hz).toBe(615);
+    expect(app.settings?.audio.tone_hz).toBe(615);
+    await app.setTone(5000);
+    expect(app.audio?.tone_hz).toBe(1500);
+  });
+
+  it('recording starts and stops', async () => {
+    await app.toggleRecording();
+    expect(app.audio?.recording).toBe(true);
+    expect(app.audio?.record_path).toMatch(/kHz\.wav$/);
+    await app.toggleRecording();
+    expect(app.audio?.recording).toBe(false);
+  });
+});

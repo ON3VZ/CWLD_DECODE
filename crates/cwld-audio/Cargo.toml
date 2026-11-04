@@ -1,0 +1,17 @@
+[package]
+name = "cwld-audio"
+description = "Audio for CWLD: input devices, resampling, waterfall, recording and the decoder thread"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# Real sound cards through cpal. Off for the tests, so they build without system audio libraries.
+device = ["dep:cpal"]
+
+[dependencies]
+cwld-types = { path = "../cwld-types" }
+cwld-dsp = { path = "../cwld-dsp" }
+cwld-decoder = { path = "../cwld-decoder" }
+serde.workspace = true
+cpal = { version = "0.15", optional = true }

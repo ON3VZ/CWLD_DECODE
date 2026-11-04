@@ -18,7 +18,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-cwld-core = { path = "../crates/cwld-core" }
+cwld-core = { path = "../crates/cwld-core", features = ["device"] }
 cwld-types = { path = "../crates/cwld-types" }
 cwld-radio = { path = "../crates/cwld-radio" }
 serde.workspace = true

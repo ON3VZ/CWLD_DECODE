@@ -164,6 +164,7 @@ pub struct AutoNotch {
     notches: Vec<Notch>,
     pub max_notches: usize,
     changed: bool,
+    history_lo: Option<f64>,
 }
 
 const HISTORY_BLOCKS: usize = 6;
@@ -173,7 +174,7 @@ impl AutoNotch {
         let fs = sample_rate as f64;
         let block_len = (0.25 * fs) as usize;
         let window = (0..block_len).map(|i| 0.5 - 0.5 * (2.0 * PI * i as f64 / (block_len - 1) as f64).cos()).collect();
-        AutoNotch { fs, block: Vec::with_capacity(block_len), block_len, window, span_hz: 400.0, step_hz: 4.0, guard_hz: 18.0, history: VecDeque::new(), notches: Vec::new(), max_notches: 3, changed: false }
+        AutoNotch { fs, block: Vec::with_capacity(block_len), block_len, window, span_hz: 400.0, step_hz: 4.0, guard_hz: 18.0, history: VecDeque::new(), notches: Vec::new(), max_notches: 3, changed: false, history_lo: None }
     }
 
     /// True once the detector has seen enough blocks to judge what is steady.
@@ -204,8 +205,9 @@ impl AutoNotch {
         let lo = (tone_hz - self.span_hz).max(150.0);
         let hi = (tone_hz + self.span_hz).min(self.fs / 2.0 - 100.0);
         let mut powers = Vec::new();
-        let mut f = lo;
-        while f <= hi {
+        let nb = ((hi - lo) / self.step_hz).floor() as usize + 1;
+        for i in 0..nb {
+            let f = lo + i as f64 * self.step_hz;
             let w = 2.0 * PI * f / self.fs;
             let coeff = 2.0 * w.cos();
             let (mut s1, mut s2) = (0.0f64, 0.0f64);
@@ -215,8 +217,13 @@ impl AutoNotch {
                 s1 = s0;
             }
             powers.push(s1 * s1 + s2 * s2 - coeff * s1 * s2);
-            f += self.step_hz;
         }
+        // A retune moves the analysed band: the old blocks no longer line up with the new ones.
+        let same_shape = self.history.back().map_or(true, |h| h.len() == nb);
+        if !same_shape || self.history_lo.map_or(false, |l| (l - lo).abs() > 1e-9) {
+            self.history.clear();
+        }
+        self.history_lo = Some(lo);
         self.history.push_back(powers);
         if self.history.len() > HISTORY_BLOCKS {
             self.history.pop_front();
@@ -338,6 +345,16 @@ mod tests {
         let tone_before = power_near(&g.samples[tail..], 8000.0, 700.0);
         let tone_after = power_near(&out[tail..], 8000.0, 700.0);
         assert!(tone_after > 0.7 * tone_before);
+    }
+
+    #[test]
+    fn retuning_while_analysing_is_safe() {
+        let g = generate(&CwSpec { text: "CQ CQ CQ CQ".into(), snr_db: Some(20.0), carrier: Some((50.0, 20.0)), ..Default::default() });
+        let mut an = AutoNotch::new(8000);
+        for (i, x) in g.samples.iter().enumerate() {
+            let tone = if i < g.samples.len() / 2 { 700.0 } else { 553.0 };
+            an.process(*x, tone);
+        }
     }
 
     #[test]

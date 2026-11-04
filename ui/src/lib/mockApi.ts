@@ -1,4 +1,4 @@
-import type { Api, CoreEvent, CoreFailure, PortInfo, SwrAlert, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
+import type { Api, AudioStatus, CoreEvent, CoreFailure, InputDevice, PortInfo, SwrAlert, RadioSettings, SendOutcome, Settings, Snapshot, TentativeChar, TxPolicy } from './types';
 import { durationSeconds } from './morse';
 
 /** Same rule as the Rust keyer: blocks of at most 30 characters, cut on word boundaries. */
@@ -30,6 +30,7 @@ export function defaultSettings(): Settings {
     theme: 'dark',
     station: { calls: [], name: '', qth: '', locator: '' },
     swr: { enabled: true, limit: 1.5, qrx_after_stop: true },
+    audio: { input: '', tone_hz: 700, auto_start: true, record_dir: '' },
     radio: { kind: 'simulator', port: '', civ_address: 0xb6, baud: 115200, pipeline: false },
     last_policy: 'listen_only',
     first_run_done: false,
@@ -61,6 +62,12 @@ export class MockApi implements Api {
   private swrTimer: ReturnType<typeof setInterval> | null = null;
   /** Counts what a real radio would have received as transmit commands. */
   transmitCommands = 0;
+  readonly demo = true;
+  private audio: AudioStatus = {
+    running: true, source: 'Demo', rate: 48000, tone_hz: 700, error: null,
+    recording: false, record_seconds: 0, record_path: '', overruns: 0,
+  };
+  private recStarted = 0;
 
   constructor(initial?: Partial<Settings>) {
     this.settings = { ...this.settings, ...initial };
@@ -74,7 +81,64 @@ export class MockApi implements Api {
       status: { ...this.status },
       radio_name: this.radioName,
       settings: structuredClone(this.settings),
+      audio: { ...this.audio },
     };
+  }
+
+  async listAudioInputs(): Promise<InputDevice[]> {
+    return [
+      { name: 'Microphone (USB Audio CODEC )', default: false, suggested: true },
+      { name: 'Microphone Array (Realtek Audio)', default: true, suggested: false },
+    ];
+  }
+
+  async startAudio(): Promise<AudioStatus> {
+    this.audio = { ...this.audio, running: true, error: null, source: this.settings.audio.input || 'Microphone (USB Audio CODEC )' };
+    this.pending.push({ type: 'audio', status: { ...this.audio } });
+    return { ...this.audio };
+  }
+
+  async stopAudio(): Promise<AudioStatus> {
+    this.audio = { ...this.audio, running: false, recording: false };
+    this.pending.push({ type: 'audio', status: { ...this.audio } });
+    return { ...this.audio };
+  }
+
+  async decodeFile(path: string): Promise<AudioStatus> {
+    if (!path.toLowerCase().endsWith('.wav')) fail('audio');
+    this.audio = { ...this.audio, running: true, error: null, source: path };
+    return { ...this.audio };
+  }
+
+  async setTone(hz: number) {
+    const v = Math.min(1500, Math.max(200, hz));
+    this.settings.audio.tone_hz = v;
+    this.audio = { ...this.audio, tone_hz: v };
+    this.pending.push({ type: 'audio', status: { ...this.audio } });
+  }
+
+  async startRecording(): Promise<string> {
+    if (!this.audio.running) fail('audio');
+    const khz = (this.status.frequency_hz / 1000).toFixed(1);
+    this.recStarted = Date.now();
+    this.audio = { ...this.audio, recording: true, record_seconds: 0, record_path: `Documents/CWLD/cwld-demo-${khz}kHz.wav` };
+    this.pending.push({ type: 'audio', status: { ...this.audio } });
+    return this.audio.record_path;
+  }
+
+  async stopRecording() {
+    this.audio = { ...this.audio, recording: false, record_seconds: (Date.now() - this.recStarted) / 1000 };
+    this.pending.push({ type: 'audio', status: { ...this.audio } });
+  }
+
+  /** Test helper: the decoder reports text. */
+  decode(source: 'rx' | 'paddle', text: string, conf?: number[], tentative: TentativeChar[] = []) {
+    this.pending.push({ type: 'decode', source, text, conf: conf ?? [...text].map(() => 1), tentative, wpm: 20 });
+  }
+
+  /** Test helper: one waterfall row. */
+  waterfallRow(bins: number[], lo_hz = 200, hz_per_bin = 7.8125) {
+    this.pending.push({ type: 'waterfall', bins, lo_hz, hz_per_bin });
   }
 
   async setPolicy(policy: TxPolicy, confirmed: boolean) {
@@ -229,6 +293,10 @@ export class MockApi implements Api {
 
   private tick() {
     this.decoderTick();
+    if (this.audio.recording) {
+      this.audio = { ...this.audio, record_seconds: (Date.now() - this.recStarted) / 1000 };
+      this.pending.push({ type: 'audio', status: { ...this.audio } });
+    }
     if (this.status.transmitting && Date.now() >= this.txUntil) this.endTx();
     const wander = Math.round((Math.random() - 0.5) * 6);
     this.status.s_meter = Math.max(0, Math.min(100, this.status.s_meter + wander));

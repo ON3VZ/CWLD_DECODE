@@ -3,4 +3,3 @@ node_modules
 ui/dist
 src-tauri/gen
 *.bad
-

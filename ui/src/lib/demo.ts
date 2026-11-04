@@ -4,6 +4,8 @@ export interface Message {
   from: 'rx' | 'tx' | 'paddle' | 'practice';
   call?: string;
   text: string;
+  /** Decoder confidence per character of `text` (0..1). Missing: all sure. */
+  conf?: number[];
   time: string;
 }
 
