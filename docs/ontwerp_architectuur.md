@@ -731,4 +731,10 @@ Elk item heeft een vraagvorm (met `?`) en een mededelingsvorm (zonder `?`).
 - Opslag: lokaal in de browseropslag van de app (`cwld.sessions.v1`), hoogstens 40 gesprekken, alleen gesprekken met tekst. Zonder opslag werkt de app gewoon.
 - Drempel (squelch): `audio.squelch` van 1 tot 8, standaard 2. Het is de minimale scheiding tussen toets-neer en toets-op niveau (`min_separation`) waaronder de decoder het bewijs negeert. Werkt direct, zonder herstart.
 - Signaalindicator: groen als de decoder een bruikbaar signaal meldt (er is dan een SNR), anders grijs.
-- Open punt (fase 3 afstellen, Opus): automatisch de toonhoogte zoeken (de decoder kan dit al, `auto_tone`, maar het staat nog uit in de motor) en de eigen zendtoon niet als paddle decoderen.
+
+## C. Zelf de toonhoogte zoeken en zenden zonder vervuiling (fase 3f)
+
+- `ToneSeeker` (cwld-dsp): elke 0,25 s Goertzel op 1024 monsters, 300 tot 1200 Hz, 7,8 Hz per bin. Per bin een lopend gemiddelde (ongeveer 1,7 s) en een score tegen de mediaan van de buurt (30 tot 160 Hz ernaast). Zo telt de vorm van het radiofilter niet mee. Ruis scoort tot ongeveer 13 dB, een signaal op +3 dB ongeveer 15 dB.
+- De pipeline verhuist naar de beste kandidaat als die minstens 14 dB scoort, 0,75 s op dezelfde plaats blijft, meer dan 20 Hz van de huidige toon ligt en de huidige toon 1,5 s stil is (snelle maat: luidste moment van de laatste seconde). Bij verhuizen: nieuwe decoder, woordmodel vergeet het halve woord, de laatste 3 s audio worden opnieuw beluisterd. Daarna 2 s niet opnieuw verhuizen, na een klik 10 s.
+- Zenden: bij de start van een zending door de app geeft de decoder eerst zijn vastgehouden tekst als ontvangst en begint dan opnieuw (`Engine::reset` met `ResetDone` als merkteken). Tekst tot het merkteken krijgt de bron van voor de reset. De eigen zending eindigt pas als de schatting voorbij is en de radio niet meer zendt. Paddle: bij begin en einde van het zenden door de radio zelf dezelfde reset, met de rest als paddle.
+- Drempel standaard 3,5 (was 2). Zie meetresultaten.

@@ -152,6 +152,12 @@ impl WordCorrector {
     }
 
     /// The word being held back, shown as tentative text meanwhile.
+    /// Forgets the word being built (the decoder moved to another signal).
+    pub fn discard(&mut self) {
+        self.word.clear();
+        self.last = None;
+    }
+
     pub fn held(&self) -> Vec<TentativeChar> {
         self.word.iter().map(|p| TentativeChar { best: p.c, confidence: p.conf, alts: p.alts.clone() }).collect()
     }

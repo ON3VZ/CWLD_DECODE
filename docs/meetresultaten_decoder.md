@@ -64,3 +64,31 @@ Het exacte ruismodel voor een toon in ruis (Rice tegenover Rayleigh) is gebouwd 
 2. Echte opnames als testmateriaal en een eerlijke vergelijking met CwGet via WAV-bestanden.
 3. Audio-ingang (cpal), koppeling met de waterfall, het gesprek en de zekerheidsmeter.
 4. Het woordmodel aanvullen met eigen roepletters, naam en QTH en met roepletters uit het logboek.
+
+
+## Echte opnames, IC-7300 MK II (4 november 2026)
+
+Drie opnames van Kristof via de REC-knop, 48 kHz, teruggebracht naar 8 kHz. De juiste tekst is niet bekend, dus dit is een vergelijking op herkenbare woorden en op hoeveel tekst er uit ruis komt.
+
+| Opname | Wat erin zit | Vroeger (700 Hz vast, drempel 2) | Nu (700 Hz start, zelf zoeken, drempel 3,5) |
+|---|---|---|---|
+| 7047,2 kHz, 60 s | Bijna lege band, alleen ruis | 122 tekens onzin | 11 tekens (`M EETE I M T T TT`) |
+| 7035,4 kHz, 26 s | OK5O roept CQ CWT op 799 Hz, G5RMP antwoordt op 640 Hz | `E G5 M A O I M O GECQ CWT OK5O OK5O G5RMP` | `E G5 GH M CQ CWT OK5O OK5O MTMT MMTM MTMT TMM M TM K5O OK5O G5RMP` |
+| 7012,0 kHz, 60 s | Frans QSO, F8UFT en partner rond 610 Hz | Bijna volledig leesbaar (valt binnen de AFC) | Gelijk |
+
+Synthetisch signaal op 615 Hz terwijl de decoder op 700 Hz begint (20 WPM, 6 berichten):
+
+| SNR | Zonder zoeken | Met zoeken |
+|---|---|---|
+| +3 dB | 33,6 % | 7,5 % |
+| 0 dB | 69,2 % | 54,1 % |
+| -3 dB | 82,2 % | 93,8 % |
+
+Synthetisch op de juiste toon, drempel 2 tegen 3,5 (8 berichten, 20 WPM): +6 en +3 dB 0 % in beide, 0 dB 3,9 % in beide, -3 dB 42,4 % tegen 55,2 %. De hogere drempel kost dus iets bij de zwakste signalen; wie die wil lezen zet de drempel lager.
+
+Wat de opnames leerden:
+
+- De ruis van de radio is gekleurd door het CW-filter. De oude aanwezigheidstest (toonband tegen twee buurbanden) zei daardoor bijna altijd "signaal", en de scheiding van ruis alleen is op de radio ongeveer 3,3. Daarom de drempel 3,5.
+- De signalen zaten op 410, 615, 640 en 799 Hz, niet op 700. Zonder zoeken bleef de decoder op de verkeerde plaats.
+- Het stuk `MTMT MMTM` in de OK5O-opname is nog niet verklaard (zelfde stuk ook bij vaste 796 Hz). Daarvoor is een opname met bekende tekst nodig.
+- Zoeken vindt signalen vanaf ongeveer +3 dB. Zwakkere signalen moet je aanklikken.

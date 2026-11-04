@@ -184,9 +184,11 @@
   "tabs.empty": "New conversation",
   "composer.placeholder.old": "You are looking at an earlier conversation. Click the tab with the green dot to send.",
   "audio.squelch": "Signal threshold",
-  "audio.squelch.help": "How clearly a signal must stand out of the noise before the decoder believes it. Higher is stricter: less text out of noise, but weak signals drop out. Default 2. If you see text without a signal, raise it. It works at once.",
+  "audio.squelch.help": "How clearly a signal must stand out of the noise before the decoder believes it. Higher is stricter: less text out of noise, but weak signals drop out. Default 3.5. If you see text without a signal, raise it. It works at once.",
   "signal.yes": "Signal",
   "signal.no": "No signal",
   "signal.help": "Green: the decoder sees a clear signal at the set pitch. Grey: only noise, nothing is decoded.",
-  "waterfall.zoom": "Zoom in on the pitch"
+  "waterfall.zoom": "Zoom in on the pitch",
+  "audio.autotone": "Find the strongest signal by itself",
+  "audio.autotone.help": "When the pitch has been quiet for a while, the decoder jumps to the strongest CW signal in the waterfall (like GoMax in MRP40). After a click on the waterfall it stays put for 10 seconds. Weak signals (around 0 dB) it does not find by itself: click those."
 }

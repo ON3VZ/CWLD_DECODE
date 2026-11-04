@@ -38,11 +38,13 @@ pub struct EngineConfig {
     pub waterfall_hi_hz: f64,
     /// See `PipelineConfig::min_separation`.
     pub min_separation: f32,
+    /// Move to the strongest keyed tone by itself when the current pitch is quiet.
+    pub auto_tone: bool,
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
-        EngineConfig { tone_hz: 700.0, words: Vec::new(), waterfall_lo_hz: 200.0, waterfall_hi_hz: 1400.0, min_separation: 2.0 }
+        EngineConfig { tone_hz: 700.0, words: Vec::new(), waterfall_lo_hz: 200.0, waterfall_hi_hz: 1400.0, min_separation: 3.5, auto_tone: true }
     }
 }
 
@@ -65,6 +67,9 @@ pub enum EngineEvent {
     /// Mean confidence of the last characters, and the signal to noise ratio in the filter.
     Stats { confidence: Option<f32>, snr_db: Option<f32> },
     Tone { hz: f64 },
+    /// Sent after a `reset`: everything decoded before this event belongs to the time before
+    /// the reset.
+    ResetDone,
     Recording { active: bool, seconds: f64, path: String },
     /// Samples were lost because the audio thread could not keep up.
     Overrun { samples: u64 },
@@ -75,6 +80,8 @@ pub enum EngineEvent {
 enum Command {
     Retune(f64),
     Squelch(f32),
+    AutoTone(bool),
+    Reset { flush: bool },
     StartRecording(PathBuf),
     StopRecording,
     AddWords(Vec<String>),
@@ -128,6 +135,16 @@ impl Engine {
 
     pub fn set_squelch(&self, v: f32) {
         let _ = self.cmd.send(Command::Squelch(v));
+    }
+
+    pub fn set_auto_tone(&self, on: bool) {
+        let _ = self.cmd.send(Command::AutoTone(on));
+    }
+
+    /// Starts the decoder afresh, at the same pitch and settings. With `flush` the text it still
+    /// holds comes out first. A `ResetDone` event follows either way.
+    pub fn reset(&self, flush: bool) {
+        let _ = self.cmd.send(Command::Reset { flush });
     }
 
     pub fn start_recording(&self, path: PathBuf) {
@@ -185,6 +202,11 @@ struct Worker {
     rate: u32,
     resampler: Resampler,
     pipe: Pipeline,
+    /// The pipeline settings, to start it afresh after a reset.
+    pcfg: PipelineConfig,
+    words: Vec<String>,
+    /// The pitch last reported to the owner.
+    reported_tone: f64,
     wf: Waterfall,
     rec: Option<Recorder>,
     level_acc: f64,
@@ -233,6 +255,12 @@ impl Worker {
         }
         self.pipe.push(&lo);
         self.scratch = lo;
+        // The decoder moved to another signal by itself, or followed a drifting one.
+        let hz = self.pipe.tone_hz();
+        if (hz - self.reported_tone).abs() >= 5.0 {
+            self.reported_tone = hz;
+            self.send(EngineEvent::Tone { hz });
+        }
         self.poll_decoder();
     }
 
@@ -282,9 +310,31 @@ impl Worker {
             Command::Retune(hz) => {
                 let hz = hz.clamp(150.0, 2500.0);
                 self.pipe.retune(hz);
+                self.reported_tone = hz;
                 self.send(EngineEvent::Tone { hz });
             }
-            Command::Squelch(v) => self.pipe.set_min_separation(v),
+            Command::Squelch(v) => {
+                self.pcfg.min_separation = v;
+                self.pipe.set_min_separation(v);
+            }
+            Command::AutoTone(on) => {
+                self.pcfg.auto_tone = on;
+                self.pipe.set_auto_tone(on);
+            }
+            Command::Reset { flush } => {
+                if flush {
+                    self.pipe.flush();
+                    self.poll_decoder();
+                }
+                let mut cfg = self.pcfg.clone();
+                cfg.tone_hz = self.pipe.tone_hz();
+                self.pipe = Pipeline::new(cfg);
+                let refs: Vec<&str> = self.words.iter().map(|s| s.as_str()).collect();
+                self.pipe.add_words(&refs);
+                self.last_tentative.clear();
+                self.send(EngineEvent::Decode { text: String::new(), conf: Vec::new(), tentative: Vec::new(), wpm: 0.0 });
+                self.send(EngineEvent::ResetDone);
+            }
             Command::StartRecording(path) => {
                 self.stop_recording();
                 match Recorder::create(&path, self.rate) {
@@ -299,6 +349,7 @@ impl Worker {
             Command::AddWords(w) => {
                 let refs: Vec<&str> = w.iter().map(|s| s.as_str()).collect();
                 self.pipe.add_words(&refs);
+                self.words.extend(w);
             }
             Command::Stop => return false,
         }
@@ -316,9 +367,9 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
     };
     let _ = ready.send(Ok(()));
     let mut pcfg = PipelineConfig::new(DECODE_RATE, cfg.tone_hz);
-    pcfg.auto_tone = false;
+    pcfg.auto_tone = cfg.auto_tone;
     pcfg.min_separation = cfg.min_separation;
-    let mut pipe = Pipeline::new(pcfg);
+    let mut pipe = Pipeline::new(pcfg.clone());
     let refs: Vec<&str> = cfg.words.iter().map(|s| s.as_str()).collect();
     pipe.add_words(&refs);
     let mut w = Worker {
@@ -326,6 +377,9 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
         rate,
         resampler: Resampler::new(rate, DECODE_RATE),
         pipe,
+        pcfg,
+        words: cfg.words.clone(),
+        reported_tone: cfg.tone_hz,
         wf: Waterfall::new(cfg.waterfall_lo_hz, cfg.waterfall_hi_hz),
         rec: None,
         level_acc: 0.0,

@@ -52,10 +52,19 @@ impl AudioState {
 
 #[derive(Default)]
 pub(crate) struct TxTrack {
-    /// Until this moment the radio is busy with text the app sent.
+    /// Until this moment the radio is busy with text the app sent (estimated from the speed).
     app_until: Option<Instant>,
+    /// The app started a transmission that is not over yet. It ends when the estimate has run
+    /// out and the radio is no longer transmitting.
+    app_tx: bool,
     /// Last moment the radio was seen transmitting.
     last_tx: Option<Instant>,
+    /// The radio was transmitting at the previous tick.
+    was_tx: bool,
+    /// While the decoder is being reset: where text decoded before the reset goes (`None`:
+    /// dropped), and how many resets are still under way.
+    reset_route: Option<DecodeSource>,
+    resets_pending: u32,
 }
 
 impl AppCore {
@@ -84,7 +93,7 @@ impl AppCore {
         let mut words: Vec<String> = s.station.calls.clone();
         words.extend(s.station.name.split_whitespace().map(|w| w.to_string()));
         words.extend(s.station.qth.split_whitespace().map(|w| w.to_string()));
-        let cfg = EngineConfig { tone_hz: s.audio.safe_tone() as f64, words, min_separation: s.audio.safe_squelch(), ..Default::default() };
+        let cfg = EngineConfig { tone_hz: s.audio.safe_tone() as f64, words, min_separation: s.audio.safe_squelch(), auto_tone: s.audio.auto_tone, ..Default::default() };
         let mut st = self.audio.lock().unwrap();
         match Engine::start(source, cfg) {
             Ok(e) => {
@@ -126,6 +135,15 @@ impl AppCore {
         self.settings.lock().unwrap().audio.squelch = v;
         if let Some(e) = &self.audio.lock().unwrap().engine {
             e.set_squelch(v);
+        }
+        Ok(())
+    }
+
+    /// Switches the automatic search for the strongest signal on or off, and remembers it.
+    pub fn set_auto_tone(&self, on: bool) -> Result<(), CoreError> {
+        self.settings.lock().unwrap().audio.auto_tone = on;
+        if let Some(e) = &self.audio.lock().unwrap().engine {
+            e.set_auto_tone(on);
         }
         Ok(())
     }
@@ -175,11 +193,66 @@ impl AppCore {
     }
 
     /// Remembers that the app itself made the radio transmit, for about as long as it takes.
+    /// When a new transmission starts, the decoder first hands out what it still holds of the
+    /// other station and then starts afresh, so our own sidetone never mixes with it.
     pub(crate) fn note_app_transmission(&self, text: &str, wpm: u8) {
         let secs = cwld_types::morse::duration_seconds(text, wpm.max(1)).unwrap_or(text.len() as f64);
-        let until = Instant::now() + Duration::from_secs_f64(secs) + TX_TAIL;
-        let mut t = self.tx_track.lock().unwrap();
-        t.app_until = Some(t.app_until.map_or(until, |u| u.max(until)));
+        let now = Instant::now();
+        let starting = {
+            let mut t = self.tx_track.lock().unwrap();
+            // Text queued behind text that is still being sent starts after it.
+            let from = t.app_until.filter(|u| *u > now).map_or(now, |u| u.max(now));
+            let until = from + Duration::from_secs_f64(secs) + TX_TAIL;
+            t.app_until = Some(until);
+            let starting = !t.app_tx;
+            t.app_tx = true;
+            starting
+        };
+        if starting {
+            self.reset_decoder(true, Some(DecodeSource::Rx));
+        }
+    }
+
+    /// Restarts the decoder. Text it produced before the restart goes to `route`.
+    fn reset_decoder(&self, flush: bool, route: Option<DecodeSource>) {
+        let st = self.audio.lock().unwrap();
+        if let Some(e) = &st.engine {
+            let mut t = self.tx_track.lock().unwrap();
+            t.reset_route = route;
+            t.resets_pending += 1;
+            e.reset(flush);
+        }
+    }
+
+    /// Follows the transmit state of the radio and restarts the decoder at each change, so the
+    /// other station, our own app text and the paddle never end up in one piece of text.
+    fn track_transmit(&self, transmitting: bool, radio_text: bool, now: Instant) {
+        let action = {
+            let mut t = self.tx_track.lock().unwrap();
+            if transmitting {
+                t.last_tx = Some(now);
+            }
+            let app_time_left = t.app_until.is_some_and(|u| now < u);
+            let mut action = None;
+            if t.app_tx {
+                if !transmitting && !app_time_left {
+                    // Our own transmission is over: whatever the sidetone left is dropped.
+                    t.app_tx = false;
+                    action = Some((false, None));
+                }
+            } else if transmitting && !t.was_tx {
+                // The operator keys the paddle: the other station's text comes out first.
+                action = Some((true, Some(DecodeSource::Rx)));
+            } else if !transmitting && t.was_tx {
+                // The paddle stops: its last characters come out as the paddle.
+                action = Some((true, if radio_text { None } else { Some(DecodeSource::Paddle) }));
+            }
+            t.was_tx = transmitting;
+            action
+        };
+        if let Some((flush, route)) = action {
+            self.reset_decoder(flush, route);
+        }
     }
 
     /// Called about every 100 ms by the shell: everything the audio thread reported.
@@ -187,12 +260,7 @@ impl AppCore {
         let transmitting = self.rig.lock().unwrap().status().transmitting;
         let radio_text = self.rig.lock().unwrap().capabilities().radio_decoder_text;
         let now = Instant::now();
-        {
-            let mut t = self.tx_track.lock().unwrap();
-            if transmitting {
-                t.last_tx = Some(now);
-            }
-        }
+        self.track_transmit(transmitting, radio_text, now);
         let events = {
             let st = self.audio.lock().unwrap();
             match &st.engine {
@@ -204,6 +272,13 @@ impl AppCore {
         let mut status_changed = false;
         for ev in events {
             match ev {
+                EngineEvent::ResetDone => {
+                    let mut t = self.tx_track.lock().unwrap();
+                    t.resets_pending = t.resets_pending.saturating_sub(1);
+                    if t.resets_pending == 0 {
+                        t.reset_route = None;
+                    }
+                }
                 EngineEvent::Decode { text, conf, tentative, wpm } => {
                     if let Some(source) = self.route_decode(now, radio_text) {
                         out.push(CoreEvent::Decode { source, text, conf, tentative, wpm });
@@ -252,8 +327,11 @@ impl AppCore {
     /// Who keyed the decoded text? `None`: drop it (our own typed text, already shown).
     fn route_decode(&self, now: Instant, radio_gives_text: bool) -> Option<DecodeSource> {
         let t = self.tx_track.lock().unwrap();
+        if t.resets_pending > 0 {
+            return t.reset_route;
+        }
         let tx_recent = t.last_tx.is_some_and(|l| now.duration_since(l) < TX_TAIL);
-        let app_busy = t.app_until.is_some_and(|u| now < u);
+        let app_busy = t.app_tx || t.app_until.is_some_and(|u| now < u);
         if app_busy {
             // The radio is (or was just) sending what the app typed.
             return None;
@@ -362,6 +440,53 @@ mod tests {
         assert_eq!(c.route_decode(now, true), None);
         // Long after the transmission: the other station again.
         assert_eq!(c.route_decode(now + Duration::from_secs(5), false), Some(DecodeSource::Rx));
+    }
+
+    #[test]
+    fn our_own_transmission_stays_ours_until_the_radio_is_back_on_receive() {
+        let c = core();
+        let t0 = Instant::now();
+        c.note_app_transmission("CQ CQ DE ON3VZ ON3VZ K", 20);
+        // The estimate ran out but the radio still transmits (slower than we thought).
+        c.tx_track.lock().unwrap().app_until = Some(t0);
+        let later = t0 + Duration::from_secs(1);
+        c.track_transmit(true, false, later);
+        assert_eq!(c.route_decode(later, false), None);
+        // Back on receive: our transmission is over, the other station is Rx again.
+        let rx = later + TX_TAIL + Duration::from_millis(100);
+        c.track_transmit(false, false, rx);
+        assert!(!c.tx_track.lock().unwrap().app_tx);
+        assert_eq!(c.route_decode(rx, false), Some(DecodeSource::Rx));
+    }
+
+    #[test]
+    fn a_new_transmission_flushes_the_other_station_first() {
+        let c = core();
+        let g = generate(&CwSpec { text: "CQ CQ DE DL1ABC DL1ABC K".into(), snr_db: Some(20.0), lead_s: 1.0, trail_s: 6.0, ..Default::default() });
+        c.start_audio_source(Source::Samples { rate: 8000, data: g.samples.clone(), realtime: true }).unwrap();
+        // Let the other station finish its last word, then start sending ourselves.
+        let mut all = Vec::new();
+        let mut sent = false;
+        let started = Instant::now();
+        let keyed_until = Duration::from_secs_f64(g.samples.len() as f64 / 8000.0 - 6.0 + 0.4);
+        for _ in 0..1200 {
+            std::thread::sleep(Duration::from_millis(25));
+            let ev = c.audio_tick();
+            let stopped = ev.iter().any(|e| matches!(e, CoreEvent::Audio { status } if !status.running));
+            all.extend(ev);
+            // The message has been keyed completely, the last part is still held by the decoder.
+            if !sent && started.elapsed() > keyed_until {
+                c.note_app_transmission("TEST", 20);
+                sent = true;
+            }
+            if stopped {
+                break;
+            }
+        }
+        assert!(sent, "{:?}", decoded(&all, DecodeSource::Rx));
+        // The K that the decoder still held came out as the other station, not dropped.
+        assert_eq!(decoded(&all, DecodeSource::Rx), g.truth);
+        assert_eq!(c.tx_track.lock().unwrap().resets_pending, 0);
     }
 
     #[test]

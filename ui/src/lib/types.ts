@@ -47,6 +47,8 @@ export interface AudioSettings {
   record_dir: string;
   /** 1 to 8. Higher: the decoder trusts only clearer signals. */
   squelch: number;
+  /** The decoder moves to the strongest signal by itself when its pitch is quiet. */
+  auto_tone: boolean;
 }
 
 export interface AudioStatus {
@@ -164,6 +166,7 @@ export interface Api {
   decodeFile(path: string): Promise<AudioStatus>;
   setTone(hz: number): Promise<void>;
   setSquelch(value: number): Promise<void>;
+  setAutoTone(on: boolean): Promise<void>;
   /** Returns the path of the new recording. */
   startRecording(): Promise<string>;
   stopRecording(): Promise<void>;

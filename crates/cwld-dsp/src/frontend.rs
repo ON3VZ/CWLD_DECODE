@@ -178,6 +178,9 @@ impl Frontend {
         self.cfg.tone_hz = hz;
         self.f_now = hz;
         self.reset_stats();
+        // The presence test starts again for the new pitch.
+        self.frames_seen = 0;
+        self.present = false;
     }
 
     /// True once after a notch was added or removed: evidence from before is suspect.
@@ -238,7 +241,7 @@ impl Frontend {
                 self.pow_ref[0] += a * (ia * ia + qa * qa - self.pow_ref[0]);
                 self.pow_ref[1] += a * (ib * ib + qb * qb - self.pow_ref[1]);
                 let r = self.presence_ratio();
-                if self.sample_count < (WARMUP_SECONDS * self.cfg.sample_rate as f64) as u64 {
+                if self.sample_count < (WARMUP_SECONDS * self.cfg.sample_rate as f64) as u64 || self.frames_seen < 40 {
                     self.present = false;
                 } else if self.present && r < 1.15 {
                     self.present = false;

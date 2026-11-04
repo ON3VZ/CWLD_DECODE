@@ -13,7 +13,8 @@ Windows laat een app alleen naar USB-audio luisteren als de microfoontoegang aan
 
 ## 3. De waterfall
 
-- Klik op een signaal: de decoder luistert vanaf dan naar die toonhoogte (rode lijn).
+- De decoder zoekt zelf het sterkste CW-signaal als het een tijdje stil is op zijn toonhoogte (1,5 seconde). De rode lijn springt dan mee. Dit kan uit in de instellingen: "Zelf het sterkste signaal zoeken".
+- Klik op een signaal: de decoder luistert vanaf dan naar die toonhoogte (rode lijn) en blijft daar minstens 10 seconden. Zwakke signalen vindt hij niet zelf, die moet je aanklikken.
 - Rechtsboven kies je zoom **1x, 2x of 4x**. Onderaan staan de frequenties in Hz.
 - Zet de CW-pitch van de radio op dezelfde waarde (MENU, SET, Function, CW Pitch), dan staat een afgestemd signaal precies op de lijn.
 
@@ -27,7 +28,7 @@ Windows laat een app alleen naar USB-audio luisteren als de microfoontoegang aan
 ## 5. Signaal en drempel
 
 - Naast de zekerheidsmeter staat **Signaal** (groen) of **Geen signaal** (grijs). Bij grijs wordt er niets gedecodeerd.
-- Zie je tekst terwijl er geen signaal is, zet dan in de instellingen de **Drempel voor signalen** hoger (bijvoorbeeld 4). Zie je een zwak signaal niet meer, zet hem lager. Het werkt meteen.
+- Zie je tekst terwijl er geen signaal is, zet dan in de instellingen de **Drempel voor signalen** hoger (standaard 3,5, probeer 4 of 4,5). Zie je een zwak signaal niet meer, zet hem lager. Het werkt meteen.
 
 ## 6. Opnames
 

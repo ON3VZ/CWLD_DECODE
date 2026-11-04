@@ -184,9 +184,11 @@
   "tabs.empty": "Nieuw gesprek",
   "composer.placeholder.old": "Je kijkt naar een eerder gesprek. Klik op het tabblad met het groene bolletje om te zenden.",
   "audio.squelch": "Drempel voor signalen",
-  "audio.squelch.help": "Hoe duidelijk een signaal boven de ruis moet uitsteken voordat de decoder het gelooft. Hoger is strenger: minder tekst uit ruis, maar zwakke signalen vallen weg. Standaard 2. Zie je tekst zonder dat er een signaal is, zet dan hoger. Het werkt meteen.",
+  "audio.squelch.help": "Hoe duidelijk een signaal boven de ruis moet uitsteken voordat de decoder het gelooft. Hoger is strenger: minder tekst uit ruis, maar zwakke signalen vallen weg. Standaard 3,5. Zie je tekst zonder dat er een signaal is, zet dan hoger. Het werkt meteen.",
   "signal.yes": "Signaal",
   "signal.no": "Geen signaal",
   "signal.help": "Groen: de decoder ziet een duidelijk signaal op de ingestelde toonhoogte. Grijs: alleen ruis, er wordt niets gedecodeerd.",
-  "waterfall.zoom": "Inzoomen op de toonhoogte"
+  "waterfall.zoom": "Inzoomen op de toonhoogte",
+  "audio.autotone": "Zelf het sterkste signaal zoeken",
+  "audio.autotone.help": "Is het een tijdje stil op de toonhoogte, dan springt de decoder naar het sterkste CW-signaal in de waterfall (zoals GoMax in MRP40). Na een klik op de waterfall blijft hij 10 seconden staan. Zwakke signalen (rond 0 dB) vindt hij niet zelf: klik die aan."
 }

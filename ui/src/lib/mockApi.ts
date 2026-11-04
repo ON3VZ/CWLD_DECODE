@@ -30,7 +30,7 @@ export function defaultSettings(): Settings {
     theme: 'dark',
     station: { calls: [], name: '', qth: '', locator: '' },
     swr: { enabled: true, limit: 1.5, qrx_after_stop: true },
-    audio: { input: '', tone_hz: 700, auto_start: true, record_dir: '', squelch: 2 },
+    audio: { input: '', tone_hz: 700, auto_start: true, record_dir: '', squelch: 3.5, auto_tone: true },
     radio: { kind: 'simulator', port: '', civ_address: 0xb6, baud: 115200, pipeline: false },
     last_policy: 'listen_only',
     first_run_done: false,
@@ -119,6 +119,10 @@ export class MockApi implements Api {
 
   async setSquelch(value: number) {
     this.settings.audio.squelch = Math.min(8, Math.max(1, value));
+  }
+
+  async setAutoTone(on: boolean) {
+    this.settings.audio.auto_tone = on;
   }
 
   async startRecording(): Promise<string> {

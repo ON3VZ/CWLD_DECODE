@@ -110,6 +110,13 @@ fn set_squelch(core: Core, value: f32) -> Result<(), Failure> {
 }
 
 #[tauri::command]
+fn set_auto_tone(core: Core, on: bool) -> Result<(), Failure> {
+    core.set_auto_tone(on)?;
+    let _ = core.save_settings();
+    Ok(())
+}
+
+#[tauri::command]
 fn set_tone(core: Core, hz: f64) -> Result<(), Failure> {
     core.set_tone(hz)?;
     let _ = core.save_settings();
@@ -179,6 +186,7 @@ pub fn run() {
             decode_file,
             set_tone,
             set_squelch,
+            set_auto_tone,
             start_recording,
             stop_recording
         ])

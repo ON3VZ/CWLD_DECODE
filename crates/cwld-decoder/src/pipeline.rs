@@ -2,17 +2,30 @@
 
 use crate::decoder::{DecodeUpdate, Decoder, DecoderConfig};
 use crate::lang::WordCorrector;
-use cwld_dsp::frontend::{find_tone, Frontend, FrontendConfig};
+use cwld_dsp::frontend::{Frontend, FrontendConfig};
+use cwld_dsp::seek::ToneSeeker;
 use cwld_dsp::FRAME_RATE;
 
 const PENDING_FRAMES: usize = 400;
+/// Audio kept for listening again after a move to another pitch.
+const RAW_SECONDS: f64 = 3.0;
+/// After a click on the waterfall the decoder stays put this long.
+const MANUAL_HOLD_S: f64 = 10.0;
+/// After a move by itself the decoder stays put this long, so it does not jump back and forth.
+const AUTO_HOLD_S: f64 = 2.0;
+/// Below this score (dB) a usable but faint signal no longer keeps the decoder at its pitch.
+const QUIET_BELOW_DB: f64 = 12.0;
 
 #[derive(Clone, Debug)]
 pub struct PipelineConfig {
     pub sample_rate: u32,
     pub tone_hz: f64,
-    /// Look for the strongest tone by itself while no signal has been found.
+    /// Move to the strongest keyed tone by itself whenever the current pitch is quiet.
     pub auto_tone: bool,
+    /// Score (peak over median, dB) a tone needs before the decoder moves to it by itself.
+    pub seek_db: f64,
+    /// The current pitch must be quiet this long before the decoder moves away.
+    pub seek_quiet_s: f64,
     pub afc: bool,
     /// Below this separation of signal and noise the evidence is ignored.
     pub min_separation: f32,
@@ -31,7 +44,7 @@ pub struct PipelineConfig {
 
 impl PipelineConfig {
     pub fn new(sample_rate: u32, tone_hz: f64) -> Self {
-        PipelineConfig { sample_rate, tone_hz, auto_tone: false, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, decoder: DecoderConfig::default() }
+        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, decoder: DecoderConfig::default() }
     }
 }
 
@@ -41,7 +54,15 @@ pub struct Pipeline {
     dec: Decoder,
     words: WordCorrector,
     flushed: Vec<(char, f32)>,
-    probe: Vec<f32>,
+    seeker: Option<ToneSeeker>,
+    /// The last few seconds of audio, so a move to another pitch can listen again from the
+    /// moment the kept (not yet decoded) evidence starts.
+    raw: std::collections::VecDeque<f32>,
+    /// Seeker measurements (0.25 s each) since the current pitch last carried a signal.
+    quiet_updates: usize,
+    last_usable: bool,
+    /// Frames during which the decoder may not move by itself (after a move or a click).
+    hold_frames: usize,
     /// Evidence kept back while no signal is judged present, so the start of a signal that
     /// is only recognised a moment later is not lost.
     pending: std::collections::VecDeque<f32>,
@@ -58,7 +79,7 @@ impl Pipeline {
         fc.track_fading = cfg.track_fading;
         let mut words = WordCorrector::new(cfg.language_model);
         words.junk_strength = cfg.junk_strength;
-        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), cfg, probe: Vec::new(), pending: std::collections::VecDeque::new(), snr_db: None }
+        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: cfg.auto_tone.then(|| ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None }
     }
 
     pub fn sample_rate(&self) -> u32 {
@@ -78,8 +99,51 @@ impl Pipeline {
         self.snr_db
     }
 
+    /// The operator chose a pitch (a click on the waterfall). Automatic moves wait a while.
     pub fn retune(&mut self, hz: f64) {
         self.front.retune(hz);
+        self.quiet_updates = 0;
+        self.hold_frames = (MANUAL_HOLD_S * FRAME_RATE) as usize;
+    }
+
+    /// Switches the automatic search for the strongest tone on or off.
+    pub fn set_auto_tone(&mut self, on: bool) {
+        self.cfg.auto_tone = on;
+        if on && self.seeker.is_none() {
+            self.seeker = Some(ToneSeeker::new(self.cfg.sample_rate, 300.0, 1200.0));
+        }
+        if !on {
+            self.seeker = None;
+        }
+    }
+
+    /// Moves to the strongest tone when the current pitch has been quiet for a while.
+    fn consider_move(&mut self, incoming: usize) {
+        let Some(sk) = &self.seeker else { return };
+        let cur = self.front.tone_hz();
+        // Is something still going on at the current pitch? A strong tone, or a weaker one the
+        // decoder can still use.
+        let here = sk.recent_score_at(cur).unwrap_or(0.0);
+        let busy = here >= self.cfg.seek_db || (self.last_usable && here >= QUIET_BELOW_DB);
+        self.quiet_updates = if busy { 0 } else { self.quiet_updates + 1 };
+        let Some(c) = sk.best() else { return };
+        if self.hold_frames > 0 || c.score_db < self.cfg.seek_db || c.steady < 3 || (c.hz - cur).abs() < 20.0 {
+            return;
+        }
+        if (self.quiet_updates as f64) * 0.25 < self.cfg.seek_quiet_s {
+            return;
+        }
+        // A new signal: what the decoder held of the old pitch is noise, and the last seconds
+        // of audio are heard again at the new pitch, so the start of the signal is not lost.
+        self.pending.clear();
+        self.dec = Decoder::new(self.cfg.decoder.clone());
+        self.words.discard();
+        self.front.retune(c.hz);
+        let end = self.raw.len() - incoming;
+        let replay: Vec<f32> = self.raw.range(..end).cloned().collect();
+        self.quiet_updates = 0;
+        self.hold_frames = (AUTO_HOLD_S * FRAME_RATE) as usize;
+        self.process(&replay);
     }
 
     /// The separation of signal and noise below which the evidence is ignored.
@@ -88,18 +152,20 @@ impl Pipeline {
     }
 
     pub fn push(&mut self, samples: &[f32]) {
-        if self.cfg.auto_tone && self.probe.len() < self.cfg.sample_rate as usize * 2 {
-            self.probe.extend_from_slice(samples);
-            if self.probe.len() >= self.cfg.sample_rate as usize {
-                if let Some((f, ratio)) = find_tone(&self.probe, self.cfg.sample_rate, 300.0, 1200.0) {
-                    if ratio > 40.0 {
-                        self.front.retune(f);
-                        self.cfg.auto_tone = false;
-                        self.probe.clear();
-                    }
-                }
-            }
+        self.raw.extend(samples.iter().cloned());
+        let max = (RAW_SECONDS * self.cfg.sample_rate as f64) as usize;
+        if self.raw.len() > max {
+            let extra = self.raw.len() - max;
+            self.raw.drain(..extra);
         }
+        let measured = self.seeker.as_mut().is_some_and(|sk| sk.push(samples));
+        if measured {
+            self.consider_move(samples.len());
+        }
+        self.process(samples);
+    }
+
+    fn process(&mut self, samples: &[f32]) {
         let frames = self.front.push(samples);
         if self.front.take_notch_changed() && !self.pending.is_empty() {
             // Kept frames were measured with the carrier still in: they are worthless, but
@@ -110,6 +176,8 @@ impl Pipeline {
         }
         let sep = self.front.levels().map(|l| l.separation).unwrap_or(0.0);
         let usable = self.front.signal_present() && sep >= self.cfg.min_separation;
+        self.hold_frames = self.hold_frames.saturating_sub(frames.len());
+        self.last_usable = usable;
         if usable {
             if !self.pending.is_empty() {
                 // Re-score the kept frames with the levels known now.

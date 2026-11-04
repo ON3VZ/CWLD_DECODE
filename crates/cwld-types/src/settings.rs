@@ -105,16 +105,18 @@ pub struct AudioSettings {
     /// separation of key-down and key-up levels). Higher means stricter: less text out of noise,
     /// but weak signals are missed.
     pub squelch: f32,
+    /// Move to the strongest signal by itself when the current pitch is quiet.
+    pub auto_tone: bool,
 }
 
 /// The range of the squelch setting, and its default.
 pub const SQUELCH_MIN: f32 = 1.0;
 pub const SQUELCH_MAX: f32 = 8.0;
-pub const SQUELCH_DEFAULT: f32 = 2.0;
+pub const SQUELCH_DEFAULT: f32 = 3.5;
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new(), squelch: SQUELCH_DEFAULT }
+        AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new(), squelch: SQUELCH_DEFAULT, auto_tone: true }
     }
 }
 

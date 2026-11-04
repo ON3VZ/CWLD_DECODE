@@ -1,3 +1,10 @@
+## 0.3.6 (decoder tuned on real recordings)
+
+- Automatic pitch: when the current pitch has been quiet for 1.5 s, the decoder moves to the strongest keyed tone between 300 and 1200 Hz (new `ToneSeeker`, local noise reference so the radio's filter shape does not fool it). The last 3 s of audio are decoded again at the new pitch, so the start of the signal is not lost. A click on the waterfall holds the pitch for 10 s. Can be switched off in the settings.
+- The waterfall line follows the pitch the decoder actually uses.
+- Signal threshold default raised from 2 to 3.5: on a real empty band the decoder made 122 characters of noise per minute, now 11.
+- Own transmission: when the app starts sending, the decoder first hands out what it still held of the other station and then starts afresh. Our own sidetone is dropped until the radio is back on receive, also when the radio sends slower than estimated. The paddle gets the same clean start and end.
+
 ## 0.3.5 (conversations in tabs, waterfall zoom, signal threshold)
 
 - Every conversation has its own tab with its own QSO details. A frequency change of more than 500 Hz, a new callsign or the button New QSO starts a new one. The earlier ones stay readable, can be deleted, and are saved on this computer (at most 40).

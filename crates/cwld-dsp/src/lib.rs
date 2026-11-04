@@ -5,6 +5,7 @@ pub mod clean;
 pub mod frontend;
 pub mod gen;
 pub mod rng;
+pub mod seek;
 pub mod wav;
 
 pub use frontend::{Frontend, FrontendConfig, FRAME_RATE};

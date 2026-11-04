@@ -675,6 +675,16 @@ class AppState {
     }
   }
 
+  /** The decoder looks for the strongest signal by itself (on) or stays where it was put. */
+  async setAutoTone(on: boolean) {
+    try {
+      await this.api.setAutoTone(on);
+      if (this.settings) this.settings.audio.auto_tone = on;
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
   /** True while the decoder judges that a clear signal is present. */
   get signalPresent(): boolean {
     return this.decoder?.snr_db != null;

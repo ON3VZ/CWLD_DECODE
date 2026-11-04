@@ -195,10 +195,12 @@
       <input class="mono short" type="number" min="200" max="1500" step="10" bind:value={draft.audio.tone_hz} />
       <small class="muted">{t('audio.tone.help')}</small>
     </label>
-    <label>{t('audio.squelch')}: <span class="mono">{(draft.audio.squelch ?? 2).toFixed(1)}</span>
+    <label>{t('audio.squelch')}: <span class="mono">{(draft.audio.squelch ?? 3.5).toFixed(1)}</span>
       <input type="range" min="1" max="8" step="0.5" bind:value={draft.audio.squelch} onchange={() => app.setSquelch(draft.audio.squelch)} />
       <small class="muted">{t('audio.squelch.help')}</small>
     </label>
+    <label class="check"><input type="checkbox" bind:checked={draft.audio.auto_tone} onchange={() => app.setAutoTone(draft.audio.auto_tone)} /> {t('audio.autotone')}</label>
+    <small class="muted">{t('audio.autotone.help')}</small>
     <label class="check"><input type="checkbox" bind:checked={draft.audio.auto_start} /> {t('audio.autostart')}</label>
     <label>{t('audio.recdir')}
       <input class="mono" bind:value={draft.audio.record_dir} placeholder={t('audio.recdir.default')} />
