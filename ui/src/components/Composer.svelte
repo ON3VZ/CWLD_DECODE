@@ -4,7 +4,7 @@
   import { defaultChips } from '../lib/demo';
   import { expand } from '../lib/template';
 
-  const canSend = $derived(app.policy !== 'listen_only' && !(app.policy === 'live' && app.swrAlert));
+  const canSend = $derived(app.viewingLive && app.policy !== 'listen_only' && !(app.policy === 'live' && app.swrAlert));
   const busy = $derived(app.status.transmitting || app.practiceBusy);
 
   function chipMissing(template: string): string[] {
@@ -30,7 +30,7 @@
     <input
       class="mono"
       bind:value={app.draft}
-      placeholder={canSend ? t('composer.placeholder') : app.swrAlert ? t('composer.placeholder.swr') : t('composer.placeholder.listen')}
+      placeholder={!app.viewingLive ? t('composer.placeholder.old') : canSend ? t('composer.placeholder') : app.swrAlert ? t('composer.placeholder.swr') : t('composer.placeholder.listen')}
       aria-label={t('composer.placeholder')}
       autocomplete="off"
       autocapitalize="characters"

@@ -43,11 +43,12 @@
   }
 
   const lastFrom = $derived(app.messages[app.messages.length - 1]?.from);
-  const tailAlone = $derived(app.tail && app.tail.from !== lastFrom);
+  const tail = $derived(app.viewingLive ? app.tail : null);
+  const tailAlone = $derived(tail && tail.from !== lastFrom);
 </script>
 
 {#snippet tailChars()}
-  {#if app.tail}<span class="tail">{#each app.tail.chars as c}<span title={c.alts.map(([a, p]) => `${a} ${Math.round(p * 100)}%`).join(', ')}>{c.best}</span>{/each}</span>{/if}
+  {#if tail}<span class="tail">{#each tail.chars as c}<span title={c.alts.map(([a, p]) => `${a} ${Math.round(p * 100)}%`).join(', ')}>{c.best}</span>{/each}</span>{/if}
 {/snippet}
 
 <div class="conv" bind:this={box}>
@@ -58,13 +59,13 @@
           {m.from === 'rx' ? (m.call ?? '') : m.from === 'tx' ? t('conversation.you') : m.from === 'paddle' ? t('conversation.paddle') : t('conversation.practice')} · {m.time}
         </div>
         <div class="txt mono">
-          {#each runs(m) as r}{#if r.call}<button class="call" onclick={() => app.selectCall(r.text)}>{r.text}</button>{:else if r.unsure}<span class="unsure" title={t('conversation.unsure')}>{r.text}</span>{:else}{r.text}{/if}{/each}{#if i === app.messages.length - 1 && app.tail && !tailAlone}{@render tailChars()}{/if}
+          {#each runs(m) as r}{#if r.call}<button class="call" onclick={() => app.selectCall(r.text)}>{r.text}</button>{:else if r.unsure}<span class="unsure" title={t('conversation.unsure')}>{r.text}</span>{:else}{r.text}{/if}{/each}{#if i === app.messages.length - 1 && tail && !tailAlone}{@render tailChars()}{/if}
         </div>
       </div>
     </div>
   {/each}
-  {#if tailAlone && app.tail}
-    <div class="row {app.tail.from}">
+  {#if tailAlone && tail}
+    <div class="row {tail.from}">
       <div class="bubble pending"><div class="txt mono">{@render tailChars()}</div></div>
     </div>
   {/if}

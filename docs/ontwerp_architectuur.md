@@ -721,3 +721,14 @@ Elk item heeft een vraagvorm (met `?`) en een mededelingsvorm (zonder `?`).
 - **RST**: R leesbaarheid (1 tot 5), S signaalsterkte (1 tot 9), T toon (1 tot 9). `599` is het uitstekend rapport.
 - **Cut numbers** (contest): `N` = 9, `T` = 0, `A` = 1. Dus `5NN` = 599.
 - **Snelkeuze**: 599, 579, 559, 449.
+
+
+## B. Gesprekken in tabbladen (fase 3e)
+
+- Een gesprek (`Session`) bevat de berichten, de QSO-gegevens (roepletters, naam, RST, QTH), of de roepletters vergrendeld zijn, de beginfrequentie en de starttijd. Het laatste gesprek is het lopende gesprek: nieuwe tekst van de decoder gaat altijd daarheen, ook als je naar een ouder tabblad kijkt.
+- Een nieuw gesprek begint bij een frequentiesprong van meer dan 500 Hz, bij een andere roepletter dan die van het lopende gesprek (de bubbel met die roepletter verhuist mee), of met de knop Nieuw QSO. Een leeg lopend gesprek wordt hergebruikt, zodat draaien aan de knop geen lege tabbladen oplevert.
+- Zenden kan alleen in het lopende gesprek. De kettingen (chips) gebruiken de gegevens van het lopende gesprek.
+- Opslag: lokaal in de browseropslag van de app (`cwld.sessions.v1`), hoogstens 40 gesprekken, alleen gesprekken met tekst. Zonder opslag werkt de app gewoon.
+- Drempel (squelch): `audio.squelch` van 1 tot 8, standaard 2. Het is de minimale scheiding tussen toets-neer en toets-op niveau (`min_separation`) waaronder de decoder het bewijs negeert. Werkt direct, zonder herstart.
+- Signaalindicator: groen als de decoder een bruikbaar signaal meldt (er is dan een SNR), anders grijs.
+- Open punt (fase 3 afstellen, Opus): automatisch de toonhoogte zoeken (de decoder kan dit al, `auto_tone`, maar het staat nog uit in de motor) en de eigen zendtoon niet als paddle decoderen.

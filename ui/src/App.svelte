@@ -7,6 +7,7 @@
   import Banner from './components/Banner.svelte';
   import SwrAlert from './components/SwrAlert.svelte';
   import Waterfall from './components/Waterfall.svelte';
+  import SessionTabs from './components/SessionTabs.svelte';
   import Conversation from './components/Conversation.svelte';
   import Composer from './components/Composer.svelte';
   import QsoPanel from './components/QsoPanel.svelte';
@@ -41,6 +42,7 @@
     <SwrAlert />
     <Banner />
     <Waterfall />
+    <SessionTabs />
     <div class="main" class:with-signals={app.settings.signals_panel}>
       <section class="center" aria-label={t('conversation.title')}>
         <Conversation />

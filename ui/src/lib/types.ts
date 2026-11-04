@@ -45,6 +45,8 @@ export interface AudioSettings {
   tone_hz: number;
   auto_start: boolean;
   record_dir: string;
+  /** 1 to 8. Higher: the decoder trusts only clearer signals. */
+  squelch: number;
 }
 
 export interface AudioStatus {
@@ -161,6 +163,7 @@ export interface Api {
   /** Decodes a WAV file at real speed, as if it came from the radio. */
   decodeFile(path: string): Promise<AudioStatus>;
   setTone(hz: number): Promise<void>;
+  setSquelch(value: number): Promise<void>;
   /** Returns the path of the new recording. */
   startRecording(): Promise<string>;
   stopRecording(): Promise<void>;

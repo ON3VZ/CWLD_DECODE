@@ -1,3 +1,11 @@
+## 0.3.5 (conversations in tabs, waterfall zoom, signal threshold)
+
+- Every conversation has its own tab with its own QSO details. A frequency change of more than 500 Hz, a new callsign or the button New QSO starts a new one. The earlier ones stay readable, can be deleted, and are saved on this computer (at most 40).
+- Sending is only possible in the live tab. Decoded text always goes to the live tab, also while you look back.
+- Waterfall: zoom 1x, 2x and 4x around the pitch, frequency scale, a calmer colour curve so noise stays dark.
+- Choosing another audio input restarts the audio at once.
+- New signal indicator next to the certainty meter and a signal threshold (squelch, 1 to 8) in the audio settings. A higher value makes the decoder trust only clearer signals.
+
 ## 0.3.4 (icon and Windows build)
 
 - New application icon (set in `src-tauri/icons`, favicon for the UI).

@@ -174,5 +174,19 @@
   "waterfall.off": "Audio is off. Start listening in Settings.",
   "waterfall.error": "Audio could not start: {error}",
   "conversation.unsure": "The decoder is not sure about these characters.",
-  "error.audio": "Audio problem."
+  "error.audio": "Audio problem.",
+  "tabs.title": "Conversations",
+  "tabs.new": "New QSO",
+  "tabs.new.help": "Start a new conversation and clear the screen. The previous one stays in its tab.",
+  "tabs.live.help": "The running conversation. New text arrives here.",
+  "tabs.old.help": "An earlier conversation. You can read it and edit its details.",
+  "tabs.close": "Delete this conversation",
+  "tabs.empty": "New conversation",
+  "composer.placeholder.old": "You are looking at an earlier conversation. Click the tab with the green dot to send.",
+  "audio.squelch": "Signal threshold",
+  "audio.squelch.help": "How clearly a signal must stand out of the noise before the decoder believes it. Higher is stricter: less text out of noise, but weak signals drop out. Default 2. If you see text without a signal, raise it. It works at once.",
+  "signal.yes": "Signal",
+  "signal.no": "No signal",
+  "signal.help": "Green: the decoder sees a clear signal at the set pitch. Grey: only noise, nothing is decoded.",
+  "waterfall.zoom": "Zoom in on the pitch"
 }

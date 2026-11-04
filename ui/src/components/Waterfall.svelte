@@ -9,13 +9,29 @@
   let lo = $state(200);
   let span = $state(1200);
 
-  const toneX = $derived(((app.audio?.tone_hz ?? 700) - lo) / span);
+  /** 1: the whole strip. 2 and 4: a closer look around the pitch. */
+  let zoom = $state(2);
+  const toneHz = $derived(app.audio?.tone_hz ?? 700);
+  /** Left edge of the visible part as a fraction of the full strip, centred on the pitch. */
+  const left = $derived(Math.min(1 - 1 / zoom, Math.max(0, (toneHz - lo) / span - 0.5 / zoom)));
+  const toneX = $derived(((toneHz - lo) / span - left) * zoom);
+  const ticks = $derived.by(() => {
+    const out: { x: number; hz: number }[] = [];
+    const from = lo + left * span;
+    const to = from + span / zoom;
+    const step = zoom === 1 ? 200 : zoom === 2 ? 100 : 50;
+    for (let hz = Math.ceil(from / step) * step; hz < to; hz += step) out.push({ x: ((hz - lo) / span - left) * zoom, hz });
+    return out;
+  });
   const live = $derived(app.waterfallLive);
 
+  /** Dark for noise, blue to white only for real signals. A curve keeps the noise quiet. */
   function colour(v: number, data: Uint8ClampedArray, i: number) {
-    data[i] = v * 0.35;
-    data[i + 1] = v * 0.8;
-    data[i + 2] = Math.min(255, v * 1.1);
+    const x = Math.max(0, Math.min(1, (v - 70) / 185));
+    const c = x * x * (3 - 2 * x);
+    data[i] = 8 + c * c * 247;
+    data[i + 1] = 12 + c * 215;
+    data[i + 2] = 18 + c * 237;
     data[i + 3] = 255;
   }
 
@@ -24,6 +40,7 @@
     if (!live) return;
     const r = canvas.getBoundingClientRect();
     const frac = (e.clientX - r.left) / r.width;
+    // The canvas is wider than the strip when zoomed, so this is the fraction of the full range.
     app.setTone(lo + frac * span);
   }
 
@@ -77,10 +94,24 @@
 </script>
 
 <div class="wf" class:live title={live ? t('waterfall.click') : ''}>
-  <canvas bind:this={canvas} width="800" height="56" onclick={pick}></canvas>
+  <canvas
+    bind:this={canvas}
+    width="800"
+    height="56"
+    onclick={pick}
+    style:width={`${zoom * 100}%`}
+    style:margin-left={`${-left * zoom * 100}%`}></canvas>
   {#if live}
+    {#each ticks as k (k.hz)}
+      <span class="tick mono" style:left={`${k.x * 100}%`}>{k.hz}</span>
+    {/each}
     <div class="tone" style:left={`${Math.min(100, Math.max(0, toneX * 100))}%`}></div>
-    <span class="hz mono">{Math.round(app.audio?.tone_hz ?? 700)} Hz</span>
+    <span class="hz mono" style:left={`${Math.min(96, Math.max(0, toneX * 100 + 0.5))}%`}>{Math.round(toneHz)} Hz</span>
+    <div class="zoom" role="group" aria-label={t('waterfall.zoom')}>
+      {#each [1, 2, 4] as z (z)}
+        <button class:on={zoom === z} onclick={() => (zoom = z)} title={t('waterfall.zoom')}>{z}x</button>
+      {/each}
+    </div>
   {:else if app.demo}
     <div class="tone" style:left="50%"></div>
   {:else}
@@ -89,10 +120,14 @@
 </div>
 
 <style>
-  .wf { position: relative; height: 56px; background: #05080b; border-bottom: 1px solid var(--line); }
-  canvas { width: 100%; height: 100%; display: block; }
+  .wf { position: relative; height: 56px; background: #05080b; border-bottom: 1px solid var(--line); overflow: hidden; }
+  canvas { height: 100%; display: block; }
   .live canvas { cursor: crosshair; }
   .tone { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(255, 90, 90, 0.8); pointer-events: none; }
-  .hz { position: absolute; right: 8px; top: 4px; font-size: 12px; color: #ff8a8a; pointer-events: none; }
+  .hz { position: absolute; top: 3px; font-size: 12px; color: #ff8a8a; pointer-events: none; text-shadow: 0 0 3px #000; }
+  .tick { position: absolute; bottom: 1px; font-size: 10px; color: rgba(190, 210, 230, 0.6); pointer-events: none; transform: translateX(-50%); text-shadow: 0 0 3px #000; }
+  .zoom { position: absolute; right: 6px; top: 4px; display: flex; gap: 2px; }
+  .zoom button { background: rgba(5, 8, 11, 0.7); border: 1px solid var(--line); color: var(--muted); font-size: 11px; padding: 0 6px; border-radius: 4px; }
+  .zoom button.on { color: var(--text); border-color: var(--accent); }
   .off { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; }
 </style>

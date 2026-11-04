@@ -26,6 +26,7 @@ export async function createTauriApi(): Promise<Api> {
     stopAudio: () => invoke<AudioStatus>('stop_audio'),
     decodeFile: (path: string) => invoke<AudioStatus>('decode_file', { path }),
     setTone: (hz: number) => invoke<void>('set_tone', { hz }),
+    setSquelch: (value: number) => invoke<void>('set_squelch', { value }),
     startRecording: () => invoke<string>('start_recording'),
     stopRecording: () => invoke<void>('stop_recording'),
     demo: false,

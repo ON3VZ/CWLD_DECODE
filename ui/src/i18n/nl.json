@@ -174,5 +174,19 @@
   "waterfall.off": "Audio staat uit. Start het luisteren in Instellingen.",
   "waterfall.error": "Audio kon niet starten: {error}",
   "conversation.unsure": "De decoder is niet zeker van deze tekens.",
-  "error.audio": "Audioprobleem."
+  "error.audio": "Audioprobleem.",
+  "tabs.title": "Gesprekken",
+  "tabs.new": "Nieuw QSO",
+  "tabs.new.help": "Begin een nieuw gesprek en maak het scherm leeg. Het vorige blijft in zijn tabblad staan.",
+  "tabs.live.help": "Het lopende gesprek. Nieuwe tekst komt hier.",
+  "tabs.old.help": "Een eerder gesprek. Je kunt het lezen en de gegevens aanpassen.",
+  "tabs.close": "Dit gesprek verwijderen",
+  "tabs.empty": "Nieuw gesprek",
+  "composer.placeholder.old": "Je kijkt naar een eerder gesprek. Klik op het tabblad met het groene bolletje om te zenden.",
+  "audio.squelch": "Drempel voor signalen",
+  "audio.squelch.help": "Hoe duidelijk een signaal boven de ruis moet uitsteken voordat de decoder het gelooft. Hoger is strenger: minder tekst uit ruis, maar zwakke signalen vallen weg. Standaard 2. Zie je tekst zonder dat er een signaal is, zet dan hoger. Het werkt meteen.",
+  "signal.yes": "Signaal",
+  "signal.no": "Geen signaal",
+  "signal.help": "Groen: de decoder ziet een duidelijk signaal op de ingestelde toonhoogte. Grijs: alleen ruis, er wordt niets gedecodeerd.",
+  "waterfall.zoom": "Inzoomen op de toonhoogte"
 }

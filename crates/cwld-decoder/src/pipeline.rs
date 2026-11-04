@@ -82,6 +82,11 @@ impl Pipeline {
         self.front.retune(hz);
     }
 
+    /// The separation of signal and noise below which the evidence is ignored.
+    pub fn set_min_separation(&mut self, v: f32) {
+        self.cfg.min_separation = v;
+    }
+
     pub fn push(&mut self, samples: &[f32]) {
         if self.cfg.auto_tone && self.probe.len() < self.cfg.sample_rate as usize * 2 {
             self.probe.extend_from_slice(samples);

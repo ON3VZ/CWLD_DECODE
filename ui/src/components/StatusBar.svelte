@@ -37,6 +37,9 @@
     <span class="chip" class:tx={app.status.transmitting}>{app.status.transmitting ? t('status.tx') : t('status.rx')}</span>
     <span class="chip" title={t('status.smeter')}>S{sUnits}</span>
     <ConfidenceMeter />
+    {#if app.audio?.running && !app.demo}
+      <span class="chip sig" class:on={app.signalPresent} title={t('signal.help')}><span class="led"></span>{app.signalPresent ? t('signal.yes') : t('signal.no')}</span>
+    {/if}
     {#if app.audio?.running}
       <button class="chip rec" class:on={app.audio.recording} onclick={() => app.toggleRecording()} title={app.audio.recording ? t('rec.stop.help') : t('rec.start.help')}>
         {app.audio.recording ? `■ ${t('rec.stop')} ${Math.floor(app.audio.record_seconds / 60)}:${String(Math.floor(app.audio.record_seconds % 60)).padStart(2, '0')}` : `● ${t('rec.start')}`}
@@ -66,6 +69,10 @@
   .edit { font-size: 22px; width: 9em; background: var(--panel2); border: 1px solid var(--accent); border-radius: 6px; padding: 2px 6px; }
   .info { display: flex; gap: 6px; }
   .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 13px; }
+  .chip.sig { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+  .chip.sig.on { color: var(--text); }
+  .led { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: 0.5; }
+  .sig.on .led { background: var(--listen); opacity: 1; }
   .chip.swr.bad { background: #b3141a; color: #fff; border-color: #b3141a; font-weight: 700; }
   .chip.rec { cursor: pointer; color: var(--text); }
   .chip.rec.on { background: #b3141a; color: #fff; border-color: #b3141a; font-weight: 700; }

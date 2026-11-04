@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from './app.svelte';
 import { MockApi } from './mockApi';
 
@@ -288,5 +288,164 @@ describe('live decoding', () => {
     expect(app.audio?.record_path).toMatch(/kHz\.wav$/);
     await app.toggleRecording();
     expect(app.audio?.recording).toBe(false);
+  });
+});
+
+describe('conversations in tabs', () => {
+  beforeEach(async () => {
+    await fresh();
+  });
+
+  it('starts with one live conversation that holds the demo text', () => {
+    expect(app.sessions.length).toBe(1);
+    expect(app.viewingLive).toBe(true);
+    expect(app.messages.length).toBeGreaterThan(0);
+  });
+
+  it('a big frequency jump starts a new conversation and keeps the old one', () => {
+    app.status.frequency_hz = 7_035_000;
+    app.sessions[0].freq = 7_035_000;
+    const oldId = app.cur.id;
+    const before = app.messages.length;
+    (app as unknown as { frequencyMoved(hz: number): void }).frequencyMoved(7_036_200);
+    expect(app.sessions.length).toBe(2);
+    expect(app.cur.id).not.toBe(oldId);
+    expect(app.messages.length).toBe(0);
+    app.show(oldId);
+    expect(app.messages.length).toBe(before);
+  });
+
+  it('a small retune inside a signal does not start a new conversation', () => {
+    app.sessions[0].freq = 7_035_000;
+    (app as unknown as { frequencyMoved(hz: number): void }).frequencyMoved(7_035_200);
+    expect(app.sessions.length).toBe(1);
+  });
+
+  it('turning the knob does not leave empty tabs behind', () => {
+    app.sessions[0].freq = 7_035_000;
+    const f = (hz: number) => (app as unknown as { frequencyMoved(hz: number): void }).frequencyMoved(hz);
+    f(7_040_000);
+    f(7_045_000);
+    f(7_050_000);
+    expect(app.sessions.length).toBe(2);
+    expect(app.cur.freq).toBe(7_050_000);
+  });
+
+  it('a new callsign starts a new conversation and the bubble moves with it', () => {
+    app.decoded('rx', 'CQ CQ DE F4XYZ F4XYZ K', [], [], Date.now() + 60_000);
+    expect(app.sessions.length).toBe(2);
+    expect(app.cur.qso.call).toBe('F4XYZ');
+    expect(app.cur.messages.length).toBe(1);
+    expect(app.sessions[0].qso.call).toBe('DL1ABC');
+    expect(app.sessions[0].messages.some((m) => m.text.includes('F4XYZ'))).toBe(false);
+  });
+
+  it('the two conversations keep their own QSO details', () => {
+    app.ingest('rx', 'DE F4XYZ NAME JEAN QTH PARIS K');
+    expect(app.sessions.length).toBe(2);
+    app.show(app.sessions[0].id);
+    expect(app.qso.call).toBe('DL1ABC');
+    expect(app.qso.name).toBe('HANS');
+    app.qso.name = 'HANS-PETER';
+    app.show(app.cur.id);
+    expect(app.qso.call).toBe('F4XYZ');
+    expect(app.qso.name).toBe('JEAN');
+    expect(app.sessions[0].qso.name).toBe('HANS-PETER');
+  });
+
+  it('New QSO clears the screen but keeps the old conversation in its tab', () => {
+    const before = app.messages.length;
+    app.newConversation();
+    expect(app.messages.length).toBe(0);
+    expect(app.qso.call).toBe('');
+    expect(app.sessions[0].messages.length).toBe(before);
+  });
+
+  it('New QSO on an empty conversation does not add a tab', () => {
+    app.newConversation();
+    app.newConversation();
+    expect(app.sessions.length).toBe(2);
+  });
+
+  it('decoded text keeps going to the live conversation while you look back', () => {
+    const oldId = app.cur.id;
+    app.newConversation();
+    app.show(oldId);
+    app.decoded('rx', 'CQ TEST', [], []);
+    expect(app.cur.messages.length).toBe(1);
+    expect(app.viewingLive).toBe(false);
+  });
+
+  it('sending jumps to the live conversation', async () => {
+    const oldId = app.cur.id;
+    app.newConversation();
+    app.show(oldId);
+    await app.requestPolicy('practice');
+    await app.send('CQ');
+    expect(app.viewingLive).toBe(true);
+  });
+
+  it('closes an earlier conversation but never the live one', () => {
+    const oldId = app.cur.id;
+    app.newConversation();
+    app.closeConversation(app.cur.id);
+    expect(app.sessions.length).toBe(2);
+    app.closeConversation(oldId);
+    expect(app.sessions.length).toBe(1);
+  });
+
+  it('keeps at most 40 conversations', () => {
+    for (let i = 0; i < 60; i++) {
+      app.ingest('rx', `DE F${i % 9}AB${String.fromCharCode(65 + (i % 26))} K`);
+      app.cur.messages.push({ id: 5000 + i, from: 'tx', text: 'X', time: '10:00' });
+      app.newConversation();
+    }
+    expect(app.sessions.length).toBeLessThanOrEqual(40);
+  });
+});
+
+describe('signal threshold and indicator', () => {
+  it('the squelch is remembered and limited to 1 to 8', async () => {
+    await fresh();
+    await app.setSquelch(3.25);
+    expect(app.settings?.audio.squelch).toBe(3.3);
+    await app.setSquelch(99);
+    expect(app.settings?.audio.squelch).toBe(8);
+    await app.setSquelch(-5);
+    expect(app.settings?.audio.squelch).toBe(1);
+  });
+
+  it('the indicator follows the decoder report', async () => {
+    await fresh();
+    app.decoder = { confidence: 0.9, snr_db: 12, accuracy: null };
+    expect(app.signalPresent).toBe(true);
+    app.decoder = { confidence: 0.9, snr_db: null, accuracy: null };
+    expect(app.signalPresent).toBe(false);
+  });
+});
+
+describe('conversations survive a restart', () => {
+  it('saves what was heard and restores it as earlier conversations', async () => {
+    const store = new Map<string, string>();
+    const fake = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
+    vi.stubGlobal('localStorage', fake);
+    vi.useFakeTimers();
+    try {
+      const api = new MockApi({ station: { calls: ['ON3VZ'], name: 'K', qth: 'H', locator: 'JO20EE' } });
+      Object.defineProperty(api, 'demo', { value: false });
+      await app.init(api);
+      app.decoded('rx', 'CQ CQ DE OK5O OK5O K', [], []);
+      vi.advanceTimersByTime(2000);
+      expect(store.get('cwld.sessions.v1')).toContain('OK5O');
+      const api2 = new MockApi({ station: { calls: ['ON3VZ'], name: 'K', qth: 'H', locator: 'JO20EE' } });
+      Object.defineProperty(api2, 'demo', { value: false });
+      await app.init(api2);
+      expect(app.sessions.length).toBe(2);
+      expect(app.cur.messages.length).toBe(0);
+      expect(app.sessions[0].qso.call).toBe('OK5O');
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 });

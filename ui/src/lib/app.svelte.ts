@@ -14,6 +14,26 @@ export interface Qso {
 
 const emptyQso = (): Qso => ({ call: '', name: '', rst: '599', qth: '' });
 
+/** One conversation: what was heard and sent on one frequency, with its own QSO details. */
+export interface Session {
+  id: number;
+  /** The frequency in Hz the conversation started on. 0: not known yet. */
+  freq: number;
+  started: string;
+  messages: Message[];
+  qso: Qso;
+  /** True when the operator typed or clicked the callsign. Then the decoder stops overwriting it. */
+  callLocked: boolean;
+}
+
+/** A frequency change of more than this many Hz starts a new conversation. */
+export const NEW_CONVERSATION_HZ = 500;
+/** Saved conversations kept on this computer. */
+export const MAX_SESSIONS = 40;
+const STORE_KEY = 'cwld.sessions.v1';
+
+const clockNow = () => new Date().toTimeString().slice(0, 5);
+
 export interface WaterfallRow {
   bins: number[];
   lo_hz: number;
@@ -38,11 +58,11 @@ class AppState {
   });
   radioName = $state('');
   settings = $state<Settings | null>(null);
-  messages = $state<Message[]>([]);
+  /** All conversations, oldest first. The last one is the live one: new text always goes there. */
+  sessions = $state<Session[]>([]);
+  /** The conversation on screen. Equal to the live one unless the operator looks back. */
+  viewId = $state(0);
   signals = $state<Signal[]>(demoSignals);
-  qso = $state<Qso>(emptyQso());
-  /** True when the operator typed or clicked the callsign. Then the decoder stops overwriting it. */
-  callLocked = $state(false);
   draft = $state('');
   error = $state<string | null>(null);
   notice = $state<string | null>(null);
@@ -80,6 +100,118 @@ class AppState {
   private stopSidetone: (() => void) | null = null;
   private practiceTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** The live conversation. */
+  get cur(): Session {
+    return this.sessions[this.sessions.length - 1];
+  }
+
+  /** The conversation on screen. */
+  get shown(): Session {
+    return this.sessions.find((x) => x.id === this.viewId) ?? this.cur;
+  }
+
+  get viewingLive(): boolean {
+    return this.shown.id === this.cur.id;
+  }
+
+  get messages(): Message[] {
+    return this.shown.messages;
+  }
+  set messages(v: Message[]) {
+    this.shown.messages = v;
+  }
+  get qso(): Qso {
+    return this.shown.qso;
+  }
+  set qso(v: Qso) {
+    this.shown.qso = v;
+  }
+  get callLocked(): boolean {
+    return this.shown.callLocked;
+  }
+  set callLocked(v: boolean) {
+    this.shown.callLocked = v;
+  }
+
+  private makeSession(freq: number): Session {
+    return { id: this.nextId++, freq, started: clockNow(), messages: [], qso: emptyQso(), callLocked: false };
+  }
+
+  /**
+   * Starts a new conversation and shows it. An empty live conversation is reused instead, so
+   * turning the tuning knob does not leave a trail of empty tabs.
+   */
+  newConversation(freq = this.status.frequency_hz) {
+    const live = this.cur;
+    this.tail = null;
+    if (live && live.messages.length === 0) {
+      live.freq = freq;
+      live.qso = emptyQso();
+      live.callLocked = false;
+      this.viewId = live.id;
+      return;
+    }
+    const next = this.makeSession(freq);
+    this.sessions.push(next);
+    while (this.sessions.length > MAX_SESSIONS) this.sessions.shift();
+    this.viewId = next.id;
+    this.persist();
+  }
+
+  /** The operator looks at another conversation. Nothing is lost in the live one. */
+  show(id: number) {
+    if (this.sessions.some((x) => x.id === id)) this.viewId = id;
+  }
+
+  /** Removes an earlier conversation. The live one stays. */
+  closeConversation(id: number) {
+    if (id === this.cur.id) return;
+    this.sessions = this.sessions.filter((x) => x.id !== id);
+    if (this.viewId === id) this.viewId = this.cur.id;
+    this.persist();
+  }
+
+  title(x: Session): string {
+    const khz = x.freq ? (x.freq / 1000).toFixed(1) : '';
+    return [khz, x.qso.call].filter(Boolean).join(' ') || t('tabs.empty');
+  }
+
+  /** The radio moved. A big jump starts a new conversation. */
+  private frequencyMoved(hz: number) {
+    const live = this.cur;
+    if (!live || hz <= 0) return;
+    if (live.freq === 0) live.freq = hz;
+    else if (Math.abs(hz - live.freq) > NEW_CONVERSATION_HZ) this.newConversation(hz);
+  }
+
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Saves the conversations on this computer, so they are still there after a restart. */
+  persist() {
+    if (this.demo || typeof localStorage === 'undefined') return;
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      try {
+        const keep = $state.snapshot(this.sessions).filter((x) => x.messages.length > 0);
+        localStorage.setItem(STORE_KEY, JSON.stringify(keep));
+      } catch {
+        // No storage (private window, blocked): the app works without it.
+      }
+    }, 1500);
+  }
+
+  private restore(): Session[] {
+    if (typeof localStorage === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      const list = raw ? (JSON.parse(raw) as Session[]) : [];
+      return Array.isArray(list) ? list.filter((x) => x && Array.isArray(x.messages)).slice(-MAX_SESSIONS) : [];
+    } catch {
+      return [];
+    }
+  }
+
   async init(api: Api) {
     this.api = api;
     const snap = await api.getSnapshot();
@@ -90,13 +222,16 @@ class AppState {
     this.swrAlert = snap.swr_alert;
     this.audio = snap.audio ?? null;
     this.demo = api.demo;
-    this.messages = [];
     this.tail = null;
     this.waterfallRows = [];
     this.waterfallLive = false;
     this.lastDecodeAt = { rx: 0, paddle: 0 };
-    this.qso = emptyQso();
-    this.callLocked = false;
+    const earlier = api.demo ? [] : this.restore();
+    this.nextId = Math.max(100, ...earlier.map((x) => x.id + 1), ...earlier.flatMap((x) => x.messages.map((m) => m.id + 1)));
+    this.sessions = earlier;
+    const first = this.makeSession(snap.status.frequency_hz);
+    this.sessions.push(first);
+    this.viewId = first.id;
     if (api.demo) for (const m of demoMessages) this.ingest(m.from, m.text, m.time);
     this.ready = true;
     this.off?.();
@@ -163,7 +298,10 @@ class AppState {
       const e = ev.event;
       switch (e.kind) {
         case 'connected': this.status.connected = e.value; break;
-        case 'frequency': this.status.frequency_hz = e.value; break;
+        case 'frequency':
+          this.status.frequency_hz = e.value;
+          this.frequencyMoved(e.value);
+          break;
         case 'mode': this.status.mode = e.value; break;
         case 'tx':
           this.status.transmitting = e.value;
@@ -185,8 +323,9 @@ class AppState {
    * the interface fades the unsure ones. The tentative tail is shown faded after the bubble.
    */
   decoded(source: 'rx' | 'paddle', text: string, conf: number[], tentative: TentativeChar[], now = Date.now()) {
+    const live = this.cur;
     if (text) {
-      const last = this.messages[this.messages.length - 1];
+      const last = live.messages[live.messages.length - 1];
       const goesOn = last && last.from === source && now - this.lastDecodeAt[source] < BUBBLE_PAUSE_MS;
       let target: Message | undefined;
       if (goesOn) {
@@ -198,16 +337,17 @@ class AppState {
         const clean = text.replace(/^\s+/, '');
         if (clean) {
           const cut = text.length - clean.length;
-          this.messages.push({ id: this.nextId++, from: source, text: clean, conf: conf.slice(cut), time: new Date(now).toTimeString().slice(0, 5) });
-          target = this.messages[this.messages.length - 1];
+          live.messages.push({ id: this.nextId++, from: source, text: clean, conf: conf.slice(cut), time: new Date(now).toTimeString().slice(0, 5) });
+          target = live.messages[live.messages.length - 1];
         }
       }
       this.lastDecodeAt[source] = now;
       if (target && source === 'rx') {
         const h = heardIn(target.text, this.settings?.station.calls ?? []);
         if (h.call) target.call = h.call;
-        this.applyHeard(target.text);
+        this.applyHeard(target.text, target);
       }
+      this.persist();
     }
     this.tail = tentative.length ? { from: source, chars: tentative } : this.tail?.from === source ? null : this.tail;
   }
@@ -217,13 +357,15 @@ class AppState {
    * continue the same bubble, a pause starts a new one.
    */
   paddle(piece: string, now = Date.now()) {
-    const last = this.messages[this.messages.length - 1];
+    const live = this.cur;
+    const last = live.messages[live.messages.length - 1];
     if (last && last.from === 'paddle' && now - this.lastPaddleAt < 6000) {
       last.text += piece;
     } else {
       this.ingest('paddle', piece);
     }
     this.lastPaddleAt = now;
+    this.persist();
   }
 
   private applySnapshot(snap: Snapshot) {
@@ -286,11 +428,11 @@ class AppState {
   get vars() {
     const st = this.settings?.station;
     return {
-      CALL: this.qso.call,
+      CALL: this.cur.qso.call,
       MYCALL: this.myCall,
-      NAME: this.qso.name,
-      QTH: this.qso.qth,
-      RST: this.qso.rst,
+      NAME: this.cur.qso.name,
+      QTH: this.cur.qso.qth,
+      RST: this.cur.qso.rst,
       MYNAME: st?.name ?? '',
       MYQTH: st?.qth ?? '',
     };
@@ -346,29 +488,49 @@ class AppState {
   unlockCall() {
     this.callLocked = false;
     const last = [...this.messages].reverse().find((m) => m.from === 'rx');
-    if (last) this.applyHeard(last.text);
+    if (last && this.viewingLive) this.applyHeard(last.text, last);
   }
 
   /**
-   * Adds text to the conversation, whatever its source.
+   * Adds text to the live conversation, whatever its source.
    * `rx` text also feeds the QSO panel, so `{CALL}`, `{NAME}` and `{QTH}` in chips are filled
    * from what the decoder heard, unless the operator locked the callsign.
    */
-  ingest(from: Message['from'], text: string, time = new Date().toTimeString().slice(0, 5)) {
+  ingest(from: Message['from'], text: string, time = clockNow()) {
     const call = from === 'rx' ? heardIn(text, this.settings?.station.calls ?? []).call : undefined;
-    this.messages.push({ id: this.nextId++, from, call, text, time });
-    if (from === 'rx') this.applyHeard(text);
+    const m: Message = { id: this.nextId++, from, call, text, time };
+    this.cur.messages.push(m);
+    if (from === 'rx') this.applyHeard(text, m);
   }
 
-  private applyHeard(text: string) {
+  /**
+   * Fills the live QSO from what was heard. A different callsign than the one in the live
+   * conversation starts a new conversation, and the bubble that carries it moves there.
+   */
+  private applyHeard(text: string, bubble?: Message) {
     const h = heardIn(text, this.settings?.station.calls ?? []);
-    if (!this.callLocked && h.call) {
-      if (h.call !== this.qso.call) this.qso = { ...emptyQso(), call: h.call };
+    let live = this.cur;
+    if (!live.callLocked && h.call && h.call !== live.qso.call) {
+      if (live.qso.call) {
+        const wasShowingLive = this.viewingLive;
+        if (bubble) {
+          const i = live.messages.indexOf(bubble);
+          if (i >= 0) live.messages.splice(i, 1);
+        }
+        const next = this.makeSession(this.status.frequency_hz);
+        this.sessions.push(next);
+        while (this.sessions.length > MAX_SESSIONS) this.sessions.shift();
+        if (wasShowingLive) this.viewId = next.id;
+        if (bubble) next.messages.push(bubble);
+        live = next;
+        this.tail = null;
+      }
+      live.qso = { ...emptyQso(), call: h.call };
     }
     // Name and QTH only fill empty fields, and only for the station that is in the panel.
-    if (h.call && h.call === this.qso.call) {
-      if (h.name && !this.qso.name) this.qso.name = h.name;
-      if (h.qth && !this.qso.qth) this.qso.qth = h.qth;
+    if (h.call && h.call === live.qso.call) {
+      if (h.name && !live.qso.name) live.qso.name = h.name;
+      if (h.qth && !live.qso.qth) live.qso.qth = h.qth;
     }
   }
 
@@ -378,9 +540,10 @@ class AppState {
     this.notice = null;
     const clean = text.trim();
     if (!clean) return;
+    this.viewId = this.cur.id;
     try {
       const out = await this.api.sendText(clean);
-      const time = new Date().toTimeString().slice(0, 5);
+      const time = clockNow();
       if (out.kind === 'sent') {
         this.ingest('tx', clean, time);
       } else {
@@ -391,6 +554,7 @@ class AppState {
         this.practiceTimer = setTimeout(() => this.cancelPractice(), out.seconds * 1000 + 100);
       }
       this.draft = '';
+      this.persist();
     } catch (e) {
       this.fail(e);
     }
@@ -435,6 +599,7 @@ class AppState {
     try {
       await this.api.setFrequency(hz);
       this.status.frequency_hz = hz;
+      this.frequencyMoved(hz);
     } catch (e) {
       this.fail(e);
     }
@@ -497,6 +662,22 @@ class AppState {
     } catch (e) {
       this.fail(e);
     }
+  }
+
+  /** How strict the decoder is about signals in noise (1 to 8). Applies at once. */
+  async setSquelch(value: number) {
+    const v = Math.round(Math.min(8, Math.max(1, value)) * 10) / 10;
+    try {
+      await this.api.setSquelch(v);
+      if (this.settings) this.settings.audio.squelch = v;
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** True while the decoder judges that a clear signal is present. */
+  get signalPresent(): boolean {
+    return this.decoder?.snr_db != null;
   }
 
   async toggleRecording() {

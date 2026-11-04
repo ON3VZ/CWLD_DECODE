@@ -63,6 +63,10 @@ Eerst I10 en Q10 hierboven: die bepalen of de decoder het ontvangen signaal krij
 | A8 | Eigen tekst niet dubbel | LIVE, dummy load, laag vermogen: verstuur een chip. | Verschijnt de tekst maar één keer in het gesprek? |
 | A9 | Paddle via audio (Icom) | Sein met de paddle "TEST DE ON3VZ". | Komt het als "Jij (paddle)"? Dat lukt alleen als I10 toonde dat de meeluistertoon in de USB-audio zit. |
 | A10 | Kabel los | Trek tijdens het luisteren de USB-kabel uit. | Verschijnt "Audio uit" bovenaan, zonder dat CWLD vastloopt? Start het weer na "Luisteren starten"? |
+| A11 | Audio-ingang kiezen | Kies in de lijst "Audio-ingang" de USB Audio CODEC. | Staat er onder "Luistert" nu de ingang van de radio, zonder dat je nog ergens op hoeft te klikken? |
+| A12 | Zoom | Klik rechtsboven op de waterfall op 1x, 2x en 4x. Klik op een signaal. | Zie je de toonhoogte (rode lijn) en de getallen onderaan? Springt de rode lijn naar het signaal bij elke zoom? |
+| A13 | Drempel | Stem af op een stille plek met alleen ruis. Zet in de instellingen "Drempel voor signalen" op 2 en daarna op 5. | Komt er bij 2 nog tekst uit de ruis? Verdwijnt die bij 5? Verdwijnt een zwak maar echt signaal ook? Wat doet de indicator "Signaal"? |
+| A14 | Gesprekken | Draai 2 kHz weg met de draaiknop. Klik op "Nieuw QSO". Klik daarna op het eerste tabblad. | Komt er een nieuw tabblad bij de frequentiesprong? Blijft het oude gesprek leesbaar, met zijn eigen roepletters en naam? Staat het er nog na CWLD sluiten en weer openen? |
 
 ## D. Wat ik met de uitkomst doe
 

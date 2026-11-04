@@ -36,11 +36,13 @@ pub struct EngineConfig {
     pub words: Vec<String>,
     pub waterfall_lo_hz: f64,
     pub waterfall_hi_hz: f64,
+    /// See `PipelineConfig::min_separation`.
+    pub min_separation: f32,
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
-        EngineConfig { tone_hz: 700.0, words: Vec::new(), waterfall_lo_hz: 200.0, waterfall_hi_hz: 1400.0 }
+        EngineConfig { tone_hz: 700.0, words: Vec::new(), waterfall_lo_hz: 200.0, waterfall_hi_hz: 1400.0, min_separation: 2.0 }
     }
 }
 
@@ -72,6 +74,7 @@ pub enum EngineEvent {
 
 enum Command {
     Retune(f64),
+    Squelch(f32),
     StartRecording(PathBuf),
     StopRecording,
     AddWords(Vec<String>),
@@ -121,6 +124,10 @@ impl Engine {
 
     pub fn retune(&self, hz: f64) {
         let _ = self.cmd.send(Command::Retune(hz));
+    }
+
+    pub fn set_squelch(&self, v: f32) {
+        let _ = self.cmd.send(Command::Squelch(v));
     }
 
     pub fn start_recording(&self, path: PathBuf) {
@@ -277,6 +284,7 @@ impl Worker {
                 self.pipe.retune(hz);
                 self.send(EngineEvent::Tone { hz });
             }
+            Command::Squelch(v) => self.pipe.set_min_separation(v),
             Command::StartRecording(path) => {
                 self.stop_recording();
                 match Recorder::create(&path, self.rate) {
@@ -309,6 +317,7 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
     let _ = ready.send(Ok(()));
     let mut pcfg = PipelineConfig::new(DECODE_RATE, cfg.tone_hz);
     pcfg.auto_tone = false;
+    pcfg.min_separation = cfg.min_separation;
     let mut pipe = Pipeline::new(pcfg);
     let refs: Vec<&str> = cfg.words.iter().map(|s| s.as_str()).collect();
     pipe.add_words(&refs);
@@ -446,6 +455,16 @@ mod tests {
         let ev = collect_until_stopped(&e);
         assert!(ev.iter().any(|x| *x == EngineEvent::Tone { hz: 550.0 }));
         assert_eq!(text_of(&ev), g.truth);
+    }
+
+    #[test]
+    fn a_strict_squelch_keeps_the_decoder_quiet() {
+        let g = generate(&CwSpec { text: "TEST TEST DE ON3VZ".into(), snr_db: Some(15.0), lead_s: 1.0, ..Default::default() });
+        let data = upsample(&g.samples, 6);
+        let cfg = EngineConfig { min_separation: 1.0e6, ..Default::default() };
+        let e = Engine::start(Source::Samples { rate: 48_000, data, realtime: false }, cfg).unwrap();
+        let ev = collect_until_stopped(&e);
+        assert_eq!(text_of(&ev).trim(), "");
     }
 
     #[test]

@@ -84,7 +84,7 @@ impl AppCore {
         let mut words: Vec<String> = s.station.calls.clone();
         words.extend(s.station.name.split_whitespace().map(|w| w.to_string()));
         words.extend(s.station.qth.split_whitespace().map(|w| w.to_string()));
-        let cfg = EngineConfig { tone_hz: s.audio.safe_tone() as f64, words, ..Default::default() };
+        let cfg = EngineConfig { tone_hz: s.audio.safe_tone() as f64, words, min_separation: s.audio.safe_squelch(), ..Default::default() };
         let mut st = self.audio.lock().unwrap();
         match Engine::start(source, cfg) {
             Ok(e) => {
@@ -116,6 +116,16 @@ impl AppCore {
         st.status.tone_hz = hz;
         if let Some(e) = &st.engine {
             e.retune(hz);
+        }
+        Ok(())
+    }
+
+    /// Changes how strict the decoder is about signals in noise, and remembers it.
+    pub fn set_squelch(&self, v: f32) -> Result<(), CoreError> {
+        let v = if v.is_nan() { cwld_types::SQUELCH_DEFAULT } else { v.clamp(cwld_types::SQUELCH_MIN, cwld_types::SQUELCH_MAX) };
+        self.settings.lock().unwrap().audio.squelch = v;
+        if let Some(e) = &self.audio.lock().unwrap().engine {
+            e.set_squelch(v);
         }
         Ok(())
     }
@@ -378,6 +388,17 @@ mod tests {
             assert!(c.audio_status().error.is_some());
             assert!(!c.audio_status().running);
         }
+    }
+
+    #[test]
+    fn squelch_is_remembered_and_clamped() {
+        let c = core();
+        c.set_squelch(50.0).unwrap();
+        assert_eq!(c.settings().audio.squelch, cwld_types::SQUELCH_MAX);
+        c.set_squelch(f32::NAN).unwrap();
+        assert_eq!(c.settings().audio.squelch, cwld_types::SQUELCH_DEFAULT);
+        c.set_squelch(3.5).unwrap();
+        assert_eq!(c.settings().audio.squelch, 3.5);
     }
 
     #[test]

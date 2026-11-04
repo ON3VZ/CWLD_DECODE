@@ -101,15 +101,33 @@ pub struct AudioSettings {
     pub auto_start: bool,
     /// Folder for recordings. Empty: the default folder (Documents/CWLD).
     pub record_dir: String,
+    /// How clearly a signal must stand out of the noise before the decoder trusts it (the
+    /// separation of key-down and key-up levels). Higher means stricter: less text out of noise,
+    /// but weak signals are missed.
+    pub squelch: f32,
 }
+
+/// The range of the squelch setting, and its default.
+pub const SQUELCH_MIN: f32 = 1.0;
+pub const SQUELCH_MAX: f32 = 8.0;
+pub const SQUELCH_DEFAULT: f32 = 2.0;
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new() }
+        AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new(), squelch: SQUELCH_DEFAULT }
     }
 }
 
 impl AudioSettings {
+    /// The squelch, kept in range even after a hand-edited file.
+    pub fn safe_squelch(&self) -> f32 {
+        if self.squelch.is_nan() {
+            SQUELCH_DEFAULT
+        } else {
+            self.squelch.clamp(SQUELCH_MIN, SQUELCH_MAX)
+        }
+    }
+
     /// The pitch, kept in a range where CW tones live, even after a hand-edited file.
     pub fn safe_tone(&self) -> f32 {
         if self.tone_hz.is_nan() {

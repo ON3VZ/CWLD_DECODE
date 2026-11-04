@@ -10,4 +10,4 @@ pub mod settings;
 
 pub use policy::{PolicyHandle, TxPolicy};
 pub use radio::{mean_confidence, CommandClass, DecoderStats, RadioCommand, RadioMode, RadioStatus, RigEvent, CONFIDENCE_WINDOW};
-pub use settings::{AudioSettings, Language, RadioKind, RadioSettings, Settings, Station, SwrSettings, Theme};
+pub use settings::{SQUELCH_DEFAULT, SQUELCH_MAX, SQUELCH_MIN, AudioSettings, Language, RadioKind, RadioSettings, Settings, Station, SwrSettings, Theme};
