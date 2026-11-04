@@ -1,6 +1,7 @@
 //! Signal processing for CWLD. No Tauri, no audio devices: plain functions on sample slices,
 //! so the test bench and the command line tools can use them too.
 
+pub mod clean;
 pub mod frontend;
 pub mod gen;
 pub mod rng;

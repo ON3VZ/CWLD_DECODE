@@ -42,6 +42,13 @@ pub struct CwSpec {
     pub lead_s: f64,
     pub trail_s: f64,
     pub interferer: Option<Interferer>,
+    /// A steady unkeyed carrier: (offset from the wanted tone in Hz, level relative to the
+    /// wanted signal in dB). A tuner-upper or a birdie.
+    pub carrier: Option<(f64, f64)>,
+    /// Impulse noise (ignition, switching supplies): clicks per second and their peak level
+    /// relative to the wanted signal in dB.
+    pub impulses_per_s: f64,
+    pub impulse_db: f64,
     pub seed: u64,
 }
 
@@ -63,6 +70,9 @@ impl Default for CwSpec {
             lead_s: 0.5,
             trail_s: 1.5,
             interferer: None,
+            carrier: None,
+            impulses_per_s: 0.0,
+            impulse_db: 20.0,
             seed: 1,
         }
     }
@@ -194,6 +204,35 @@ pub fn generate(spec: &CwSpec) -> Generated {
         for i in 0..n {
             ph += 2.0 * PI * (spec.tone_hz + intf.offset_hz) / fs;
             samples[i] += (iamp * ikey[i] as f64 * ph.sin()) as f32;
+        }
+    }
+
+    if let Some((off, db)) = spec.carrier {
+        let a = amp * 10f64.powf(db / 20.0);
+        let mut ph = rng.uniform() * 2.0 * PI;
+        for s in samples.iter_mut() {
+            ph += 2.0 * PI * (spec.tone_hz + off) / fs;
+            *s += (a * ph.sin()) as f32;
+        }
+    }
+
+    if spec.impulses_per_s > 0.0 {
+        // Poisson arrivals. Each click is a short decaying burst of random sign, about 1 ms.
+        let peak = amp * 10f64.powf(spec.impulse_db / 20.0);
+        let mut t = 0.0;
+        loop {
+            t += -(1.0 - rng.uniform()).ln() / spec.impulses_per_s;
+            let start = (t * fs) as usize;
+            if start >= n {
+                break;
+            }
+            let len = (0.0015 * fs) as usize + 1;
+            let sign = if rng.uniform() < 0.5 { -1.0 } else { 1.0 };
+            for k in 0..len.min(n - start) {
+                let decay = (-(k as f64) / (0.0003 * fs)).exp();
+                let ring = if k % 2 == 0 { 1.0 } else { -0.6 };
+                samples[start + k] += (sign * peak * decay * ring) as f32;
+            }
         }
     }
 

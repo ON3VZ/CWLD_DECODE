@@ -1,5 +1,7 @@
 # CWLD
 
+> Repository: `CWLD_DECODE`. The app itself is called **CWLD**.
+
 A modern, simple, open-source CW station app for Windows and Linux (macOS later). It is built to control an Icom IC-7300 MK II and a QRP Labs QMX, decode CW, send CW from the keyboard and clickable chips next to your paddle, and work together with Log4OM.
 
 Status: **phase 2 (radio and sending)**. Drivers for the IC-7300 MK II (CI-V) and the QMX (CAT) are written and tested against a fake serial port, but **not yet on real radios**: see `docs/testplan_radio.md`. There is no audio or decoder yet. See `CHANGELOG.md`.

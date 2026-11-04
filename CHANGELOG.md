@@ -1,3 +1,12 @@
+## 0.3.2 (decoder: interference and weak signals)
+
+- Noise blanker against short strong clicks, automatic notch against steady carriers near the tone.
+- The key-down level follows fading.
+- Word model: Q-codes, abbreviations, callsign shapes and numbers choose between uncertain readings; weak lone E and T are dropped.
+- Long pauses are searched at no extra cost; real time with margin.
+- Generator: impulse noise and steady carriers. Bench: `--plain` for a before/after comparison.
+- Measured results in `docs/meetresultaten_decoder.md`.
+
 ## 0.3.1 (certainty meter)
 
 - New meter next to the S-meter: how sure the decoder is about the last 30 characters, with the signal to noise ratio. It is an estimate. In practice mode the real accuracy is shown, because the keyed text is known. For now it is fed by the demo, the real decoder is connected in the next step.

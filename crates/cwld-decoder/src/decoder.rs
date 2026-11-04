@@ -39,6 +39,12 @@ pub struct DecodeUpdate {
     pub committed: String,
     /// One confidence (0..1) per character of `committed`. A space has 1.0.
     pub committed_conf: Vec<f32>,
+    /// Per character of `committed`: the other readings with their probability (empty for a
+    /// space or a sure character). Used by the word model.
+    pub committed_alts: Vec<Vec<(char, f32)>>,
+    /// Per character: how strongly the key-down frames of its weakest mark stood out of the
+    /// noise (mean evidence). Low values mean the character may be a noise blip. Spaces: 99.
+    pub committed_strength: Vec<f32>,
     /// Not final yet: the characters of the last stretch with their alternatives.
     pub tentative: Vec<TentativeChar>,
     pub wpm: f32,
@@ -105,6 +111,8 @@ pub struct Decoder {
     since_global: usize,
     committed: String,
     conf: Vec<f32>,
+    alts: Vec<Vec<(char, f32)>>,
+    strength: Vec<f32>,
     tentative: Vec<TentativeChar>,
     emitted_any: bool,
     space_done: bool,
@@ -138,6 +146,8 @@ impl Decoder {
             since_global: usize::MAX / 2,
             committed: String::new(),
             conf: Vec::new(),
+            alts: Vec::new(),
+            strength: Vec::new(),
             tentative: Vec::new(),
             emitted_any: false,
             space_done: true,
@@ -191,6 +201,8 @@ impl Decoder {
         let mut up = DecodeUpdate::default();
         up.committed = std::mem::take(&mut self.committed);
         up.committed_conf = std::mem::take(&mut self.conf);
+        up.committed_alts = std::mem::take(&mut self.alts);
+        up.committed_strength = std::mem::take(&mut self.strength);
         up.tentative = self.tentative.clone();
         up.wpm = self.wpm().unwrap_or(0.0) as f32;
         up.locked = self.locked;
@@ -216,7 +228,8 @@ impl Decoder {
             Label::Dash => (0.6 * e, 1.7 * e),
             Label::Intra => (0.4 * e, 2.0 * e),
             Label::Char => (0.6 * e, 1.9 * e),
-            Label::Word => (0.7 * e, 2.0 * e),
+            // Longer word gaps (a pause) are handled by a running maximum, see `viterbi`.
+            Label::Word => (0.7 * e, e),
             Label::Lead => (0.0, 0.0),
         };
         ((lo.floor() as usize).max(1), (hi.ceil() as usize).max(2))
@@ -262,6 +275,13 @@ impl Decoder {
         let mut s = vec![NEG; n + 1];
         let mut mb = vec![Back::default(); n + 1];
         let mut sb = vec![Back::default(); n + 1];
+        // Running maximum of m[a] + cum[a]: a gap longer than a word gap costs nothing extra,
+        // so the best start of such a pause is simply the best earlier mark end. This keeps
+        // pauses of any length cheap to search.
+        let mut pref = vec![NEG; n + 1];
+        let mut pref_at = vec![0usize; n + 1];
+        let word_hi = Self::range(t, Label::Word).1;
+        let word_prior = Self::prior(Label::Word);
         s[0] = 0.0;
         let marks = [Label::Dot, Label::Dash];
         let gaps = [Label::Intra, Label::Char, Label::Word];
@@ -288,6 +308,16 @@ impl Decoder {
                     }
                 }
             }
+            if e >= word_hi + 1 {
+                let lim = e - word_hi - 1;
+                if pref[lim] > NEG {
+                    let sc = pref[lim] - cum[e] + word_prior;
+                    if sc > s[e] {
+                        s[e] = sc;
+                        sb[e] = Back { from: pref_at[lim], label: 4 };
+                    }
+                }
+            }
             for (li, l) in gaps.iter().enumerate() {
                 let (lo, hi) = ranges_g[li];
                 for d in lo..=hi.min(e) {
@@ -301,6 +331,14 @@ impl Decoder {
                         sb[e] = Back { from: a, label: (li + 2) as u8 };
                     }
                 }
+            }
+            let here = if m[e] > NEG { m[e] + cum[e] } else { NEG };
+            if here > pref[e - 1] {
+                pref[e] = here;
+                pref_at[e] = e;
+            } else {
+                pref[e] = pref[e - 1];
+                pref_at[e] = pref_at[e - 1];
             }
         }
         // End: either a complete segment ending exactly at n, or an open one still running.
@@ -330,7 +368,15 @@ impl Decoder {
                 }
             }
         }
-        for l in gaps.iter() {
+        // An open word gap or pause: any length from the word gap minimum on, all equally good.
+        let word_lo = Self::range(t, Label::Word).0;
+        if n >= word_lo && pref[n - word_lo] > NEG {
+            let sc = pref[n - word_lo] - cum[n] + word_prior;
+            if sc > best.score {
+                best = End { score: sc, is_mark: false, open_from: Some((pref_at[n - word_lo], Label::Word)) };
+            }
+        }
+        for l in [Label::Intra, Label::Char].iter() {
             let (_, hi) = Self::range(t, *l);
             for d in 1..=hi.min(n) {
                 let a = n - d;
@@ -370,6 +416,12 @@ impl Decoder {
             in_mark = !in_mark;
         }
         segs.reverse();
+        // A gap that runs up to the end of the buffer is still running, complete or not.
+        if let Some(last) = segs.last_mut() {
+            if last.end == n && matches!(last.label, Label::Intra | Label::Char | Label::Word) {
+                last.open = true;
+            }
+        }
         Some(Path { score: best.score, segs })
     }
 
@@ -438,6 +490,10 @@ impl Decoder {
     }
 
     fn emit(&mut self, c: char, conf: f32) {
+        self.emit_with(c, conf, Vec::new(), 99.0);
+    }
+
+    fn emit_with(&mut self, c: char, conf: f32, alts: Vec<(char, f32)>, strength: f32) {
         if c == ' ' {
             if !self.emitted_any || self.space_done {
                 return;
@@ -449,6 +505,8 @@ impl Decoder {
         self.emitted_any = true;
         self.committed.push(c);
         self.conf.push(conf);
+        self.alts.push(alts);
+        self.strength.push(strength);
     }
 
     // ---------- the streaming step ----------
@@ -467,8 +525,11 @@ impl Decoder {
             None => self.llr = buf,
         }
         // An unlocked buffer must not grow without limit (a lot of noise before a signal).
-        if !self.locked && self.llr.len() > 2400 {
-            let drop = self.llr.len() - 1200;
+        // Locked or not: a buffer that cannot be committed (a long carrier, garbage) is cut,
+        // so the search stays fast.
+        let cap = if self.locked { 3200 } else { 2400 };
+        if self.llr.len() > cap {
+            let drop = self.llr.len() - cap / 2;
             self.llr.drain(..drop);
         }
     }
@@ -476,14 +537,26 @@ impl Decoder {
     /// Runs the search and commits what is safe. Returns how many frames can be dropped.
     fn step_inner(&mut self, buf: &[f32]) -> Option<usize> {
         let window = &buf[buf.len().saturating_sub(1600)..];
+        // The wide speed search is expensive: twice a second while looking for a signal,
+        // every four seconds once locked (to notice a new station at another speed).
         let offset = buf.len() - window.len();
-        let global_due = !self.locked || self.since_global > 2 * FRAME_RATE as usize * 2;
-        let local = self.candidate_units(self.u);
+        let global_every = if self.locked { 4 * FRAME_RATE as usize } else { FRAME_RATE as usize / 2 };
+        let global_due = self.since_global >= global_every;
+        if self.u.is_none() && !global_due {
+            return None;
+        }
+        let local = if self.u.is_some() { self.candidate_units(self.u) } else { Vec::new() };
         let mut chosen = self.best_path(window, &local);
         let mut switched = false;
-        if self.u.is_none() || global_due {
+        if global_due {
+            self.since_global = 0;
             let global = self.candidate_units(None);
-            if let Some(g) = self.best_path(window, &global) {
+            let gwin = &window[window.len().saturating_sub(1000)..];
+            let gres = if gwin.len() == window.len() { self.best_path(window, &global) } else {
+                // Search the speed on the recent part, then score that speed on the whole window.
+                self.best_path(gwin, &global).and_then(|(u, _)| self.best_path(window, &[u]))
+            };
+            if let Some(g) = gres {
                 self.since_global = 0;
                 let better = match &chosen {
                     None => true,
@@ -546,6 +619,7 @@ impl Decoder {
         let upto_idx = if tail_cut { segs.len() - 1 } else { cut_seg.map(|i| i)? + 0 };
         // Emit the characters of segs[0..=upto_idx].
         let mut group: Vec<usize> = Vec::new();
+        let mut group_strength = f32::MAX;
         let mut first_mark_start: Option<usize> = None;
         let mut dot_d: Vec<usize> = Vec::new();
         let mut dash_d: Vec<usize> = Vec::new();
@@ -559,6 +633,9 @@ impl Decoder {
                         first_mark_start = Some(sg.start);
                     }
                     group.push(sg.end - sg.start);
+                    let fr = &window[sg.start..sg.end];
+                    let mean = fr.iter().sum::<f32>() / fr.len().max(1) as f32;
+                    group_strength = group_strength.min(mean);
                     if sg.label == Label::Dot {
                         dot_d.push(sg.end - sg.start);
                     } else {
@@ -576,8 +653,9 @@ impl Decoder {
                             }
                         }
                         let tc = self.group_to_char(&group, &t);
-                        self.emit(tc.best, tc.confidence);
+                        self.emit_with(tc.best, tc.confidence, tc.alts.clone(), group_strength);
                         group.clear();
+                        group_strength = f32::MAX;
                     }
                     if sg.label == Label::Word {
                         self.emit(' ', 1.0);

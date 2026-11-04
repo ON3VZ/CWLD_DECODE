@@ -9,6 +9,7 @@
 
 pub mod bench;
 pub mod decoder;
+pub mod lang;
 pub mod pipeline;
 
 pub use decoder::{DecodeUpdate, Decoder, DecoderConfig, TentativeChar};
@@ -37,6 +38,20 @@ mod tests {
     fn moderate_noise_is_fine() {
         let (truth, got) = decode(&CwSpec { wpm: 20.0, snr_db: Some(12.0), jitter: 0.05, text: "UR RST 599 IN HOBOKEN".into(), ..Default::default() });
         assert!(levenshtein(&truth, &got) <= 2, "{truth:?} vs {got:?}");
+    }
+
+    #[test]
+    fn a_steady_carrier_next_to_the_signal_is_notched_out() {
+        let spec = CwSpec { wpm: 20.0, snr_db: Some(10.0), carrier: Some((50.0, 15.0)), lead_s: 3.0, text: "CQ CQ DE ON3VZ ON3VZ K".into(), ..Default::default() };
+        let (truth, got) = decode(&spec);
+        assert!(levenshtein(&truth, &got) <= 2, "{truth:?} vs {got:?}");
+    }
+
+    #[test]
+    fn strong_clicks_are_blanked() {
+        let spec = CwSpec { wpm: 20.0, snr_db: Some(10.0), impulses_per_s: 15.0, impulse_db: 46.0, text: "UR RST 599 IN HOBOKEN".into(), ..Default::default() };
+        let (truth, got) = decode(&spec);
+        assert!(levenshtein(&truth, &got) <= 1, "{truth:?} vs {got:?}");
     }
 
     #[test]

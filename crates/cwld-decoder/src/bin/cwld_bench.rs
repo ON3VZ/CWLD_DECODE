@@ -9,7 +9,22 @@ use cwld_dsp::CwSpec;
 fn main() {
     let quick = std::env::args().any(|a| a == "--quick");
     let trials = if quick { 4 } else { 12 };
-    let pcfg = |s: &CwSpec| PipelineConfig::new(s.sample_rate, 700.0);
+    // --plain switches off the noise blanker, the notch, the fading follower and the word
+    // model, for a before/after comparison on the same signals.
+    let plain = std::env::args().any(|a| a == "--plain");
+    let pcfg = move |s: &CwSpec| {
+        let mut p = PipelineConfig::new(s.sample_rate, 700.0);
+        if plain {
+            p.noise_blanker = false;
+            p.auto_notch = false;
+            p.track_fading = false;
+            p.language_model = false;
+        }
+        p
+    };
+    if plain {
+        println!("PLAIN: noise blanker, notch, fading follower and word model off\n");
+    }
 
     println!("Character error rate (%), SNR in 500 Hz, {trials} messages per cell\n");
     let wpms = [12.0, 20.0, 28.0, 36.0];
@@ -43,6 +58,12 @@ fn main() {
         ("mistuned by 25 Hz", CwSpec { tone_hz: 725.0, ..base.clone() }),
         ("second station 60 Hz away, equal level", CwSpec { interferer: Some(Interferer { offset_hz: 60.0, rel_db: 0.0, wpm: 17.0 }), ..base.clone() }),
         ("second station 120 Hz away, +10 dB", CwSpec { interferer: Some(Interferer { offset_hz: 120.0, rel_db: 10.0, wpm: 24.0 }), ..base.clone() }),
+        ("impulse noise, 15 clicks/s at +46 dB", CwSpec { impulses_per_s: 15.0, impulse_db: 46.0, ..base.clone() }),
+        ("impulse noise, 40 clicks/s at +40 dB, SNR +6", CwSpec { impulses_per_s: 40.0, impulse_db: 40.0, snr_db: Some(6.0), ..base.clone() }),
+        ("carrier 50 Hz away, +15 dB (present 3 s before)", CwSpec { carrier: Some((50.0, 15.0)), lead_s: 3.0, ..base.clone() }),
+        ("carrier 120 Hz away, +25 dB (present 3 s before)", CwSpec { carrier: Some((120.0, 25.0)), lead_s: 3.0, ..base.clone() }),
+        ("carrier 50 Hz away, +15 dB, starts with the signal", CwSpec { carrier: Some((50.0, 15.0)), ..base.clone() }),
+        ("deep QSB at +3 dB", CwSpec { qsb_depth: 0.8, qsb_hz: 0.3, snr_db: Some(3.0), ..base.clone() }),
         ("slow 8 WPM at 0 dB", CwSpec { wpm: 8.0, snr_db: Some(0.0), ..base.clone() }),
         ("fast 45 WPM at 15 dB", CwSpec { wpm: 45.0, snr_db: Some(15.0), ..base.clone() }),
     ];

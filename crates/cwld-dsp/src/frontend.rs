@@ -9,6 +9,7 @@
 //! key is down. The noise and signal levels come from a two-cluster fit over the last
 //! seconds, so there is no fixed threshold to tune.
 
+use crate::clean::{AutoNotch, NoiseBlanker};
 use std::f64::consts::PI;
 
 /// Frames per second handed to the decoder.
@@ -28,11 +29,22 @@ pub struct FrontendConfig {
     pub afc: bool,
     /// The AFC never leaves `tone_hz` plus or minus this many Hz.
     pub afc_range_hz: f64,
+    /// Silence short clicks before anything else (see `clean::NoiseBlanker`).
+    pub noise_blanker: bool,
+    /// Notch out steady carriers near the tone (see `clean::AutoNotch`).
+    pub auto_notch: bool,
+    /// Use the exact envelope statistics of a tone in noise (Rice against Rayleigh) with a
+    /// signal level that follows fading. Off: the older Gaussian two-level model.
+    pub rice: bool,
+    /// Follow the key-down level quickly, so fading (QSB) does not look like key-up.
+    pub track_fading: bool,
+    /// Step of that level follower per key-down frame (0.03 is about 150 ms of key-down).
+    pub fade_rate: f64,
 }
 
 impl FrontendConfig {
     pub fn new(sample_rate: u32, tone_hz: f64) -> Self {
-        FrontendConfig { sample_rate, tone_hz, bandwidth_hz: 40.0, afc: true, afc_range_hz: 60.0 }
+        FrontendConfig { sample_rate, tone_hz, bandwidth_hz: 40.0, afc: true, afc_range_hz: 60.0, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, fade_rate: 0.05 }
     }
 }
 
@@ -82,12 +94,19 @@ impl Chain {
 
 pub struct Frontend {
     cfg: FrontendConfig,
+    blanker: NoiseBlanker,
+    notch: AutoNotch,
     main: Chain,
     refs: [Chain; 2],
     /// Slow averages of the power in the wanted band and in two reference bands beside it.
     pow_main: f64,
     pow_ref: [f64; 2],
     present: bool,
+    notch_changed: bool,
+    /// Tracked squared amplitude of the keyed tone (0 = not known yet).
+    amp2: f64,
+    /// Tracked key-down envelope level for the Gaussian model (0 = not known yet).
+    sig_track: f64,
     frames_seen: u64,
     f_now: f64,
     alpha: f64,
@@ -109,12 +128,17 @@ impl Frontend {
         let mut f = Frontend {
             f_now: cfg.tone_hz,
             alpha: 0.0,
+            blanker: NoiseBlanker::new(cfg.sample_rate),
+            notch: AutoNotch::new(cfg.sample_rate),
             cfg,
             main: Chain::default(),
             refs: [Chain::default(), Chain::default()],
             pow_main: 0.0,
             pow_ref: [0.0; 2],
             present: false,
+            notch_changed: false,
+            amp2: 0.0,
+            sig_track: 0.0,
             frames_seen: 0,
             sample_count: 0,
             next_frame_at: 0.0,
@@ -156,6 +180,16 @@ impl Frontend {
         self.reset_stats();
     }
 
+    /// True once after a notch was added or removed: evidence from before is suspect.
+    pub fn take_notch_changed(&mut self) -> bool {
+        std::mem::take(&mut self.notch_changed)
+    }
+
+    /// Frequencies of the carriers that are notched out now.
+    pub fn notches(&self) -> Vec<f64> {
+        self.notch.active_notches()
+    }
+
     pub fn levels(&self) -> Option<Levels> {
         self.have_levels.then_some(self.levels)
     }
@@ -173,7 +207,23 @@ impl Frontend {
         let step = fs / FRAME_RATE;
         let mut out = Vec::with_capacity(samples.len() / step as usize + 1);
         let ref_off = (self.cfg.bandwidth_hz * 4.0).max(110.0);
-        for &x in samples {
+        for &raw in samples {
+            let x = if self.cfg.noise_blanker {
+                match self.blanker.process(raw) {
+                    Some(v) => v,
+                    None => continue,
+                }
+            } else {
+                raw
+            };
+            let x = if self.cfg.auto_notch { self.notch.process(x, self.f_now) } else { x };
+            if self.cfg.auto_notch && self.notch.take_changed() {
+                // The envelope statistics so far include the carrier: start them again.
+                self.reset_stats();
+                self.sig_track = 0.0;
+                self.amp2 = 0.0;
+                self.notch_changed = true;
+            }
             let (i, q) = self.main.run(x, self.f_now, fs, self.alpha);
             let (ia, qa) = self.refs[0].run(x, self.f_now - ref_off, fs, self.alpha);
             let (ib, qb) = self.refs[1].run(x, self.f_now + ref_off, fs, self.alpha);
@@ -228,8 +278,39 @@ impl Frontend {
             self.update_levels();
         }
         let llr = if self.have_levels { self.llr(env) } else { 0.0 };
+        if !self.cfg.rice && self.have_levels && self.cfg.track_fading {
+            // Follow the key-down level through fading. Only frames that are surely key-down
+            // count, the floor keeps it above the noise.
+            let l = self.levels;
+            if self.sig_track <= 0.0 {
+                self.sig_track = l.signal as f64;
+            } else if env as f64 > l.noise as f64 + 2.0 * l.noise_sd as f64 {
+                // Gate on "clearly above the noise", not on "looks like the old level":
+                // otherwise a fading signal drops out of the gate and the level never follows.
+                self.sig_track += self.cfg.fade_rate * (env as f64 - self.sig_track);
+            }
+            let floor = l.noise as f64 + 2.0 * l.noise_sd as f64;
+            // Never far above the long-term level either: a strong click must not drag it up.
+            self.sig_track = self.sig_track.clamp(floor, 2.0 * l.signal as f64);
+        }
+        if self.cfg.rice && self.have_levels {
+            // Follow the signal level on frames that are surely key-down, quickly enough to
+            // ride through fading (about 150 ms of key-down time).
+            let s2 = self.noise_sigma2();
+            if self.amp2 <= 0.0 {
+                let hi = self.levels.signal as f64;
+                self.amp2 = (hi * hi - 2.0 * s2).max(s2);
+            } else if llr > 2.0 {
+                let est = (env as f64).powi(2) - 2.0 * s2;
+                self.amp2 += 0.033 * (est - self.amp2);
+                self.amp2 = self.amp2.max(s2);
+            }
+        }
 
-        if self.cfg.afc && self.have_levels && self.levels.separation > 3.0 {
+        // The AFC waits until the notch detector has had its first look: otherwise a steady
+        // carrier inside the passband pulls the tone away before it is notched out.
+        let notch_ready = !self.cfg.auto_notch || self.notch.ready();
+        if self.cfg.afc && notch_ready && self.have_levels && self.levels.separation > 3.0 {
             let on = env > (self.levels.noise + self.levels.signal) * 0.5;
             if let (true, Some((pi, pq))) = (on, self.prev_z) {
                 // z * conj(prev): its angle is the phase step per frame.
@@ -260,14 +341,45 @@ impl Frontend {
         }
     }
 
+    /// Noise power per I/Q component in the filter, from the reference bands beside the tone
+    /// (pure noise, the keyed tone never reaches them): E[e^2] = 2 sigma^2.
+    fn noise_sigma2(&self) -> f64 {
+        let r = self.pow_ref[0].min(self.pow_ref[1]);
+        if r > 0.0 && self.frames_seen > 100 {
+            r / 2.0
+        } else {
+            // Before the references settle: from the noise cluster (Rayleigh mean sigma*sqrt(pi/2)).
+            let m = self.levels.noise as f64 / (PI / 2.0).sqrt();
+            m * m
+        }
+    }
+
     fn llr(&self, env: f32) -> f32 {
+        if self.cfg.rice && self.amp2 > 0.0 {
+            if self.levels.separation < 1.5 {
+                return 0.0;
+            }
+            let s2 = self.noise_sigma2().max(1e-24);
+            let a = self.amp2.sqrt();
+            let e = env as f64;
+            // ln Rice(e; A, s) - ln Rayleigh(e; s) = -A^2 / 2s^2 + ln I0(e A / s^2)
+            let v = -self.amp2 / (2.0 * s2) + ln_i0(e * a / s2);
+            return v.clamp(-12.0, 12.0) as f32;
+        }
         let l = &self.levels;
         if l.separation < 1.5 {
             return 0.0;
         }
         let e = env as f64;
-        let (n, s) = (l.noise as f64, l.signal as f64);
-        let (sn, ss) = ((l.noise_sd as f64).max(1e-9), (l.signal_sd as f64).max(1e-9));
+        let n = l.noise as f64;
+        let (s, ss) = if self.cfg.track_fading && self.sig_track > 0.0 {
+            // Scale the spread with the level, but never below the noise spread.
+            let k = self.sig_track / (l.signal as f64).max(1e-12);
+            (self.sig_track, ((l.signal_sd as f64) * k).max(l.noise_sd as f64 * 0.7))
+        } else {
+            (l.signal as f64, l.signal_sd as f64)
+        };
+        let (sn, ss) = ((l.noise_sd as f64).max(1e-9), ss.max(1e-9));
         let on = -0.5 * ((e - s) / ss).powi(2) - ss.ln();
         let off = -0.5 * ((e - n) / sn).powi(2) - sn.ln();
         (on - off).clamp(-12.0, 12.0) as f32
@@ -319,6 +431,20 @@ impl Frontend {
         let sep = (hi - lo) / sd_lo.max(1e-12);
         self.levels = Levels { noise: lo as f32, signal: hi as f32, noise_sd: sd_lo as f32, signal_sd: sd_hi as f32, separation: sep as f32 };
         self.have_levels = true;
+    }
+}
+
+/// Natural log of the modified Bessel function I0, accurate to about 1e-7 relative.
+/// Polynomial approximations from Abramowitz and Stegun, 9.8.1 and 9.8.2.
+pub fn ln_i0(x: f64) -> f64 {
+    let ax = x.abs();
+    if ax < 3.75 {
+        let t = (ax / 3.75).powi(2);
+        (1.0 + t * (3.5156229 + t * (3.0899424 + t * (1.2067492 + t * (0.2659732 + t * (0.0360768 + t * 0.0045813)))))).ln()
+    } else {
+        let t = 3.75 / ax;
+        let p = 0.39894228 + t * (0.01328592 + t * (0.00225319 + t * (-0.00157565 + t * (0.00916281 + t * (-0.02057706 + t * (0.02635537 + t * (-0.01647633 + t * 0.00392377)))))));
+        ax - 0.5 * ax.ln() + p.ln()
     }
 }
 
@@ -406,6 +532,15 @@ mod tests {
         let spec = CwSpec { text: "CQ CQ CQ CQ CQ CQ".into(), snr_db: Some(15.0), tone_hz: 900.0, ..Default::default() };
         let (_, f) = run(&spec, 700.0);
         assert!(f.tone_hz() <= 760.0 + 1e-9);
+    }
+
+    #[test]
+    fn ln_i0_matches_known_values() {
+        // I0(0) = 1, I0(1) = 1.2660659, I0(5) = 27.239872, I0(20) = 4.355828e7
+        assert!(ln_i0(0.0).abs() < 1e-9);
+        assert!((ln_i0(1.0) - 1.2660659f64.ln()).abs() < 1e-6);
+        assert!((ln_i0(5.0) - 27.239872f64.ln()).abs() < 1e-5);
+        assert!((ln_i0(20.0) - 4.355828e7f64.ln()).abs() < 1e-5);
     }
 
     #[test]
