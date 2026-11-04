@@ -201,5 +201,8 @@
   "update.install": "Bijwerken",
   "update.notes": "Wat is nieuw?",
   "update.downloading": "Update wordt gedownload",
-  "update.privacy": "De controle vraagt alleen een bestand op bij GitHub. Er worden geen persoonsgegevens of roepletters verstuurd. De app herstart na het bijwerken."
+  "update.privacy": "De controle vraagt alleen een bestand op bij GitHub. Er worden geen persoonsgegevens of roepletters verstuurd. De app herstart na het bijwerken.",
+  "tabs.settings": "Gesprekken",
+  "tabs.wait": "Wachttijd voor een nieuw tabblad (seconden)",
+  "tabs.wait.help": "Verandert de frequentie met meer dan 500 Hz en blijft ze zo lang staan, dan begint een nieuw tabblad. Tijdens het draaien aan de knop komt er geen tabblad bij. Standaard 5, kies 1 tot 30."
 }

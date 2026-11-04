@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { app } from './app.svelte';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { app, SETTLE_MS } from './app.svelte';
 import { MockApi } from './mockApi';
 
 async function fresh(calls: string[] = ['ON3VZ'], extra: Record<string, string> = {}) {
@@ -293,7 +293,11 @@ describe('live decoding', () => {
 
 describe('conversations in tabs', () => {
   beforeEach(async () => {
+    vi.useFakeTimers();
     await fresh();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('starts with one live conversation that holds the demo text', () => {
@@ -308,6 +312,8 @@ describe('conversations in tabs', () => {
     const oldId = app.cur.id;
     const before = app.messages.length;
     (app as unknown as { frequencyMoved(hz: number): void }).frequencyMoved(7_036_200);
+    expect(app.sessions.length).toBe(1);
+    vi.advanceTimersByTime(SETTLE_MS + 10);
     expect(app.sessions.length).toBe(2);
     expect(app.cur.id).not.toBe(oldId);
     expect(app.messages.length).toBe(0);
@@ -327,8 +333,43 @@ describe('conversations in tabs', () => {
     f(7_040_000);
     f(7_045_000);
     f(7_050_000);
+    vi.advanceTimersByTime(SETTLE_MS + 10);
     expect(app.sessions.length).toBe(2);
     expect(app.cur.freq).toBe(7_050_000);
+  });
+
+  it('turning the knob over the band opens one tab at the end, not one per step', () => {
+    app.sessions[0].freq = 7_035_000;
+    for (const hz of [7_040_000, 7_050_000, 7_060_000, 14_020_000]) {
+      app.status.frequency_hz = hz;
+      (app as unknown as { frequencyMoved(hz: number): void }).frequencyMoved(hz);
+      app.cur.messages.push({ id: 9000 + hz, from: 'rx', text: 'NOISE', time: '10:00' });
+      vi.advanceTimersByTime(1000);
+    }
+    expect(app.sessions.length).toBe(1);
+    vi.advanceTimersByTime(SETTLE_MS);
+    expect(app.sessions.length).toBe(2);
+    expect(app.cur.freq).toBe(14_020_000);
+  });
+
+  it('the wait before a new tab is a setting, 5 seconds by default', () => {
+    expect(app.settings?.new_tab_seconds).toBe(5);
+    app.settings!.new_tab_seconds = 2;
+    app.sessions[0].freq = 7_035_000;
+    (app as unknown as { frequencyMoved(hz: number): void }).frequencyMoved(7_100_000);
+    vi.advanceTimersByTime(1900);
+    expect(app.sessions.length).toBe(1);
+    vi.advanceTimersByTime(300);
+    expect(app.sessions.length).toBe(2);
+  });
+
+  it('coming back to the same frequency cancels the new tab', () => {
+    app.sessions[0].freq = 7_035_000;
+    const f = (hz: number) => (app as unknown as { frequencyMoved(hz: number): void }).frequencyMoved(hz);
+    f(7_100_000);
+    f(7_035_100);
+    vi.advanceTimersByTime(SETTLE_MS * 2);
+    expect(app.sessions.length).toBe(1);
   });
 
   it('a new callsign starts a new conversation and the bubble moves with it', () => {

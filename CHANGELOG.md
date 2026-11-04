@@ -1,3 +1,14 @@
+## 0.3.9 (waterfall, speed in pauses, tab wait setting)
+
+- Decoder: during a pause the speed estimate no longer runs away. Before, a 3.5 s silence made it climb to about 110 WPM and the next transmission came out as single letters (`MTMT MMTM`). The speed only follows real characters now.
+- A new tab starts after the frequency has stayed put for 5 seconds (setting Conversations, 1 to 30 seconds).
+
+- The waterfall measured its noise level over the whole strip. With a narrow filter in the radio, most of the strip is silent, so the noise inside the filter came out nearly white. The level is now followed per frequency (a running median per bin, with the median of the neighbours about 80 Hz either side), so noise stays dark whatever the filter shape and real signals stand out. On simulated noise inside a 200 to 900 Hz filter the average value in the passband fell from 239 to 39 (scale 0 to 255).
+
+## 0.3.8 (calmer tabs while tuning)
+
+- Turning the tuning knob no longer opens a tab per step. A new conversation starts only when the frequency has stayed put for 3 seconds. Coming back close to the old frequency (within 500 Hz) cancels it. A frequency typed in the app starts the conversation at once.
+
 ## 0.3.7 (updates from within the app)
 
 - The app looks for a newer version on GitHub at start and with the button Check for updates (Settings). A bar shows the new version; Update now downloads, installs and restarts. The release notes are shown in the settings. No personal data is sent.

@@ -578,7 +578,11 @@ impl Decoder {
             }
             self.locked = true;
         }
+        // The speed only follows real marks. In a silence (or with one lonely blip) every
+        // search ends a little faster than the last, and the estimate ran away to 100 WPM
+        // during a pause, after which the next transmission came out as single letters.
         self.u = Some(match self.u {
+            Some(old) if marks < 2 => old,
             Some(old) if !switched => (old.ln() * 0.5 + u.ln() * 0.5).exp(),
             _ => u,
         });

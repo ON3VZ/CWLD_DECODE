@@ -86,6 +86,8 @@ export interface Settings {
   last_policy: TxPolicy;
   first_run_done: boolean;
   signals_panel: boolean;
+  /** Seconds the frequency must stay put before a new tab starts (1 to 30). */
+  new_tab_seconds: number;
 }
 
 export interface RadioStatus {

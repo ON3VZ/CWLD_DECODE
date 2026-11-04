@@ -92,3 +92,10 @@ Wat de opnames leerden:
 - De signalen zaten op 410, 615, 640 en 799 Hz, niet op 700. Zonder zoeken bleef de decoder op de verkeerde plaats.
 - Het stuk `MTMT MMTM` in de OK5O-opname is nog niet verklaard (zelfde stuk ook bij vaste 796 Hz). Daarvoor is een opname met bekende tekst nodig.
 - Zoeken vindt signalen vanaf ongeveer +3 dB. Zwakkere signalen moet je aanklikken.
+
+## Opname 7008.0 kHz (DL6JF, 22 tot 26 WPM): snelheid liep weg in een pauze
+
+- Zuiver signaal op 580 Hz, punt 54 ms (22 WPM), later 46 ms (26 WPM), streep 3 eenheden, korte lettergaten (ongeveer 2,2 eenheden).
+- Fout: na "K" volgde 3,5 s stilte. In die stilte schoof de snelheidsschatting bij elke zoekronde iets omhoog (35, 46, 55, 71, 84, 110 WPM). De volgende uitzending kwam eruit als losse letters (`MTMT MMTM MTMT MMTT` voor `CQ CQ`). Dit is ook de verklaring voor het patroon in de OK5O-opname.
+- Oplossing: de snelheid volgt alleen nog echte tekens (minstens 2 gesloten tekens in het pad). Resultaat op dezelfde opname: `K CQCQDEDL6?DL6JF PS`, snelheid blijft 26 tot 27 WPM tijdens de pauze.
+- Waterfall: de ruisreferentie was het 25e percentiel over de hele strook. Bij een sterk signaal met brede zijbanden of een smal radiofilter werd het hele midden wit. Nu een lopende mediaan per frequentiebin (mediaan van de buren, 80 Hz aan elke kant). Op deze opname: één dunne lijn op 580 Hz.

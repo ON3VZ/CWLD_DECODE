@@ -201,5 +201,8 @@
   "update.install": "Update now",
   "update.notes": "What is new?",
   "update.downloading": "Downloading the update",
-  "update.privacy": "The check only fetches a file from GitHub. No personal data or callsigns are sent. The app restarts after updating."
+  "update.privacy": "The check only fetches a file from GitHub. No personal data or callsigns are sent. The app restarts after updating.",
+  "tabs.settings": "Conversations",
+  "tabs.wait": "Wait before a new tab (seconds)",
+  "tabs.wait.help": "When the frequency changes by more than 500 Hz and stays there this long, a new tab starts. No tab is added while you turn the knob. Default 5, choose 1 to 30."
 }

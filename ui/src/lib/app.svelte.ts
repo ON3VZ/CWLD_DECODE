@@ -28,6 +28,8 @@ export interface Session {
 
 /** A frequency change of more than this many Hz starts a new conversation. */
 export const NEW_CONVERSATION_HZ = 500;
+/** Default wait before the frequency counts as a new conversation (ms), see settings.new_tab_seconds. */
+export const SETTLE_MS = 5000;
 /** Saved conversations kept on this computer. */
 export const MAX_SESSIONS = 40;
 const STORE_KEY = 'cwld.sessions.v1';
@@ -176,12 +178,34 @@ class AppState {
     return [khz, x.qso.call].filter(Boolean).join(' ') || t('tabs.empty');
   }
 
-  /** The radio moved. A big jump starts a new conversation. */
-  private frequencyMoved(hz: number) {
+  private settleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * The radio moved. A big jump starts a new conversation, but only when the frequency has stayed
+   * put for new_tab_seconds (5 by default), so turning the knob over the band does not open a tab per step.
+   * `now` skips the wait (the operator typed the frequency).
+   */
+  private frequencyMoved(hz: number, now = false) {
     const live = this.cur;
     if (!live || hz <= 0) return;
-    if (live.freq === 0) live.freq = hz;
-    else if (Math.abs(hz - live.freq) > NEW_CONVERSATION_HZ) this.newConversation(hz);
+    if (this.settleTimer) {
+      clearTimeout(this.settleTimer);
+      this.settleTimer = null;
+    }
+    if (live.freq === 0) {
+      live.freq = hz;
+      return;
+    }
+    if (Math.abs(hz - live.freq) <= NEW_CONVERSATION_HZ) return;
+    if (now) {
+      this.newConversation(hz);
+      return;
+    }
+    this.settleTimer = setTimeout(() => {
+      this.settleTimer = null;
+      const l = this.cur;
+      if (l && Math.abs(hz - l.freq) > NEW_CONVERSATION_HZ) this.newConversation(hz);
+    }, Math.min(30, Math.max(1, this.settings?.new_tab_seconds ?? 5)) * 1000);
   }
 
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -273,6 +297,8 @@ class AppState {
   }
 
   dispose() {
+    if (this.settleTimer) clearTimeout(this.settleTimer);
+    this.settleTimer = null;
     this.off?.();
   }
 
@@ -633,7 +659,7 @@ class AppState {
     try {
       await this.api.setFrequency(hz);
       this.status.frequency_hz = hz;
-      this.frequencyMoved(hz);
+      this.frequencyMoved(hz, true);
     } catch (e) {
       this.fail(e);
     }

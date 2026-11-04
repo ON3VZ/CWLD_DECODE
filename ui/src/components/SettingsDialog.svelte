@@ -178,6 +178,12 @@
       <p class="muted note">{t('swr.qmx_unverified')}</p>
     {/if}
 
+    <h3>{t('tabs.settings')}</h3>
+    <label>{t('tabs.wait')}
+      <input class="mono short" type="number" min="1" max="30" step="1" bind:value={draft.new_tab_seconds} />
+      <small class="muted">{t('tabs.wait.help')}</small>
+    </label>
+
     <h3>{t('update.title')}</h3>
     <p class="muted">{t('update.version', { version: app.version })}</p>
     <div class="row">

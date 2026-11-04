@@ -114,6 +114,11 @@ pub const SQUELCH_MIN: f32 = 1.0;
 pub const SQUELCH_MAX: f32 = 8.0;
 pub const SQUELCH_DEFAULT: f32 = 3.5;
 
+/// Range and default of the wait before a frequency change starts a new tab (seconds).
+pub const NEW_TAB_SECONDS_MIN: u32 = 1;
+pub const NEW_TAB_SECONDS_MAX: u32 = 30;
+pub const NEW_TAB_SECONDS_DEFAULT: u32 = 5;
+
 impl Default for AudioSettings {
     fn default() -> Self {
         AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new(), squelch: SQUELCH_DEFAULT, auto_tone: true }
@@ -192,6 +197,8 @@ pub struct Settings {
     pub last_policy: TxPolicy,
     pub first_run_done: bool,
     pub signals_panel: bool,
+    /// Seconds the frequency must stay put before the app starts a new conversation (tab).
+    pub new_tab_seconds: u32,
 }
 
 impl Default for Settings {
@@ -207,6 +214,7 @@ impl Default for Settings {
             last_policy: TxPolicy::ListenOnly,
             first_run_done: false,
             signals_panel: false,
+            new_tab_seconds: NEW_TAB_SECONDS_DEFAULT,
         }
     }
 }
@@ -342,5 +350,12 @@ mod tests {
         assert!(!Station::is_valid_call("ON3VZ//P"));
         assert!(!Station::is_valid_call("HELLO"));
         assert!(!Station::is_valid_call("ON"));
+    }
+
+    #[test]
+    fn a_new_tab_waits_five_seconds_and_an_old_file_still_loads() {
+        assert_eq!(Settings::default().new_tab_seconds, 5);
+        let s: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(s.new_tab_seconds, NEW_TAB_SECONDS_DEFAULT);
     }
 }

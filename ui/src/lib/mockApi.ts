@@ -35,6 +35,7 @@ export function defaultSettings(): Settings {
     last_policy: 'listen_only',
     first_run_done: false,
     signals_panel: false,
+    new_tab_seconds: 5,
   };
 }
 
