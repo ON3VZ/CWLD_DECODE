@@ -527,3 +527,39 @@ describe('updates', () => {
     expect(app.updateState).toBe('error');
   });
 });
+
+describe('band scope', () => {
+  it('shows sweeps from the radio and a click tunes the radio there', async () => {
+    const api = await fresh();
+    expect(app.scopeLive).toBe(false);
+    (api as unknown as { pending: unknown[] }).pending.push(api.scopeSweep());
+    api.flush();
+    expect(app.scopeLive).toBe(true);
+    expect(app.scopeHi - app.scopeLo).toBe(50_000);
+    await app.tuneTo(7_023_604);
+    expect(app.status.frequency_hz).toBe(7_023_600);
+  });
+
+  it('hiding the band scope or the audio waterfall is remembered', async () => {
+    await fresh();
+    await app.setView('band_scope', false);
+    await app.setView('audio_waterfall', false);
+    expect(app.settings?.band_scope).toBe(false);
+    expect(app.settings?.audio_waterfall).toBe(false);
+    await app.setView('band_scope', true);
+    expect(app.settings?.band_scope).toBe(true);
+  });
+});
+
+describe('inserting codes from the library', () => {
+  it('adds with a space before and after, in capitals', () => {
+    app.draft = '';
+    app.insertText('qth?');
+    expect(app.draft).toBe('QTH? ');
+    app.insertText('<AR>');
+    expect(app.draft).toBe('QTH? <AR> ');
+    app.draft = 'DL1ABC';
+    app.insertText('TNX');
+    expect(app.draft).toBe('DL1ABC TNX ');
+  });
+});

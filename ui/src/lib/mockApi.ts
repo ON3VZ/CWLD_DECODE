@@ -36,6 +36,8 @@ export function defaultSettings(): Settings {
     first_run_done: false,
     signals_panel: false,
     new_tab_seconds: 5,
+    band_scope: true,
+    audio_waterfall: true,
   };
 }
 
@@ -281,7 +283,31 @@ export class MockApi implements Api {
   /** Delivers one SWR reading (and a possible alert) to the listeners, like the fast tick of the core. */
   emitSwr() {
     const ev = this.swrReading();
+    if (this.settings.band_scope && this.settings.radio.kind === 'simulator') ev.push(this.scopeSweep());
     if (ev.length) this.handlers.forEach((h) => h(ev));
+  }
+
+  private scopeTick = 0;
+
+  /** A made-up band scope sweep, ±25 kHz around the VFO, like the simulator in the core. */
+  scopeSweep(): CoreEvent {
+    const c = this.status.frequency_hz;
+    const lo = c - 25_000;
+    const hi = c + 25_000;
+    const stations: [number, number][] = [[7_012_300, 120], [7_018_000, 70], [7_023_600, 95], [7_025_400, 140], [7_041_200, 85]];
+    this.scopeTick++;
+    const data: number[] = [];
+    for (let i = 0; i < 475; i++) {
+      const f = lo + (i * (hi - lo)) / 475;
+      let v = 18 + Math.floor(Math.random() * 14);
+      stations.forEach(([sf, level], k) => {
+        const keyed = Math.floor(this.scopeTick / (2 + k)) % 3 !== 0;
+        const d = (f - sf) / 120;
+        if (keyed) v = Math.max(v, level * Math.exp(-d * d));
+      });
+      data.push(Math.min(160, Math.round(v)));
+    }
+    return { type: 'rig', event: { kind: 'scope', value: { lo_hz: lo, hi_hz: hi, centered: true, out_of_range: false, data } } };
   }
 
   /** Test helper: text keyed with the paddle on the radio. */

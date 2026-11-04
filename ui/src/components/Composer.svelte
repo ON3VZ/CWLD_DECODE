@@ -36,6 +36,7 @@
       autocapitalize="characters"
       oninput={() => (app.draft = app.draft.toUpperCase())} />
     <button class="btn primary" type="submit" disabled={!canSend || !app.draft.trim()}>{t('composer.send')}</button>
+    <button class="btn" type="button" onclick={() => (app.qOpen = !app.qOpen)} title={t('qlib.open.hint')} aria-label={t('qlib.open.hint')} aria-pressed={app.qOpen}>Q</button>
     <button class="btn danger" type="button" disabled={!busy && app.policy !== 'live'} onclick={() => app.stop()}>{t('composer.stop')} (Esc)</button>
   </form>
 

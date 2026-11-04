@@ -27,7 +27,7 @@ impl Rig for NullRig {
     }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities { cw_text: CwTextMode::None, radio_decoder_text: false, dtr_keying: false, pushes_status: false, swr_meter: false }
+        Capabilities { cw_text: CwTextMode::None, radio_decoder_text: false, dtr_keying: false, pushes_status: false, swr_meter: false, scope: false }
     }
 
     fn execute(&mut self, cmd: &RadioCommand) -> Result<(), RigError> {

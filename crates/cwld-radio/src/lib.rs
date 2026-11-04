@@ -5,6 +5,7 @@
 //! * [`SimRig`] is a simulated radio, used for tests and for working without a radio.
 
 pub mod civ;
+pub mod civ_scope;
 pub mod clock;
 mod error;
 mod guard;

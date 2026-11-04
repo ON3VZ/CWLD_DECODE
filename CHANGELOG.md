@@ -1,3 +1,25 @@
+## 0.4.2 (no more text out of noise)
+
+- Fixed: on a quiet band or on only noise the decoder showed a stream of letters (`TTTT MTMT EE`) and the certainty meter stood at 94 percent. Cause: the radio's CW filter makes the noise very uneven (on your recording 40 dB stronger below 800 Hz than above 1000 Hz), so the level test took noise for a signal.
+- New: a second check on the shape of the signal. Noise through a narrow filter wanders up and down in short blips, keyed CW holds its level for whole dots and dashes. When nearly every blip in the last seconds is shorter than the filter's reaction time, CWLD decodes nothing. Measured on your noise recording, on two other noise recordings and on white noise: 96 to 100 percent short blips. Keyed CW at +3 dB and better: 0 to 40 percent.
+- The certainty meter shows "no text" while only noise is heard, instead of the certainty of old text. The signal to noise value goes away as well.
+- Measured: no change on signals of +3 dB and better, a little less invented text at -6 dB (52.9 instead of 96.5 percent at 12 WPM). Signals around -3 dB and weaker are decoded no better or worse than before. See docs/meetresultaten_decoder.md.
+- After a pause with only noise, a new signal is recognised after about 1 to 2 seconds. The start of it is kept and decoded afterwards (3 seconds are kept).
+
+## 0.4.1 (library of Q-codes and abbreviations)
+
+- New: a slide-out panel with 30 Q-codes, about 50 common CW abbreviations and the prosigns, each with its meaning in English and Dutch. Open it with the Q button next to Send or with F1, close it with Esc. A search box finds a code or a word in the meaning (for example "locatie" finds QTH).
+- A click on a code adds it to your message. For a Q-code there is also a link that adds it as a question (QTH?), with the question spelled out.
+- Releasing is now automatic: a push to main that raises the version in tauri.conf.json builds and publishes the release by itself (no tag needed).
+- Prosigns are added as <AR>, <SK>, <BT> and so on, which the keyer already translates for the radio. CL is shown but cannot be sent by the keyer.
+
+## 0.4.0 (band scope of the radio)
+
+- New: the band scope of the IC-7300 MK II in the app, as on the radio's screen: a spectrum line and a waterfall over the radio's scope span (for example ±25 kHz). A click on a signal tunes the radio there. The red line is the VFO. The data comes over the same USB cable (CI-V command 27: CWLD switches the scope and its data output on after connecting, and the data output off when disconnecting).
+- The audio waterfall (what the decoder hears) moved to its own block on the right, under the QSO panel, and can be hidden there. The band scope can be hidden under the scope itself. Both choices are in Settings, View, and are remembered.
+- The simulator has a made-up band scope with five stations, for trying it out without a radio.
+- Not yet checked on the radio: whether the MK II sends the scope exactly as the CI-V guide describes (11 pieces of 475 points over USB), and how the span is meant in centre mode.
+
 ## 0.3.9 (waterfall, speed in pauses, tab wait setting)
 
 - Decoder: during a pause the speed estimate no longer runs away. Before, a 3.5 s silence made it climb to about 110 WPM and the next transmission came out as single letters (`MTMT MMTM`). The speed only follows real characters now.

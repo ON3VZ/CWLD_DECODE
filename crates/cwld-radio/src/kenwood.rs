@@ -257,7 +257,7 @@ impl<T: Transport> Rig for QmxRig<T> {
     }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities { cw_text: CwTextMode::Buffered { size: KY_BUFFER }, radio_decoder_text: true, dtr_keying: true, pushes_status: true, swr_meter: true }
+        Capabilities { cw_text: CwTextMode::Buffered { size: KY_BUFFER }, radio_decoder_text: true, dtr_keying: true, pushes_status: true, swr_meter: true, scope: false }
     }
 
     fn execute(&mut self, c: &RadioCommand) -> Result<(), RigError> {
@@ -318,6 +318,8 @@ impl<T: Transport> Rig for QmxRig<T> {
                 let line = String::from_utf8_lossy(bytes).to_string();
                 self.send(&line)
             }
+            // The QMX has no band scope.
+            RadioCommand::SetScope(_) => Ok(()),
         }
     }
 

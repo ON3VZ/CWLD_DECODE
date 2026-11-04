@@ -88,6 +88,10 @@ export interface Settings {
   signals_panel: boolean;
   /** Seconds the frequency must stay put before a new tab starts (1 to 30). */
   new_tab_seconds: number;
+  /** Show the radio's band scope (when the radio sends it). */
+  band_scope: boolean;
+  /** Show the narrow audio waterfall (what the decoder hears). */
+  audio_waterfall: boolean;
 }
 
 export interface RadioStatus {
@@ -119,7 +123,17 @@ export type RigEvent =
   | { kind: 'paddle_text'; value: string }
   | { kind: 'queue'; value: string[] }
   | { kind: 'warning'; value: string }
-  | { kind: 'swr'; value: number };
+  | { kind: 'swr'; value: number }
+  | { kind: 'scope'; value: ScopeSweep };
+
+/** One sweep of the radio's own band scope: levels (0 to 160) evenly spread from lo_hz to hi_hz. */
+export interface ScopeSweep {
+  lo_hz: number;
+  hi_hz: number;
+  centered: boolean;
+  out_of_range: boolean;
+  data: number[];
+}
 
 export interface DecoderStats {
   /** 0..1, estimate from the decoder's own character probabilities. */

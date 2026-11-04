@@ -746,3 +746,11 @@ Elk item heeft een vraagvorm (met `?`) en een mededelingsvorm (zonder `?`).
 - De UI praat via `Api.checkUpdate()` en `Api.installUpdate()`; `AppState` houdt `updateState` (idle, checking, none, available, downloading, error). Opstartcontrole is stil bij fouten; de knop in de instellingen toont fouten.
 - `release.yml` draait bij een tag `v*`: bouwt, tekent, maakt de Release en uploadt `latest.json` (tauri-action). Zie `docs/nieuwe_versie_publiceren.md`.
 - Er gaan geen persoonsgegevens mee in de controle. Linux volgt later (AppImage-updater).
+
+## E. Bandscoop (0.4.0)
+
+- Bron: CI-V commando 27 (IC-7300 MK II CI-V Reference Guide). `27 10 01` zet de scoop aan, `27 11 01` stuurt de gegevens naar de pc (alleen via USB of LAN). Een sweep komt via USB in 11 delen: deel 1 met beschrijving (modus, centrum en span of de twee randen, buiten bereik), delen 2 tot 10 met 50 punten, deel 11 met 25 punten. Samen 475 punten van 0 tot 160.
+- `cwld-radio::civ_scope::ScopeAssembler` zet de delen samen; een ontbrekend of verkeerd deel laat die sweep vallen. De Icom-driver geeft per poll alleen de nieuwste sweep door (`RigEvent::Scope`), dus hooguit 10 per seconde naar de interface.
+- `RadioCommand::SetScope(bool)` is van klasse Config: toegelaten in elke modus, zendt nooit. De kern zet de scoop aan na verbinden (als `settings.band_scope`), uit bij loskoppelen en volgt de instelling.
+- Interface: `BandScope.svelte` (spectrumlijn 70 px, waterfall 140 px, frequentieschaal, VFO-lijn, klik stemt af via `set_frequency`). De audio-waterfall staat in een eigen blok rechts (`AudioPanel.svelte`, 110 px hoog). `settings.band_scope` en `settings.audio_waterfall` bepalen wat zichtbaar is.
+- [TEST] op de radio: de span in centre-modus lezen we als afstand van het midden tot elke rand.

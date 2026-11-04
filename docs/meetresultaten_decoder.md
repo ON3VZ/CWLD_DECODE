@@ -99,3 +99,24 @@ Wat de opnames leerden:
 - Fout: na "K" volgde 3,5 s stilte. In die stilte schoof de snelheidsschatting bij elke zoekronde iets omhoog (35, 46, 55, 71, 84, 110 WPM). De volgende uitzending kwam eruit als losse letters (`MTMT MMTM MTMT MMTT` voor `CQ CQ`). Dit is ook de verklaring voor het patroon in de OK5O-opname.
 - Oplossing: de snelheid volgt alleen nog echte tekens (minstens 2 gesloten tekens in het pad). Resultaat op dezelfde opname: `K CQCQDEDL6?DL6JF PS`, snelheid blijft 26 tot 27 WPM tijdens de pauze.
 - Waterfall: de ruisreferentie was het 25e percentiel over de hele strook. Bij een sterk signaal met brede zijbanden of een smal radiofilter werd het hele midden wit. Nu een lopende mediaan per frequentiebin (mediaan van de buren, 80 Hz aan elke kant). Op deze opname: één dunne lijn op 580 Hz.
+
+## Opname 0,0 kHz (19:18, alleen ruis, pitch 956 Hz): tekst uit ruis
+
+- Gebruiker: de decoder gaf een stroom letters (`TTTT MTMT EE`) met 94 procent zekerheid, terwijl er niets te horen was. Opname 33,5 s, 48 kHz.
+- Spectrum van de opname: 37 tot 40 dB (relatief) tussen 200 en 800 Hz, 21 dB bij 800 tot 1000 Hz, onder -7 dB boven 1000 Hz. De pitch staat op de steile flank van het radiofilter. De scheiding van niveau (`separation`) schommelde daar tussen 3,2 en 3,7 voor pure ruis, rond de drempel 3,5. Een niveautest alleen kan ruis hier niet van een zwak signaal scheiden.
+- Meting van de vorm van de omhullende (5 s venster, drempel halverwege tussen het 25e en 97e percentiel, bandbreedte van het filter als schaal). Aandeel merken korter dan de reactietijd van het filter:
+
+| Bron | Aandeel korte merken |
+|---|---|
+| Deze ruisopname (956 Hz en 700 Hz) | 0,97 tot 1,00 |
+| Ruisopname 7047,2 kHz (700 en 410 Hz) | 0,98 tot 1,00 |
+| Witte ruis, synthetisch | 0,96 tot 1,00 |
+| Echt signaal, F8UFT 7012 kHz | 0,00 tot 0,50 (meestal 0,05) |
+| Synthetisch +10 / +3 dB (12, 20, 30 WPM) | 0,00 tot 0,10 / 0,07 tot 0,56 |
+| Synthetisch 0 dB | 0,21 tot 0,81 |
+| Synthetisch -3 dB | 0,48 tot 0,97 |
+
+- Maatregel: de poort sluit na 3 opeenvolgende metingen (0,25 s) met minstens 0,95 en 8 merken, en opent weer bij 0,90 of lager. Er wordt dan niets gedecodeerd en de zekerheidsmeter toont geen waarde. Bij +3 dB en beter is er geen overlap met ruis. Bij -3 dB en zwakker overlapt het wel (tot 0,97), dus daar kan de poort dicht blijven. Die signalen werden al niet betrouwbaar gelezen.
+- Resultaat op de ruisopname: 0 tekens (voorheen een stroom onzin op 956 en op 700 Hz). Echte opnames: F8UFT en OK5O nog leesbaar.
+- Tabel (CER, 4 berichten per cel, `cwld_bench --quick`, oud tegenover nieuw): +30 tot +3 dB onveranderd. 0 dB: 12 WPM 2,4 naar 0,0, andere snelheden gelijk. -3 dB: 17,6/51,0/55,0/72,2 naar 18,8/52,0/50,8/71,1. -6 dB: 96,5/117,3/93,3/84,4 naar 52,9/91,8/92,5/100,0 (minder verzonnen tekst). Moeilijke gevallen: tweede station 60 Hz verder 0,0 naar 1,9, traag 8 WPM bij 0 dB 1,9 naar 3,8, carrier 120 Hz 1,9 naar 4,7. Dat zijn verschillen van een enkel teken bij 4 berichten per cel, dus binnen de meetonzekerheid, maar niet bewezen gelijk. Een run met 12 berichten per cel volgt bij de volgende meting.
+- Nog niet gemeten: bandruis met sterke pieken (atmosferische klikken), kamerruis in de microfoon, en een zwak signaal dat net begint na lange ruis (de start wordt 3 s bewaard, daarna weggegooid).

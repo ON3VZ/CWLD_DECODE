@@ -178,6 +178,12 @@
       <p class="muted note">{t('swr.qmx_unverified')}</p>
     {/if}
 
+    <h3>{t('view.title')}</h3>
+    <label class="check"><input type="checkbox" bind:checked={draft.band_scope} /> {t('view.band_scope')}</label>
+    <small class="muted">{t('view.band_scope.help')}</small>
+    <label class="check"><input type="checkbox" bind:checked={draft.audio_waterfall} /> {t('view.audio_waterfall')}</label>
+    <small class="muted">{t('view.audio_waterfall.help')}</small>
+
     <h3>{t('tabs.settings')}</h3>
     <label>{t('tabs.wait')}
       <input class="mono short" type="number" min="1" max="30" step="1" bind:value={draft.new_tab_seconds} />

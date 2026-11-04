@@ -9,6 +9,7 @@
 
 pub mod bench;
 pub mod decoder;
+pub mod gate;
 pub mod lang;
 pub mod pipeline;
 

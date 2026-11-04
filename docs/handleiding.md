@@ -41,3 +41,24 @@ Alleen in de stand **LIVE** zendt CWLD. Gebruik bij het testen laag vermogen en 
 ## 8. Updates
 
 CWLD kijkt bij het opstarten of er een nieuwe versie is. Bovenaan verschijnt dan een balk met de knop **Bijwerken**: de app downloadt de nieuwe versie, installeert ze en start zelf opnieuw op. Je kunt ook zelf kijken: Instellingen, **Zoek updates**. Daar zie je ook wat er nieuw is. De controle haalt alleen een bestand op bij GitHub en verstuurt geen persoonsgegevens. Stop eerst met zenden voor je bijwerkt, want de app herstart.
+
+## 9. Bandscoop
+
+Bovenaan staat de bandscoop van de radio: hetzelfde spectrum als op het scherm van de IC-7300 MK II, met een lijn (sterkte) en een waterfall (verloop in de tijd). De rode lijn is je VFO. Beweeg met de muis over de scoop om de frequentie te zien, klik op een signaal en de radio stemt erheen.
+
+- Hoe breed de scoop is, kies je op de radio zelf (de SPAN-knop op het scoopscherm, bv. ±25 kHz). CWLD volgt dat.
+- CWLD zet de scoopgegevens zelf aan als je de radio verbindt. Op de radio moet niets extra ingesteld worden, behalve wat in de eerste start staat (CI-V via USB).
+- Rechts, onder het QSO-blok, staat het blok **Audio**: wat de decoder hoort binnen het filter van de radio. Een klik daar zet de decoder op die toon.
+- Beide kun je verbergen: klik onder de bandscoop op **Bandscoop verbergen**, of in het blok Audio op **Verbergen**. Je kunt ook naar Instellingen, **Beeld** gaan. Een verborgen deel haal je terug met de link bovenaan het scherm.
+- De QMX heeft geen bandscoop; daar zie je alleen de audio-waterfall.
+
+## 10. Codes en afkortingen
+
+Naast de knop Verzenden staat een knop **Q** (of druk op F1). Er schuift rechts een paneel open met Q-codes, veelgebruikte CW-afkortingen en prosigns, elk met uitleg in het Nederlands of Engels (volgens je taalinstelling).
+
+1. Typ in het zoekvak een code of een woord uit de uitleg. "QTH" of "locatie" vindt beide QTH.
+2. Kies bovenaan Alles, Q-codes, Afkortingen of Prosigns om de lijst te beperken.
+3. Klik op een code om ze aan je bericht toe te voegen. Klik op de link bij "Als vraag" om ze met een vraagteken toe te voegen (QTH? betekent: wat is uw locatie?).
+4. Sluit het paneel met Esc, met het kruisje of door naast het paneel te klikken.
+
+Prosigns komen als `<AR>`, `<SK>`, `<BT>` in je bericht. De keyer vertaalt ze voor de radio. `<CL>` staat erbij als uitleg, maar kan niet via de keyer verzonden worden.

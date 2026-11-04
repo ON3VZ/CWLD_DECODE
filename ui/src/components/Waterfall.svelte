@@ -4,6 +4,9 @@
   import { t } from '../lib/i18n.svelte';
   import { demoSignals } from '../lib/demo';
 
+  /** Height in pixels: a slim strip, or taller inside the side panel. */
+  let { height = 40 }: { height?: number } = $props();
+
   let canvas: HTMLCanvasElement;
   // Frequency span of the live rows, for the tone line and for clicks.
   let lo = $state(200);
@@ -93,11 +96,11 @@
   });
 </script>
 
-<div class="wf" class:live title={live ? t('waterfall.click') : ''}>
+<div class="wf" class:live style:height={`${height}px`} title={live ? t('waterfall.click') : ''}>
   <canvas
     bind:this={canvas}
     width="800"
-    height="56"
+    height={height}
     onclick={pick}
     style:width={`${zoom * 100}%`}
     style:margin-left={`${-left * zoom * 100}%`}></canvas>
@@ -120,7 +123,7 @@
 </div>
 
 <style>
-  .wf { position: relative; height: 56px; background: #05080b; border-bottom: 1px solid var(--line); overflow: hidden; }
+  .wf { position: relative; background: #05080b; border-bottom: 1px solid var(--line); overflow: hidden; }
   canvas { height: 100%; display: block; }
   .live canvas { cursor: crosshair; }
   .tone { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(255, 90, 90, 0.8); pointer-events: none; }

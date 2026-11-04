@@ -45,6 +45,21 @@ pub enum RigEvent {
     Swr(f32),
     /// Something the operator should know. A stable code, the interface translates it.
     Warning(String),
+    /// One sweep of the radio's own spectrum scope (band scope).
+    Scope(ScopeSweep),
+}
+
+/// One sweep of a radio's spectrum scope: the level at evenly spaced points from `lo_hz` to
+/// `hi_hz`. On an Icom the values run from 0 to 160.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScopeSweep {
+    pub lo_hz: u64,
+    pub hi_hz: u64,
+    /// True in centre mode (the scope follows the VFO), false for fixed edges.
+    pub centered: bool,
+    /// The radio says the data is out of range (no picture this time).
+    pub out_of_range: bool,
+    pub data: Vec<u8>,
 }
 
 /// Everything CWLD can ask a radio to do. There is no other way to reach a radio driver.
@@ -60,6 +75,8 @@ pub enum RadioCommand {
     KeyDown(bool),
     /// Raw bytes for diagnostics. Treated as transmit-capable: default deny.
     Raw(Vec<u8>),
+    /// Switches the output of the radio's band scope to the app on or off. Receive only.
+    SetScope(bool),
 }
 
 /// Safety class of a command. Outside `TxPolicy::Live` only the first three are allowed.
@@ -89,6 +106,7 @@ impl RadioCommand {
             RadioCommand::SetPtt(_) => CommandClass::Transmit,
             RadioCommand::KeyDown(_) => CommandClass::Transmit,
             RadioCommand::Raw(_) => CommandClass::Transmit,
+            RadioCommand::SetScope(_) => CommandClass::Config,
         }
     }
 
@@ -104,6 +122,7 @@ impl RadioCommand {
             RadioCommand::SetPtt(true),
             RadioCommand::KeyDown(true),
             RadioCommand::Raw(vec![0xFE, 0xFE]),
+            RadioCommand::SetScope(true),
         ]
     }
 
@@ -118,6 +137,7 @@ impl RadioCommand {
             RadioCommand::SetPtt(_) => "set_ptt",
             RadioCommand::KeyDown(_) => "key_down",
             RadioCommand::Raw(_) => "raw",
+            RadioCommand::SetScope(_) => "set_scope",
         }
     }
 }
@@ -139,6 +159,7 @@ mod tests {
             ("set_ptt", Transmit),
             ("key_down", Transmit),
             ("raw", Transmit),
+            ("set_scope", Config),
         ];
         let examples = RadioCommand::examples();
         assert_eq!(examples.len(), expected.len());

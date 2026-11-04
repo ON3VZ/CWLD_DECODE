@@ -1,12 +1,13 @@
 //! Driver for the Icom IC-7300 MK II over CI-V (USB virtual serial port).
 
 use crate::civ::{self, cmd, Frame};
+use crate::civ_scope::{self, ScopeAssembler};
 use crate::clock::Clock;
 use crate::error::RigError;
 use crate::keyer::{self, KeyerError, ProsignStyle};
 use crate::rig::{Capabilities, CwTextMode, Rig, RigInfo};
 use crate::transport::Transport;
-use cwld_types::{RadioCommand, RadioMode, RadioStatus, RigEvent};
+use cwld_types::{RadioCommand, RadioMode, RadioStatus, RigEvent, ScopeSweep};
 use std::collections::VecDeque;
 
 /// CI-V 0x17 takes at most 30 characters per command.
@@ -43,6 +44,9 @@ pub struct IcomRig<T: Transport> {
     tx_deadline: Option<u64>,
     last_rx: Option<u64>,
     started: u64,
+    scope: ScopeAssembler,
+    /// The newest complete scope sweep. Only the newest is passed on, at most one per poll.
+    scope_latest: Option<ScopeSweep>,
 }
 
 impl<T: Transport> IcomRig<T> {
@@ -73,6 +77,8 @@ impl<T: Transport> IcomRig<T> {
             tx_deadline: None,
             last_rx: None,
             started,
+            scope: ScopeAssembler::default(),
+            scope_latest: None,
         }
     }
 
@@ -194,6 +200,11 @@ impl<T: Transport> IcomRig<T> {
                     self.tx_deadline = None;
                 }
             }
+            civ_scope::SCOPE if b.len() >= 2 && b[1] == civ_scope::SCOPE_DATA => {
+                if let Some(s) = self.scope.push(b) {
+                    self.scope_latest = Some(s);
+                }
+            }
             civ::OK => {
                 self.acks.pop_front();
                 self.ng_count = 0;
@@ -205,6 +216,13 @@ impl<T: Transport> IcomRig<T> {
             }
             _ => {}
         }
+    }
+
+    fn take_events(&mut self) -> Vec<RigEvent> {
+        if let Some(s) = self.scope_latest.take() {
+            self.events.push(RigEvent::Scope(s));
+        }
+        std::mem::take(&mut self.events)
     }
 
     /// The radio said NG to a block. Put it back, and stop pipelining if that was the cause.
@@ -231,7 +249,7 @@ impl<T: Transport> Rig for IcomRig<T> {
     }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities { cw_text: CwTextMode::Chunked { max: CHUNK }, radio_decoder_text: false, dtr_keying: false, pushes_status: true, swr_meter: true }
+        Capabilities { cw_text: CwTextMode::Chunked { max: CHUNK }, radio_decoder_text: false, dtr_keying: false, pushes_status: true, swr_meter: true, scope: true }
     }
 
     fn execute(&mut self, c: &RadioCommand) -> Result<(), RigError> {
@@ -285,6 +303,12 @@ impl<T: Transport> Rig for IcomRig<T> {
             RadioCommand::SetPtt(on) => self.send_set(&[cmd::TX_STATUS[0], cmd::TX_STATUS[1], u8::from(*on)]),
             RadioCommand::KeyDown(_) => Err(RigError::InvalidArgument("key_down is not supported by this driver".into())),
             RadioCommand::Raw(bytes) => self.t.write_all(bytes).map_err(|e| self.io_failed(e)),
+            RadioCommand::SetScope(on) => {
+                if *on {
+                    self.send_set(&civ_scope::scope_on(true))?;
+                }
+                self.send_set(&civ_scope::scope_output(*on))
+            }
         }
     }
 
@@ -315,7 +339,7 @@ impl<T: Transport> Rig for IcomRig<T> {
         }
         let _ = self.execute(&RadioCommand::ReadStatus);
         let _ = self.pump();
-        std::mem::take(&mut self.events)
+        self.take_events()
     }
 
     fn fast_poll(&mut self) -> Vec<RigEvent> {
@@ -329,7 +353,7 @@ impl<T: Transport> Rig for IcomRig<T> {
         if self.status.transmitting {
             let _ = self.send(&cmd::SWR_METER);
         }
-        std::mem::take(&mut self.events)
+        self.take_events()
     }
 
     fn status(&self) -> RadioStatus {

@@ -1,9 +1,13 @@
 name: release
-# Runs when a tag like v0.3.7 is pushed (or by hand with the tag name). Builds the Windows
-# installer, signs the update package, makes a GitHub Release and uploads latest.json
+# Runs automatically when a push to main changes the version in src-tauri/tauri.conf.json
+# and no release for that version exists yet. Also runs when a tag like v0.3.7 is pushed,
+# or by hand with the tag name. Builds the Windows installer, signs the update package,
+# makes a GitHub Release (which also creates the tag) and uploads latest.json
 # (the file the app looks at).
 on:
   push:
+    branches: [main]
+    paths: ['src-tauri/tauri.conf.json']
     tags: ['v*']
   workflow_dispatch:
     inputs:
@@ -13,10 +17,34 @@ on:
 permissions:
   contents: write
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.p.outputs.tag }}
+      skip: ${{ steps.p.outputs.skip }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: p
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then tag="${{ inputs.tag }}"; skip=false
+          elif [ "${{ github.ref_type }}" = "tag" ]; then tag="${{ github.ref_name }}"; skip=false
+          else
+            v=$(node -p "require('./src-tauri/tauri.conf.json').version")
+            tag="v$v"; skip=false
+            if gh release view "$tag" >/dev/null 2>&1; then skip=true; echo "Release $tag exists, nothing to do."; fi
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
   windows:
+    needs: plan
+    if: needs.plan.outputs.skip != 'true'
+    concurrency: release-${{ needs.plan.outputs.tag }}
     runs-on: windows-latest
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      TAG: ${{ needs.plan.outputs.tag }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v5

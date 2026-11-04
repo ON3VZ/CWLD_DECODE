@@ -6,7 +6,7 @@ use cwld_dsp::frontend::{Frontend, FrontendConfig};
 use cwld_dsp::seek::ToneSeeker;
 use cwld_dsp::FRAME_RATE;
 
-const PENDING_FRAMES: usize = 400;
+const PENDING_FRAMES: usize = 600;
 /// Audio kept for listening again after a move to another pitch.
 const RAW_SECONDS: f64 = 3.0;
 /// After a click on the waterfall the decoder stays put this long.
@@ -39,12 +39,14 @@ pub struct PipelineConfig {
     pub language_model: bool,
     /// Mark strength below which a lone E or T (and similar) counts as a noise blip.
     pub junk_strength: f32,
+    /// Only decode while the envelope looks like keyed CW (see `gate`).
+    pub cw_gate: bool,
     pub decoder: DecoderConfig,
 }
 
 impl PipelineConfig {
     pub fn new(sample_rate: u32, tone_hz: f64) -> Self {
-        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, decoder: DecoderConfig::default() }
+        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, cw_gate: true, decoder: DecoderConfig::default() }
     }
 }
 
@@ -67,6 +69,12 @@ pub struct Pipeline {
     /// is only recognised a moment later is not lost.
     pending: std::collections::VecDeque<f32>,
     snr_db: Option<f32>,
+    gate: crate::gate::EnvelopeGate,
+    /// The envelope looks like keyed CW (see `gate`). Closed until judged, so noise at the start
+    /// does not produce text.
+    cw_open: bool,
+    noise_evals: u32,
+    last_eval: u64,
 }
 
 impl Pipeline {
@@ -79,7 +87,17 @@ impl Pipeline {
         fc.track_fading = cfg.track_fading;
         let mut words = WordCorrector::new(cfg.language_model);
         words.junk_strength = cfg.junk_strength;
-        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: cfg.auto_tone.then(|| ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None }
+        let cfg_gate = cfg.cw_gate;
+        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: cfg.auto_tone.then(|| ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0 }
+    }
+
+    /// Keyed CW is in the envelope (not just noise at this pitch).
+    pub fn cw_present(&self) -> bool {
+        self.cw_open
+    }
+
+    pub fn gate_stats(&self) -> crate::gate::GateStats {
+        self.gate.stats
     }
 
     pub fn sample_rate(&self) -> u32 {
@@ -174,8 +192,23 @@ impl Pipeline {
             self.pending.clear();
             self.dec.push_llr(&vec![0.0; n]);
         }
+        let envs: Vec<f32> = frames.iter().map(|f| f.env).collect();
+        self.gate.push(&envs, self.front.bandwidth_hz());
+        if self.cfg.cw_gate && self.gate.evals != self.last_eval {
+            self.last_eval = self.gate.evals;
+            let g = self.gate.stats;
+            if g.short_frac >= crate::gate::NOISE_SHORT_FRAC && g.marks >= 8 {
+                self.noise_evals += 1;
+                if self.noise_evals >= crate::gate::CLOSE_AFTER {
+                    self.cw_open = false;
+                }
+            } else if g.short_frac <= crate::gate::OPEN_SHORT_FRAC {
+                self.noise_evals = 0;
+                self.cw_open = g.marks >= 3;
+            }
+        }
         let sep = self.front.levels().map(|l| l.separation).unwrap_or(0.0);
-        let usable = self.front.signal_present() && sep >= self.cfg.min_separation;
+        let usable = self.cw_open && self.front.signal_present() && sep >= self.cfg.min_separation;
         self.hold_frames = self.hold_frames.saturating_sub(frames.len());
         self.last_usable = usable;
         if usable {

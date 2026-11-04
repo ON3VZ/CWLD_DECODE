@@ -26,6 +26,8 @@ pub struct Capabilities {
     pub pushes_status: bool,
     /// The radio reports the SWR while it transmits.
     pub swr_meter: bool,
+    /// The radio can send its own spectrum scope (band scope) to the app.
+    pub scope: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

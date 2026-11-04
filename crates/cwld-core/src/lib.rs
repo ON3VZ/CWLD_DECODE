@@ -138,7 +138,10 @@ impl AppCore {
             RadioKind::Simulator => Box::new(SimRig::new()),
             _ => Box::new(NullRig::new()),
         };
-        let rig = GuardedRig::new(first, policy.clone());
+        let mut rig = GuardedRig::new(first, policy.clone());
+        if settings.band_scope && rig.capabilities().scope {
+            let _ = rig.execute(&RadioCommand::SetScope(true));
+        }
         AppCore {
             policy,
             rig: Mutex::new(rig),
@@ -174,7 +177,11 @@ impl AppCore {
         };
         let mut rig = self.rig.lock().unwrap();
         let _ = rig.execute(&RadioCommand::StopCw);
+        let _ = rig.execute(&RadioCommand::SetScope(false));
         *rig.inner_mut() = new;
+        if self.settings.lock().unwrap().band_scope && rig.capabilities().scope {
+            let _ = rig.execute(&RadioCommand::SetScope(true));
+        }
         drop(rig);
         self.settings.lock().unwrap().radio = cfg.clone();
         self.save_settings()
@@ -184,6 +191,7 @@ impl AppCore {
     pub fn disconnect(&self) {
         let mut rig = self.rig.lock().unwrap();
         let _ = rig.execute(&RadioCommand::StopCw);
+        let _ = rig.execute(&RadioCommand::SetScope(false));
         *rig.inner_mut() = Box::new(NullRig::new());
     }
 
@@ -347,7 +355,14 @@ impl AppCore {
         if let Some(e) = &self.audio.lock().unwrap().engine_ref() {
             e.add_words(words);
         }
-        *self.settings.lock().unwrap() = new;
+        let scope = new.band_scope;
+        let was = std::mem::replace(&mut *self.settings.lock().unwrap(), new).band_scope;
+        if scope != was {
+            let mut rig = self.rig.lock().unwrap();
+            if rig.capabilities().scope {
+                let _ = rig.execute(&RadioCommand::SetScope(scope));
+            }
+        }
         self.save_settings()
     }
 
@@ -514,6 +529,21 @@ mod radio_tests {
         let c = AppCore::new(None);
         let cfg = RadioSettings { kind: RadioKind::Qmx, port: "/dev/definitely-not-here".into(), ..RadioSettings::default() };
         assert_eq!(c.connect(&cfg).unwrap_err().code(), "io");
+    }
+
+    #[test]
+    fn the_band_scope_comes_through_and_can_be_switched_off() {
+        let c = AppCore::new(None);
+        let scope = |c: &AppCore| c.fast_tick().into_iter().filter(|e| matches!(e, CoreEvent::Rig { event: RigEvent::Scope(_) })).count();
+        assert_eq!(scope(&c), 1);
+        let mut s = c.settings();
+        s.band_scope = false;
+        c.update_settings(s).unwrap();
+        assert_eq!(scope(&c), 0);
+        let mut s = c.settings();
+        s.band_scope = true;
+        c.update_settings(s).unwrap();
+        assert_eq!(scope(&c), 1);
     }
 
     #[test]

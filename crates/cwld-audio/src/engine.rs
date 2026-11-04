@@ -292,7 +292,13 @@ impl Worker {
 
     fn send_stats(&mut self) {
         self.last_stats = Instant::now();
-        self.send(EngineEvent::Stats { confidence: cwld_types::mean_confidence(&self.conf_window), snr_db: self.pipe.snr_db() });
+        // Without keyed CW in the envelope there is nothing to be sure about: the meter shows
+        // "no signal" instead of the confidence of old text.
+        if !self.pipe.cw_present() {
+            self.conf_window.clear();
+        }
+        let present = self.pipe.cw_present();
+        self.send(EngineEvent::Stats { confidence: if present { cwld_types::mean_confidence(&self.conf_window) } else { None }, snr_db: if present { self.pipe.snr_db() } else { None } });
     }
 
     fn stop_recording(&mut self) {

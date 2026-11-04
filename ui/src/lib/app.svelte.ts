@@ -1,4 +1,4 @@
-import type { Api, AudioStatus, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo } from './types';
+import type { Api, AudioStatus, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
 import { i18n, t } from './i18n.svelte';
 import { demoMessages, demoSignals, type Message, type Signal } from './demo';
 import { expand } from './template';
@@ -70,6 +70,8 @@ class AppState {
   notice = $state<string | null>(null);
   confirmLive = $state(false);
   settingsOpen = $state(false);
+  /** Q-code library panel (slide-out). */
+  qOpen = $state(false);
   /** Seconds left of a simulated transmission in practice mode. */
   practiceBusy = $state(false);
   /** Blocks waiting to be sent to the radio. */
@@ -89,6 +91,15 @@ class AppState {
   inputs = $state<InputDevice[]>([]);
   /** Characters the decoder is not sure about yet, shown faded after the last bubble. */
   tail = $state<{ from: 'rx' | 'paddle'; chars: TentativeChar[] } | null>(null);
+  /** Newest band scope sweeps, not yet drawn (the band scope component takes them). */
+  scopeRows: ScopeSweep[] = [];
+  /** True once the radio sends band scope data. */
+  scopeLive = $state(false);
+  /** Edges of the newest sweep, for the frequency scale and clicks. */
+  scopeLo = $state(0);
+  scopeHi = $state(0);
+  scopeOutOfRange = $state(false);
+
   /** True once real waterfall rows arrive (otherwise the waterfall shows the demo). */
   waterfallLive = $state(false);
   /** Waterfall rows not drawn yet. Plain array on purpose: 20 rows a second need no reactivity. */
@@ -279,6 +290,8 @@ class AppState {
     this.tail = null;
     this.waterfallRows = [];
     this.waterfallLive = false;
+    this.scopeRows = [];
+    this.scopeLive = false;
     this.lastDecodeAt = { rx: 0, paddle: 0 };
     const earlier = api.demo ? [] : this.restore();
     this.nextId = Math.max(100, ...earlier.map((x) => x.id + 1), ...earlier.flatMap((x) => x.messages.map((m) => m.id + 1)));
@@ -373,6 +386,7 @@ class AppState {
         case 'swr': this.swr = e.value; break;
         case 'warning': this.warning = e.value; break;
         case 'paddle_text': this.paddle(e.value); break;
+        case 'scope': this.scopeSweep(e.value); break;
       }
     }
   }
@@ -595,6 +609,12 @@ class AppState {
   }
 
   /** Sends the text of a chip or the typed text. In listen mode nothing is sent. */
+  /** Adds a code or abbreviation to the send box, with a space before it when needed. */
+  insertText(text: string) {
+    const d = this.draft;
+    this.draft = (d && !d.endsWith(' ') ? d + ' ' : d) + text.toUpperCase() + ' ';
+  }
+
   async send(text: string) {
     this.error = null;
     this.notice = null;
@@ -707,6 +727,35 @@ class AppState {
     this.error = null;
     try {
       this.audio = await this.api.decodeFile(path.trim());
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  private scopeSweep(s: ScopeSweep) {
+    this.scopeOutOfRange = s.out_of_range;
+    if (s.out_of_range || s.data.length === 0) return;
+    this.scopeLo = s.lo_hz;
+    this.scopeHi = s.hi_hz;
+    this.scopeRows.push(s);
+    if (this.scopeRows.length > 50) this.scopeRows.splice(0, this.scopeRows.length - 50);
+    if (!this.scopeLive) this.scopeLive = true;
+  }
+
+  /** A click on the band scope: the radio tunes there (rounded to 10 Hz). Allowed in every mode. */
+  async tuneTo(hz: number) {
+    const r = Math.round(hz / 10) * 10;
+    if (r > 0) await this.setFrequency(r);
+  }
+
+  /** Shows or hides the band scope or the audio waterfall, and remembers it. */
+  async setView(part: 'band_scope' | 'audio_waterfall', on: boolean) {
+    if (!this.settings) return;
+    const next = { ...($state.snapshot(this.settings) as Settings), [part]: on };
+    try {
+      await this.api.saveSettings(next);
+      this.settings = next;
+      if (part === 'band_scope' && !on) this.scopeLive = false;
     } catch (e) {
       this.fail(e);
     }

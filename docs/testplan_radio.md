@@ -73,3 +73,21 @@ Eerst I10 en Q10 hierboven: die bepalen of de decoder het ontvangen signaal krij
 - Klopt alles, dan blijft de driver zoals hij is.
 - Klopt iets niet, dan pas ik precies dat aan en voeg ik een test toe met wat de radio echt deed.
 - De punten I10, Q10 en Q8 bepalen hoe de decoder in fase 3 aan zijn audio komt.
+
+## A15. Bandscoop (0.4.0)
+
+1. Verbind de IC-7300 MK II zoals altijd. Binnen een paar seconden moet bovenaan de bandscoop verschijnen met hetzelfde beeld als op de radio.
+2. Zet op de radio de span op ±25 kHz en daarna op ±5 kHz. Controleer dat de frequenties onder de scoop (bv. 7000.0 tot 7050.0 kHz bij ±25 kHz rond 7025) kloppen met het scherm van de radio. Wijkt het een factor twee af, meld het: dan lezen we de span verkeerd.
+3. Klik op een signaal in de scoop. De radio moet naar dat signaal gaan en je hoort de toon.
+4. Draai aan de knop van de radio: de rode lijn en het beeld moeten meelopen.
+5. Zend een korte CQ in LIVE en kijk of de scoop of het zenden hapert. Meld het als de radio commando's weigert (melding in de app).
+6. Klik op Bandscoop verbergen en weer tonen. Herstart de app: de keuze moet onthouden zijn.
+
+## A16. Codes en afkortingen (0.4.1)
+
+Geen radio nodig.
+1. Klik naast Verzenden op **Q** (of druk F1). Verwacht: rechts schuift een paneel open.
+2. Typ `qth` in het zoekvak. Verwacht: QTH staat bovenaan met uitleg. Typ `locatie`: QTH staat in de lijst.
+3. Klik op de knop QTH. Verwacht: `QTH ` staat in het zendvak. Klik op de link `QTH?` bij Als vraag: `QTH? ` komt erbij.
+4. Kies het tabblad Prosigns en klik op `<AR>`. Verwacht: `<AR>` in het zendvak. `<CL>` is grijs.
+5. Druk Esc. Verwacht: het paneel sluit (niets wordt gezonden).

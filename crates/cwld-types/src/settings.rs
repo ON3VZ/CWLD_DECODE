@@ -199,6 +199,10 @@ pub struct Settings {
     pub signals_panel: bool,
     /// Seconds the frequency must stay put before the app starts a new conversation (tab).
     pub new_tab_seconds: u32,
+    /// Show the radio's own spectrum scope (band scope), when the radio can send it.
+    pub band_scope: bool,
+    /// Show the narrow audio waterfall (what the decoder hears).
+    pub audio_waterfall: bool,
 }
 
 impl Default for Settings {
@@ -215,6 +219,8 @@ impl Default for Settings {
             first_run_done: false,
             signals_panel: false,
             new_tab_seconds: NEW_TAB_SECONDS_DEFAULT,
+            band_scope: true,
+            audio_waterfall: true,
         }
     }
 }

@@ -282,3 +282,47 @@ fn swr_readings_are_reported_every_time() {
     let n = ev.iter().filter(|e| matches!(e, RigEvent::Swr(s) if (*s - 1.5).abs() < 1e-3)).count();
     assert_eq!(n, 3);
 }
+
+/// The 11 pieces of one USB scope sweep, centre mode, as the radio sends them.
+fn scope_sweep_bytes(center: u64, half_span: u64, level: u8) -> Vec<u8> {
+    let bcd = |v: u8| ((v / 10) << 4) | (v % 10);
+    let mut out = Vec::new();
+    let mut first = vec![0x27, 0x00, 0x00, bcd(1), bcd(11), 0x00];
+    first.extend_from_slice(&civ::freq_to_bcd(center));
+    first.extend_from_slice(&civ::freq_to_bcd(half_span));
+    first.push(0x00);
+    out.extend(encode(0x00, RADIO, &first));
+    for order in 2..=11u8 {
+        let n = if order == 11 { 25 } else { 50 };
+        let mut b = vec![0x27, 0x00, 0x00, bcd(order), bcd(11)];
+        b.extend(std::iter::repeat(level).take(n));
+        out.extend(encode(0x00, RADIO, &b));
+    }
+    out
+}
+
+#[test]
+fn the_band_scope_is_switched_on_while_only_listening() {
+    let (r, h, _c) = rig(false);
+    let mut g = GuardedRig::new(r, PolicyHandle::new(TxPolicy::ListenOnly));
+    g.execute(&RadioCommand::SetScope(true)).unwrap();
+    let bodies: Vec<Vec<u8>> = written_frames(&h).into_iter().map(|f| f.body).collect();
+    assert_eq!(bodies, vec![vec![0x27, 0x10, 0x01], vec![0x27, 0x11, 0x01]]);
+    g.execute(&RadioCommand::SetScope(false)).unwrap();
+    let bodies: Vec<Vec<u8>> = written_frames(&h).into_iter().map(|f| f.body).collect();
+    assert_eq!(bodies, vec![vec![0x27, 0x11, 0x00]]);
+}
+
+#[test]
+fn scope_sweeps_arrive_and_only_the_newest_is_passed_on() {
+    let (mut r, h, _c) = rig(false);
+    let mut bytes = scope_sweep_bytes(7_030_000, 25_000, 40);
+    bytes.extend(scope_sweep_bytes(7_031_000, 25_000, 90));
+    h.feed(&bytes);
+    let ev = r.fast_poll();
+    let sweeps: Vec<_> = ev.iter().filter_map(|e| if let RigEvent::Scope(s) = e { Some(s.clone()) } else { None }).collect();
+    assert_eq!(sweeps.len(), 1);
+    assert_eq!((sweeps[0].lo_hz, sweeps[0].hi_hz), (7_006_000, 7_056_000));
+    assert_eq!(sweeps[0].data.len(), 475);
+    assert!(sweeps[0].data.iter().all(|v| *v == 90));
+}
