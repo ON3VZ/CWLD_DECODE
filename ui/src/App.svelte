@@ -5,6 +5,7 @@
   import { t } from './lib/i18n.svelte';
   import StatusBar from './components/StatusBar.svelte';
   import Banner from './components/Banner.svelte';
+  import UpdateBar from './components/UpdateBar.svelte';
   import SwrAlert from './components/SwrAlert.svelte';
   import Waterfall from './components/Waterfall.svelte';
   import SessionTabs from './components/SessionTabs.svelte';
@@ -41,6 +42,7 @@
     <StatusBar />
     <SwrAlert />
     <Banner />
+    <UpdateBar />
     <Waterfall />
     <SessionTabs />
     <div class="main" class:with-signals={app.settings.signals_panel}>

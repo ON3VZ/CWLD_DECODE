@@ -1,4 +1,4 @@
-import type { Api, AudioStatus, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy } from './types';
+import type { Api, AudioStatus, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo } from './types';
 import { i18n, t } from './i18n.svelte';
 import { demoMessages, demoSignals, type Message, type Signal } from './demo';
 import { expand } from './template';
@@ -212,6 +212,36 @@ class AppState {
     }
   }
 
+  /** Update state: idle, checking, none (newest), available, downloading, error. */
+  updateState = $state<'idle' | 'checking' | 'none' | 'available' | 'downloading' | 'error'>('idle');
+  updateInfo = $state<UpdateInfo | null>(null);
+  updateProgress = $state(0);
+  version = $state('');
+
+  /** Looks for a newer version. `quiet` (at start) shows nothing when there is none or when it fails. */
+  async checkUpdate(quiet = false) {
+    if (!this.api || this.updateState === 'checking' || this.updateState === 'downloading') return;
+    this.updateState = 'checking';
+    try {
+      const found = await this.api.checkUpdate();
+      this.updateInfo = found;
+      this.updateState = found ? 'available' : quiet ? 'idle' : 'none';
+    } catch {
+      this.updateState = quiet ? 'idle' : 'error';
+    }
+  }
+
+  async installUpdate() {
+    if (!this.api || this.updateState !== 'available') return;
+    this.updateState = 'downloading';
+    this.updateProgress = 0;
+    try {
+      await this.api.installUpdate((f) => (this.updateProgress = f));
+    } catch {
+      this.updateState = 'error';
+    }
+  }
+
   async init(api: Api) {
     this.api = api;
     const snap = await api.getSnapshot();
@@ -234,6 +264,10 @@ class AppState {
     this.viewId = first.id;
     if (api.demo) for (const m of demoMessages) this.ingest(m.from, m.text, m.time);
     this.ready = true;
+    this.updateState = 'idle';
+    this.updateInfo = null;
+    api.appVersion().then((v) => (this.version = v)).catch(() => {});
+    if (!api.demo) void this.checkUpdate(true);
     this.off?.();
     this.off = api.onEvents((ev) => this.onEvents(ev));
   }

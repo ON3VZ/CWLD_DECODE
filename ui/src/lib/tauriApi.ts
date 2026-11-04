@@ -7,7 +7,29 @@ export async function createTauriApi(): Promise<Api> {
   const core = await import('@tauri-apps/api/core');
   const events = await import('@tauri-apps/api/event');
   const invoke = core.invoke as Invoke;
+  let pending: { downloadAndInstall: (cb: (e: { event: string; data?: { contentLength?: number; chunkLength?: number } }) => void) => Promise<void> } | null = null;
   return {
+    appVersion: async () => (await import('@tauri-apps/api/app')).getVersion(),
+    async checkUpdate() {
+      const { check } = await import('@tauri-apps/plugin-updater');
+      const found = await check();
+      pending = found;
+      return found ? { version: found.version, notes: found.body ?? '' } : null;
+    },
+    async installUpdate(onProgress) {
+      if (!pending) throw new Error('no update');
+      let total = 0;
+      let done = 0;
+      await pending.downloadAndInstall((e) => {
+        if (e.event === 'Started') total = e.data?.contentLength ?? 0;
+        else if (e.event === 'Progress') {
+          done += e.data?.chunkLength ?? 0;
+          if (total > 0) onProgress(Math.min(1, done / total));
+        }
+      });
+      onProgress(1);
+      await (await import('@tauri-apps/plugin-process')).relaunch();
+    },
     getSnapshot: () => invoke<Snapshot>('get_snapshot'),
     setPolicy: (policy: TxPolicy, confirmed: boolean) => invoke<void>('set_policy', { policy, confirmed }),
     sendText: (text: string) => invoke<SendOutcome>('send_text', { text }),

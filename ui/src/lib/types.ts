@@ -146,7 +146,19 @@ export interface CoreFailure {
   message?: string;
 }
 
+/** A newer version found on GitHub. */
+export interface UpdateInfo {
+  version: string;
+  notes: string;
+}
+
 export interface Api {
+  /** The version of the installed app. */
+  appVersion(): Promise<string>;
+  /** Asks GitHub for a newer version. Null when this is the newest. Sends no personal data. */
+  checkUpdate(): Promise<UpdateInfo | null>;
+  /** Downloads, installs and restarts. Progress is 0 to 1. */
+  installUpdate(onProgress: (fraction: number) => void): Promise<void>;
   getSnapshot(): Promise<Snapshot>;
   setPolicy(policy: TxPolicy, confirmed: boolean): Promise<void>;
   sendText(text: string): Promise<SendOutcome>;

@@ -37,3 +37,7 @@ Klik bovenaan op **OPNAME**, laat het signaal lopen en klik op Stop. Het WAV-bes
 ## 7. Zenden veilig houden
 
 Alleen in de stand **LIVE** zendt CWLD. Gebruik bij het testen laag vermogen en een kunstantenne of een bekend goede antenne. **Esc** stopt direct.
+
+## 8. Updates
+
+CWLD kijkt bij het opstarten of er een nieuwe versie is. Bovenaan verschijnt dan een balk met de knop **Bijwerken**: de app downloadt de nieuwe versie, installeert ze en start zelf opnieuw op. Je kunt ook zelf kijken: Instellingen, **Zoek updates**. Daar zie je ook wat er nieuw is. De controle haalt alleen een bestand op bij GitHub en verstuurt geen persoonsgegevens. Stop eerst met zenden voor je bijwerkt, want de app herstart.

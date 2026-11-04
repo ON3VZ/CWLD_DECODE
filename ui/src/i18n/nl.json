@@ -190,5 +190,16 @@
   "signal.help": "Groen: de decoder ziet een duidelijk signaal op de ingestelde toonhoogte. Grijs: alleen ruis, er wordt niets gedecodeerd.",
   "waterfall.zoom": "Inzoomen op de toonhoogte",
   "audio.autotone": "Zelf het sterkste signaal zoeken",
-  "audio.autotone.help": "Is het een tijdje stil op de toonhoogte, dan springt de decoder naar het sterkste CW-signaal in de waterfall (zoals GoMax in MRP40). Na een klik op de waterfall blijft hij 10 seconden staan. Zwakke signalen (rond 0 dB) vindt hij niet zelf: klik die aan."
+  "audio.autotone.help": "Is het een tijdje stil op de toonhoogte, dan springt de decoder naar het sterkste CW-signaal in de waterfall (zoals GoMax in MRP40). Na een klik op de waterfall blijft hij 10 seconden staan. Zwakke signalen (rond 0 dB) vindt hij niet zelf: klik die aan.",
+  "update.title": "Updates",
+  "update.version": "Geinstalleerde versie: {version}",
+  "update.check": "Zoek updates",
+  "update.checking": "Bezig met zoeken...",
+  "update.none": "Je hebt de nieuwste versie.",
+  "update.error": "Zoeken lukt niet. Controleer je internetverbinding en probeer later opnieuw.",
+  "update.available": "Nieuwe versie {version} beschikbaar",
+  "update.install": "Bijwerken",
+  "update.notes": "Wat is nieuw?",
+  "update.downloading": "Update wordt gedownload",
+  "update.privacy": "De controle vraagt alleen een bestand op bij GitHub. Er worden geen persoonsgegevens of roepletters verstuurd. De app herstart na het bijwerken."
 }

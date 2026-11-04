@@ -1,3 +1,11 @@
+## 0.3.7 (updates from within the app)
+
+- The app looks for a newer version on GitHub at start and with the button Check for updates (Settings). A bar shows the new version; Update now downloads, installs and restarts. The release notes are shown in the settings. No personal data is sent.
+- Updates are signed with our own key; the app only installs packages that match the public key in `tauri.conf.json`.
+- New workflow `release.yml`: pushing a tag `vX.Y.Z` builds the installer, signs it, makes a GitHub Release and uploads `latest.json`.
+- Windows installer installs for the current user, so updating needs no administrator rights.
+- Step by step guide to publish a version: `docs/nieuwe_versie_publiceren.md`.
+
 ## 0.3.6 (decoder tuned on real recordings)
 
 - Automatic pitch: when the current pitch has been quiet for 1.5 s, the decoder moves to the strongest keyed tone between 300 and 1200 Hz (new `ToneSeeker`, local noise reference so the radio's filter shape does not fool it). The last 3 s of audio are decoded again at the new pitch, so the start of the signal is not lost. A click on the waterfall holds the pitch for 10 s. Can be switched off in the settings.

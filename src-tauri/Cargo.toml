@@ -18,6 +18,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 cwld-core = { path = "../crates/cwld-core", features = ["device"] }
 cwld-types = { path = "../crates/cwld-types" }
 cwld-radio = { path = "../crates/cwld-radio" }

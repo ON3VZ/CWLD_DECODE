@@ -1,0 +1,43 @@
+name: release
+# Runs when a tag like v0.3.7 is pushed. Builds the Windows installer, signs the update
+# package, makes a GitHub Release and uploads latest.json (what the app looks at).
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v5
+        with: { node-version: 22 }
+      - run: npm ci
+        working-directory: ui
+      - run: npm install --global @tauri-apps/cli@2
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '/^## /{p = (index($0, "## " v " ") == 1 || $0 == "## " v)} p' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "CWLD $v" > notes.md; fi
+          cat notes.md
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tauriScript: tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: CWLD ${{ github.ref_name }}
+          releaseBody: See CHANGELOG.md
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: --bundles nsis

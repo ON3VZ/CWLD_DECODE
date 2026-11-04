@@ -738,3 +738,11 @@ Elk item heeft een vraagvorm (met `?`) en een mededelingsvorm (zonder `?`).
 - De pipeline verhuist naar de beste kandidaat als die minstens 14 dB scoort, 0,75 s op dezelfde plaats blijft, meer dan 20 Hz van de huidige toon ligt en de huidige toon 1,5 s stil is (snelle maat: luidste moment van de laatste seconde). Bij verhuizen: nieuwe decoder, woordmodel vergeet het halve woord, de laatste 3 s audio worden opnieuw beluisterd. Daarna 2 s niet opnieuw verhuizen, na een klik 10 s.
 - Zenden: bij de start van een zending door de app geeft de decoder eerst zijn vastgehouden tekst als ontvangst en begint dan opnieuw (`Engine::reset` met `ResetDone` als merkteken). Tekst tot het merkteken krijgt de bron van voor de reset. De eigen zending eindigt pas als de schatting voorbij is en de radio niet meer zendt. Paddle: bij begin en einde van het zenden door de radio zelf dezelfde reset, met de rest als paddle.
 - Drempel standaard 3,5 (was 2). Zie meetresultaten.
+
+## D. Updates
+
+- Tauri updater plugin (Rust) en `@tauri-apps/plugin-updater` met `plugin-process` (herstart). Eindpunt: `https://github.com/ON3VZ/CWLD_DECODE/releases/latest/download/latest.json`. De publieke sleutel staat in `tauri.conf.json`; de privésleutel is een GitHub-secret. Een update zonder passende handtekening wordt geweigerd.
+- `bundle.createUpdaterArtifacts` maakt het ondertekende updatepakket. Windows: NSIS, `installMode: currentUser` (geen beheerdersrechten), updater `installMode: passive`.
+- De UI praat via `Api.checkUpdate()` en `Api.installUpdate()`; `AppState` houdt `updateState` (idle, checking, none, available, downloading, error). Opstartcontrole is stil bij fouten; de knop in de instellingen toont fouten.
+- `release.yml` draait bij een tag `v*`: bouwt, tekent, maakt de Release en uploadt `latest.json` (tauri-action). Zie `docs/nieuwe_versie_publiceren.md`.
+- Er gaan geen persoonsgegevens mee in de controle. Linux volgt later (AppImage-updater).

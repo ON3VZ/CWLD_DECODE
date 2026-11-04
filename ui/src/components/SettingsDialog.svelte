@@ -178,6 +178,23 @@
       <p class="muted note">{t('swr.qmx_unverified')}</p>
     {/if}
 
+    <h3>{t('update.title')}</h3>
+    <p class="muted">{t('update.version', { version: app.version })}</p>
+    <div class="row">
+      <button class="btn" type="button" disabled={app.updateState === 'checking' || app.updateState === 'downloading'} onclick={() => app.checkUpdate()}>{t('update.check')}</button>
+      {#if app.updateState === 'available' && app.updateInfo}
+        <button class="btn primary" type="button" onclick={() => app.installUpdate()}>{t('update.install')}</button>
+      {/if}
+    </div>
+    {#if app.updateState === 'checking'}<p class="muted">{t('update.checking')}</p>{/if}
+    {#if app.updateState === 'none'}<p class="muted">{t('update.none')}</p>{/if}
+    {#if app.updateState === 'error'}<p class="muted">{t('update.error')}</p>{/if}
+    {#if app.updateState === 'available' && app.updateInfo}
+      <p><strong>{t('update.available', { version: app.updateInfo.version })}</strong></p>
+      {#if app.updateInfo.notes}<pre class="notes">{app.updateInfo.notes}</pre>{/if}
+    {/if}
+    <small class="muted">{t('update.privacy')}</small>
+
     <h3>{t('audio.title')}</h3>
     <label>{t('audio.input')}
       <div class="row">

@@ -121,6 +121,21 @@ export class MockApi implements Api {
     this.settings.audio.squelch = Math.min(8, Math.max(1, value));
   }
 
+  /** Test helper: the version the pretend GitHub offers (null: none). */
+  offered: { version: string; notes: string } | null = null;
+  installed = false;
+  async appVersion() {
+    return '0.0.0-demo';
+  }
+  async checkUpdate() {
+    return this.offered;
+  }
+  async installUpdate(onProgress: (f: number) => void) {
+    onProgress(0.5);
+    onProgress(1);
+    this.installed = true;
+  }
+
   async setAutoTone(on: boolean) {
     this.settings.audio.auto_tone = on;
   }

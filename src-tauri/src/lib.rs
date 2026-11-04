@@ -154,6 +154,8 @@ fn start_ticker(app: AppHandle, core: Arc<AppCore>) {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let dir = app.path().app_config_dir()?;
             let core = Arc::new(AppCore::new(Some(dir.join("settings.json"))));

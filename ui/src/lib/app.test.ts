@@ -449,3 +449,40 @@ describe('conversations survive a restart', () => {
     }
   });
 });
+
+describe('updates', () => {
+  it('stays quiet in demo mode and learns the version', async () => {
+    await fresh();
+    await Promise.resolve();
+    expect(app.updateState).toBe('idle');
+    expect(app.version).toBe('0.0.0-demo');
+  });
+
+  it('says so when this is the newest version', async () => {
+    await fresh();
+    await app.checkUpdate();
+    expect(app.updateState).toBe('none');
+  });
+
+  it('offers a newer version with its notes and installs it', async () => {
+    const api = await fresh();
+    api.offered = { version: '9.9.9', notes: 'Better decoder' };
+    await app.checkUpdate();
+    expect(app.updateState).toBe('available');
+    expect(app.updateInfo?.notes).toBe('Better decoder');
+    await app.installUpdate();
+    expect(api.installed).toBe(true);
+    expect(app.updateProgress).toBe(1);
+  });
+
+  it('shows an error on a manual check but not on the quiet start check', async () => {
+    const api = await fresh();
+    api.checkUpdate = async () => {
+      throw new Error('offline');
+    };
+    await app.checkUpdate(true);
+    expect(app.updateState).toBe('idle');
+    await app.checkUpdate();
+    expect(app.updateState).toBe('error');
+  });
+});
