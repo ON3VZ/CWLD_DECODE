@@ -133,6 +133,13 @@ fn stop_recording(core: Core) {
     core.stop_recording()
 }
 
+/// Before an update is installed: let go of the radio port and the sound card so that the
+/// installer finds nothing left to wait for.
+#[tauri::command]
+fn prepare_update(core: Core) {
+    core.prepare_exit()
+}
+
 /// Every 100 ms the safety readings (SWR), every fifth round the full status.
 fn start_ticker(app: AppHandle, core: Arc<AppCore>) {
     std::thread::spawn(move || {
@@ -166,6 +173,8 @@ pub fn run() {
                 // A missing sound card is not fatal: the status shows the error.
                 let _ = core.start_audio();
             }
+            // Connect to the saved radio. A radio that is off is not fatal: the status shows it.
+            let _ = core.auto_connect();
             app.manage(core.clone());
             start_ticker(app.handle().clone(), core);
             Ok(())
@@ -190,8 +199,19 @@ pub fn run() {
             set_squelch,
             set_auto_tone,
             start_recording,
-            stop_recording
+            stop_recording,
+            prepare_update
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running CWLD");
+        .build(tauri::generate_context!())
+        .expect("error while building CWLD")
+        .run(|app, event| {
+            // When CWLD ends, free the radio and the sound card and make sure the process is
+            // really gone (a lingering process stops the installer of an update).
+            if let tauri::RunEvent::Exit = event {
+                if let Some(core) = app.try_state::<Arc<AppCore>>() {
+                    core.prepare_exit();
+                }
+                std::process::exit(0);
+            }
+        });
 }

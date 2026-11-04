@@ -234,5 +234,7 @@
   "qlib.none": "Nothing found.",
   "qlib.hint": "Click a code to add it to your message. Add a ? to make it a question.",
   "qlib.noinsert": "cannot be sent by the radio keyer",
-  "qlib.ask.btn": "Add as question"
+  "qlib.ask.btn": "Add as question",
+  "radio.autoconnect": "Connect when CWLD starts",
+  "radio.autoconnect.help": "CWLD connects to this radio by itself at start. Off: you press Connect yourself. If the radio is off at that moment, CWLD simply starts not connected."
 }

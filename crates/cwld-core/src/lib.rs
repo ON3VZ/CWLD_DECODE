@@ -187,6 +187,24 @@ impl AppCore {
         self.save_settings()
     }
 
+    /// Connects to the saved radio when CWLD starts. `None`: nothing to do (setting off,
+    /// simulator, or no port chosen yet).
+    pub fn auto_connect(&self) -> Option<Result<(), CoreError>> {
+        let cfg = self.settings.lock().unwrap().radio.clone();
+        if !cfg.auto_connect || cfg.kind == RadioKind::Simulator || cfg.port.trim().is_empty() {
+            return None;
+        }
+        Some(self.connect(&cfg))
+    }
+
+    /// Lets go of everything before the program ends or an update is installed: stops sending,
+    /// switches the scope off, closes the radio port, stops recording and the sound card.
+    pub fn prepare_exit(&self) {
+        self.stop_recording();
+        self.stop_audio();
+        self.disconnect();
+    }
+
     /// Lets go of the radio (the port is closed when the driver is dropped).
     pub fn disconnect(&self) {
         let mut rig = self.rig.lock().unwrap();
@@ -394,6 +412,32 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d.join("settings.json")
+    }
+
+    #[test]
+    fn auto_connect_only_for_a_saved_real_radio() {
+        let c = AppCore::new(None);
+        // Simulator: nothing to do.
+        assert!(c.auto_connect().is_none());
+        // A real radio without a port: nothing to do.
+        c.settings.lock().unwrap().radio = RadioSettings { kind: RadioKind::Icom, ..RadioSettings::default() };
+        assert!(c.auto_connect().is_none());
+        // A port that is not there: tried, and an error comes back (the app starts anyway).
+        c.settings.lock().unwrap().radio = RadioSettings { kind: RadioKind::Qmx, port: "/dev/definitely-not-here".into(), ..RadioSettings::default() };
+        assert!(matches!(c.auto_connect(), Some(Err(_))));
+        // Switched off: not tried.
+        c.settings.lock().unwrap().radio.auto_connect = false;
+        assert!(c.auto_connect().is_none());
+        assert!(RadioSettings::default().auto_connect);
+    }
+
+    #[test]
+    fn prepare_exit_lets_go_of_the_radio() {
+        let c = AppCore::new(None);
+        c.connect(&RadioSettings::default()).unwrap();
+        assert!(c.snapshot().status.connected);
+        c.prepare_exit();
+        assert!(!c.snapshot().status.connected);
     }
 
     #[test]

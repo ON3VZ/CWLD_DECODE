@@ -138,6 +138,9 @@
     {/if}
 
     {#if draft.radio.kind !== 'simulator'}
+      <label class="check"><input type="checkbox" bind:checked={draft.radio.auto_connect} /> {t('radio.autoconnect')}
+        <small class="muted">{t('radio.autoconnect.help')}</small>
+      </label>
       <button class="link" type="button" onclick={() => (showAdvanced = !showAdvanced)}>{showAdvanced ? '▾' : '▸'} {t('radio.baud')} / {t('radio.pipeline')}</button>
       {#if showAdvanced}
         <label>{t('radio.baud')}

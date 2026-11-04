@@ -234,5 +234,7 @@
   "qlib.none": "Niets gevonden.",
   "qlib.hint": "Klik op een code om ze aan je bericht toe te voegen. Met een ? erbij wordt het een vraag.",
   "qlib.noinsert": "kan niet via de keyer van de radio verzonden worden",
-  "qlib.ask.btn": "Als vraag toevoegen"
+  "qlib.ask.btn": "Als vraag toevoegen",
+  "radio.autoconnect": "Verbinden bij het opstarten",
+  "radio.autoconnect.help": "CWLD verbindt bij het starten zelf met deze radio. Uit: je drukt zelf op Verbinden. Staat de radio dan uit, dan start CWLD gewoon zonder verbinding."
 }

@@ -29,6 +29,7 @@ export interface RadioSettings {
   civ_address: number;
   baud: number;
   pipeline: boolean;
+  auto_connect: boolean;
 }
 
 export interface PortInfo {

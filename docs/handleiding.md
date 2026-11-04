@@ -62,3 +62,13 @@ Naast de knop Verzenden staat een knop **Q** (of druk op F1). Er schuift rechts 
 4. Sluit het paneel met Esc, met het kruisje of door naast het paneel te klikken.
 
 Prosigns komen als `<AR>`, `<SK>`, `<BT>` in je bericht. De keyer vertaalt ze voor de radio. `<CL>` staat erbij als uitleg, maar kan niet via de keyer verzonden worden.
+
+## 11. Verbinden bij het opstarten, en als een update vastloopt
+
+CWLD verbindt bij het opstarten zelf met de radio die je eerder koos (Instellingen, Radio, "Verbinden bij het opstarten"). Staat de radio dan nog uit, start CWLD gewoon en druk je zelf op Verbinden. Wil je dat niet, haal het vinkje weg.
+
+Meldt de installer van een update toch "CWLD is running" of "Failed to kill CWLD":
+1. Klik rechts op de Windows-knop (Start) en kies Taakbeheer.
+2. Zoek op het tabblad Processen (of Details) naar `cwld.exe`, klik het aan en kies Taak beëindigen. Zoek ook naar een tweede `cwld.exe` onder Details, en sluit eventueel een open Log4OM of andere programma's die dezelfde COM-poort gebruiken.
+3. Ga in de installer terug naar Opnieuw proberen (Retry). Lukt het nog niet, start de installer dan via rechtermuisknop, Als administrator uitvoeren.
+Zeg me daarna welk proces je zag en onder welke gebruiker (kolom Gebruikersnaam in Details), dan kan ik de oorzaak vinden.

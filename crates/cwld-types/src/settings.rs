@@ -48,11 +48,13 @@ pub struct RadioSettings {
     pub baud: u32,
     /// Send the next CW block before the radio finishes the previous one. Off until tested.
     pub pipeline: bool,
+    /// Connect to the radio by itself when CWLD starts (not for the simulator).
+    pub auto_connect: bool,
 }
 
 impl Default for RadioSettings {
     fn default() -> Self {
-        RadioSettings { kind: RadioKind::Simulator, port: String::new(), civ_address: 0xB6, baud: 115_200, pipeline: false }
+        RadioSettings { kind: RadioKind::Simulator, port: String::new(), civ_address: 0xB6, baud: 115_200, pipeline: false, auto_connect: true }
     }
 }
 

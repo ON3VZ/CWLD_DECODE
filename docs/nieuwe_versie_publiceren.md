@@ -2,6 +2,14 @@
 
 Als dit één keer is ingesteld, krijgen alle installaties van CWLD de nieuwe versie vanzelf aangeboden.
 
+## Eenmalig: de repository openbaar maken
+
+De app haalt `latest.json` en de installer zonder inloggen op bij GitHub. Is de repository privé, dan krijgt de app een 404, werkt "Zoeken naar updates" niet en kan niemand anders dan jij de installer downloaden. CWLD is open source (GPL-3.0), dus zet de repository op openbaar:
+1. Open https://github.com/ON3VZ/CWLD_DECODE en klik bovenaan op **Settings**.
+2. Scroll helemaal naar beneden naar **Danger Zone**.
+3. Klik bij **Change repository visibility** op **Change visibility**, kies **Make public** en bevestig met de naam van de repository.
+De updatesleutel staat niet in de repository maar in de Actions-secrets, die blijven geheim. Het bestand `cwld-updater.key` hoort nooit in de repository.
+
 ## Eenmalig: de updatesleutel in GitHub zetten
 
 De sleutel ondertekent elke update. Zonder deze sleutel weigert de app een update. Je hebt twee dingen nodig: het bestand `cwld-updater.key` en het wachtwoord (kreeg je in de chat). Bewaar beide ook op een veilige plek buiten de computer (bv. wachtwoordmanager). Raak je ze kwijt, dan kunnen bestaande installaties nooit meer bijwerken en moet iedereen opnieuw installeren.

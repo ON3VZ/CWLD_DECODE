@@ -100,7 +100,7 @@ describe('paddle text and radio events', () => {
 describe('connecting a radio', () => {
   it('needs a port for a real radio and keeps the old state when it fails', async () => {
     await fresh();
-    const ok = await app.connectRadio({ kind: 'icom', port: '', civ_address: 0xb6, baud: 115200, pipeline: false });
+    const ok = await app.connectRadio({ kind: 'icom', port: '', civ_address: 0xb6, baud: 115200, pipeline: false, auto_connect: true });
     expect(ok).toBe(false);
     expect(app.error).toMatch(/port|poort/i);
     expect(app.status.connected).toBe(true);
@@ -108,7 +108,7 @@ describe('connecting a radio', () => {
 
   it('connects and disconnects', async () => {
     await fresh();
-    expect(await app.connectRadio({ kind: 'qmx', port: 'COM6', civ_address: 0xb6, baud: 115200, pipeline: false })).toBe(true);
+    expect(await app.connectRadio({ kind: 'qmx', port: 'COM6', civ_address: 0xb6, baud: 115200, pipeline: false, auto_connect: true })).toBe(true);
     expect(app.radioName).toContain('QMX');
     await app.disconnectRadio();
     expect(app.status.connected).toBe(false);

@@ -1,3 +1,8 @@
+## 0.4.3 (connects at start, cleaner updates)
+
+- New: CWLD connects to the saved radio by itself when it starts (Settings, Radio, "Connect when CWLD starts", on by default). A radio that is off or a port that is busy does not stop the start: CWLD just shows "not connected" and you press Connect. The simulator is never connected this way.
+- Updates: before the new version is installed, CWLD now lets go of the radio port and the sound card, and when the program ends it makes sure the process really is gone. The installer's message "CWLD is running, failed to kill CWLD" came from a process that stayed behind. The most likely reason updates did not work at all: a private repository gives the app a 404 on the update link (make the repository public, see docs/nieuwe_versie_publiceren.md). This is not proven to be the whole cause of the kill message, see the manual route in the handbook (section 8) if it happens again.
+
 ## 0.4.2 (no more text out of noise)
 
 - Fixed: on a quiet band or on only noise the decoder showed a stream of letters (`TTTT MTMT EE`) and the certainty meter stood at 94 percent. Cause: the radio's CW filter makes the noise very uneven (on your recording 40 dB stronger below 800 Hz than above 1000 Hz), so the level test took noise for a signal.

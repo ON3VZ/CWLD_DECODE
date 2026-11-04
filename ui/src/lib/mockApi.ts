@@ -31,7 +31,7 @@ export function defaultSettings(): Settings {
     station: { calls: [], name: '', qth: '', locator: '' },
     swr: { enabled: true, limit: 1.5, qrx_after_stop: true },
     audio: { input: '', tone_hz: 700, auto_start: true, record_dir: '', squelch: 3.5, auto_tone: true },
-    radio: { kind: 'simulator', port: '', civ_address: 0xb6, baud: 115200, pipeline: false },
+    radio: { kind: 'simulator', port: '', civ_address: 0xb6, baud: 115200, pipeline: false, auto_connect: true },
     last_policy: 'listen_only',
     first_run_done: false,
     signals_panel: false,

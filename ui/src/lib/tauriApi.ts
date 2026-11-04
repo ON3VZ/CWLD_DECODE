@@ -18,6 +18,8 @@ export async function createTauriApi(): Promise<Api> {
     },
     async installUpdate(onProgress) {
       if (!pending) throw new Error('no update');
+      // Let go of the radio port and the sound card first, so the installer finds nothing running.
+      await invoke<void>('prepare_update');
       let total = 0;
       let done = 0;
       await pending.downloadAndInstall((e) => {
