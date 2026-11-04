@@ -1,14 +1,23 @@
 name: release
-# Runs when a tag like v0.3.7 is pushed. Builds the Windows installer, signs the update
-# package, makes a GitHub Release and uploads latest.json (what the app looks at).
+# Runs when a tag like v0.3.7 is pushed (or by hand with the tag name). Builds the Windows
+# installer, signs the update package, makes a GitHub Release and uploads latest.json
+# (the file the app looks at).
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release, for example v0.3.7'
+        required: true
 permissions:
   contents: write
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -18,26 +27,43 @@ jobs:
       - run: npm ci
         working-directory: ui
       - run: npm install --global @tauri-apps/cli@2
-      - name: Release notes from CHANGELOG.md
-        id: notes
+      - name: Build and sign
+        working-directory: src-tauri
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: tauri build --bundles nsis
+      - name: Release notes and latest.json
         shell: bash
         run: |
-          v="${GITHUB_REF_NAME#v}"
+          v="${TAG#v}"
           awk -v v="$v" '/^## /{p = (index($0, "## " v " ") == 1 || $0 == "## " v)} p' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then echo "CWLD $v" > notes.md; fi
           cat notes.md
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tauriScript: tauri
-          tagName: ${{ github.ref_name }}
-          releaseName: CWLD ${{ github.ref_name }}
-          releaseBody: See CHANGELOG.md
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: true
-          updaterJsonPreferNsis: true
-          args: --bundles nsis
+          cat > make_latest.mjs <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const tag = process.env.TAG;
+          const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+          if (tag !== 'v' + conf.version) throw new Error(`Tag ${tag} does not match version ${conf.version} in tauri.conf.json`);
+          const dir = 'target/release/bundle/nsis';
+          const exe = fs.readdirSync(dir).find((f) => f.endsWith('-setup.exe'));
+          if (!exe) throw new Error('no installer found');
+          const sig = fs.readFileSync(path.join(dir, exe + '.sig'), 'utf8').trim();
+          const latest = {
+            version: conf.version,
+            notes: fs.readFileSync('notes.md', 'utf8'),
+            pub_date: new Date().toISOString(),
+            platforms: { 'windows-x86_64': { signature: sig, url: `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/${tag}/${exe}` } },
+          };
+          fs.writeFileSync('latest.json', JSON.stringify(latest, null, 2));
+          fs.writeFileSync('installer.txt', path.join(dir, exe));
+          JS
+          node make_latest.mjs
+          cat latest.json
+      - name: Create the release
+        shell: bash
+        run: |
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          gh release create "$TAG" "$(cat installer.txt)" latest.json --title "CWLD $TAG" --notes-file notes.md --target "$GITHUB_SHA"
