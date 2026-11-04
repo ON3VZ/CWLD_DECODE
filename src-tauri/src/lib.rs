@@ -137,7 +137,43 @@ fn stop_recording(core: Core) {
 /// installer finds nothing left to wait for.
 #[tauri::command]
 fn prepare_update(core: Core) {
-    core.prepare_exit()
+    release_within(core.inner().clone(), RELEASE_WAIT);
+}
+
+/// How long CWLD waits for the radio port and the sound card to close before it goes on.
+/// A USB driver that does not answer must not keep CWLD (or an update) waiting for ever.
+const RELEASE_WAIT: Duration = Duration::from_millis(1500);
+
+/// Lets go of the radio and the sound card, but waits at most `wait`.
+fn release_within(core: Arc<AppCore>, wait: Duration) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        core.prepare_exit();
+        let _ = tx.send(());
+    });
+    let _ = rx.recv_timeout(wait);
+}
+
+/// Ends the process at once. The normal end of a Windows program runs the clean-up of every
+/// library, and a sound or USB library that hangs there leaves cwld.exe behind, which blocks
+/// the installer of the next version.
+#[cfg(windows)]
+fn end_process_now() -> ! {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetCurrentProcess() -> *mut std::ffi::c_void;
+        fn TerminateProcess(process: *mut std::ffi::c_void, exit_code: u32) -> i32;
+    }
+    // SAFETY: both are plain Win32 calls on the pseudo handle of this process.
+    unsafe {
+        TerminateProcess(GetCurrentProcess(), 0);
+    }
+    std::process::exit(0)
+}
+
+#[cfg(not(windows))]
+fn end_process_now() -> ! {
+    std::process::exit(0)
 }
 
 /// Every 100 ms the safety readings (SWR), every fifth round the full status.
@@ -209,9 +245,9 @@ pub fn run() {
             // really gone (a lingering process stops the installer of an update).
             if let tauri::RunEvent::Exit = event {
                 if let Some(core) = app.try_state::<Arc<AppCore>>() {
-                    core.prepare_exit();
+                    release_within(core.inner().clone(), RELEASE_WAIT);
                 }
-                std::process::exit(0);
+                end_process_now();
             }
         });
 }

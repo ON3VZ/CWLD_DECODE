@@ -1,3 +1,10 @@
+## 0.4.4 (installer no longer stuck on "Failed to kill CWLD")
+
+- Fixed (to be confirmed on Windows): the installer and the uninstaller stopped with "Failed to kill CWLD. Please close it first then try again" even after CWLD was closed. Cause: the WebView2 processes that draw the CWLD window ("WebView2: CWLD" in Task Manager) stayed alive after CWLD closed, and when one was ended by hand, WebView2 started it again. The installer asks Windows Restart Manager which processes still hold cwld.exe, and these leftovers counted.
+- The installer and the uninstaller now first stop cwld.exe and only the WebView2 processes of CWLD (found by CWLD's own data folder in their command line, so WhatsApp, Lenovo Vantage and other programs are left alone), and only then do their check.
+- When CWLD closes, it waits at most 1.5 seconds for the radio port and the sound card, and then ends its process at once, so a USB driver that does not answer can no longer keep cwld.exe alive. The same 1.5 second limit applies just before an update is installed.
+- The first version with this installer is 0.4.4 itself, so installing 0.4.4 over an older version may still need the manual route once (handbook section 11).
+
 ## 0.4.3 (connects at start, cleaner updates)
 
 - New: CWLD connects to the saved radio by itself when it starts (Settings, Radio, "Connect when CWLD starts", on by default). A radio that is off or a port that is busy does not stop the start: CWLD just shows "not connected" and you press Connect. The simulator is never connected this way.
