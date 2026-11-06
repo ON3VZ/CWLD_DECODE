@@ -86,8 +86,50 @@ Eerst I10 en Q10 hierboven: die bepalen of de decoder het ontvangen signaal krij
 ## A16. Codes en afkortingen (0.4.1)
 
 Geen radio nodig.
-1. Klik naast Verzenden op **Q** (of druk F1). Verwacht: rechts schuift een paneel open.
+1. Klik naast Verzenden op **Q** (of druk Ctrl+Q). Verwacht: rechts schuift een paneel open.
 2. Typ `qth` in het zoekvak. Verwacht: QTH staat bovenaan met uitleg. Typ `locatie`: QTH staat in de lijst.
 3. Klik op de knop QTH. Verwacht: `QTH ` staat in het zendvak. Klik op de link `QTH?` bij Als vraag: `QTH? ` komt erbij.
 4. Kies het tabblad Prosigns en klik op `<AR>`. Verwacht: `<AR>` in het zendvak. `<CL>` is grijs.
 5. Druk Esc. Verwacht: het paneel sluit (niets wordt gezonden).
+
+
+## A17. Instellingen, venster en status (0.5.0)
+
+1. Start CWLD. Verwacht: het venster is meteen maximaal.
+2. Open het tandwiel. Verwacht: links een menu met rubrieken, niet meer één lange lijst. Klik door alle rubrieken.
+3. Zet de radio uit (of trek de USB-kabel los). Verwacht binnen ongeveer 5 seconden: de status rechtsboven wordt "Radio zoeken" met een knipperend bolletje, niet "Verbonden".
+4. Zet de radio weer aan (of steek de kabel terug). Verwacht binnen ongeveer 10 seconden: de status wordt vanzelf weer "Verbonden", zonder dat je op Verbinden drukt. Meld wat je zag als dit niet zo gaat.
+
+## A18. Pile-up en rapport (0.5.0)
+
+1. Zet LIVE of OEFENEN aan (OEFENEN is veilig). Druk F1, F2, F3 en F4 en kijk wat er in het gesprek verschijnt.
+2. Verwacht: F1 roepletters, F2 twee keer, F3 `R 5NN TU`, F4 `AGN?`.
+3. Instellingen, Zenden: kies 599. Open een nieuw gesprek met Nieuw QSO en druk F3. Verwacht: `R 599 TU`.
+4. In LUISTEREN doen de toetsen niets.
+
+## A19. Tabjes (0.5.0)
+
+1. Draai de radio naar een andere band en wacht 5 seconden. Er komt een nieuw tabje. Klik terug op het eerste tabje. Verwacht: de radio gaat terug naar die frequentie, en er komt geen extra tabje bij.
+2. Doe dat tijdens het zenden in OEFENEN of LIVE. Verwacht: alleen tonen, de radio blijft.
+3. Zet bij Weergave en taal de sluittijd op 1 minuut, laat een gesprek met alleen ontvangen tekst liggen en wacht. Verwacht: het sluit na ongeveer een minuut (de controle loopt om de 30 seconden). Een gesprek waarin je iets zond sluit niet.
+4. Klik op Alles sluiten. Verwacht: een vraag als er gesprekken met gezonden tekst zijn, daarna één leeg gesprek.
+
+## A20. Codes en afkortingen in het gesprek (0.5.0)
+
+1. Zet de muis op TNX, UR of QTH? in een ontvangen of gezonden bericht. Verwacht: een tooltip met de betekenis.
+2. Open onder het gesprek de lijst Codes in dit gesprek. Verwacht: elke code één keer, met uitleg. Klik op een code: ze komt in het zendvak.
+3. Open het Q-paneel (Ctrl+Q), tab Eigen. Voeg `TNX2U` toe met een betekenis. Verwacht: ze staat in de lijst, en in een bericht met dat woord komt een tooltip.
+
+## A21. Decoder bijstellen (0.5.0)
+
+1. Bekijk de piekmeter bij een sterk signaal. Verwacht: tussen 5 en 90 procent, groen. Zet het audioniveau van de radio te hoog: de balk wordt rood boven 90 procent en er staat een waarschuwing.
+2. Beweeg de versterking. Verwacht: de balk volgt (de opname niet).
+3. Klik Breed. Verwacht: de twee rode lijnen in het waterfall staan verder uit elkaar (ongeveer het dubbele).
+4. Klik Sterkste (F6) terwijl er een ander signaal op de band staat. Verwacht: de decoder gaat naar het sterkste.
+5. Zet bij Decoder een vaste snelheid die niet bij het station past. Verwacht: slechte tekst. Zet terug op 0 (automatisch).
+6. Zet AFC uit met F7 en weer aan.
+
+## A22. Contest (0.5.0)
+
+1. Klik onder de chips op Contest. Verwacht: er verschijnt een chip Uitwisseling (`{CALL} 5NN 001`) en bij de Contest-knop staat 001. Kijk met de muis boven de chip: de tooltip toont de tekst.
+2. Zet het nummer op 5, zet contest uit en weer aan. Verwacht: de vraag Doorgaan of Opnieuw bij 1.

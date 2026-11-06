@@ -1,6 +1,6 @@
-import type { Api, AudioStatus, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
+import type { Api, AudioStatus, Tuning, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
 import { i18n, t } from './i18n.svelte';
-import { demoMessages, demoSignals, type Message, type Signal } from './demo';
+import { demoMessages, demoSignals, pileupChips, type Message, type Signal } from './demo';
 import { expand } from './template';
 import { heardIn } from './qso';
 import { durationSeconds, playSidetone } from './morse';
@@ -12,7 +12,11 @@ export interface Qso {
   qth: string;
 }
 
-const emptyQso = (): Qso => ({ call: '', name: '', rst: '599', qth: '' });
+const emptyQso = (rst = '5NN'): Qso => ({ call: '', name: '', rst, qth: '' });
+
+/** Decoder strictness presets (values of the squelch slider). Chosen by feel, not yet measured. */
+export const PRESETS = { weak: 2.5, medium: 3.5, strong: 5.5 } as const;
+export type PresetName = keyof typeof PRESETS;
 
 /** One conversation: what was heard and sent on one frequency, with its own QSO details. */
 export interface Session {
@@ -24,7 +28,14 @@ export interface Session {
   qso: Qso;
   /** True when the operator typed or clicked the callsign. Then the decoder stops overwriting it. */
   callLocked: boolean;
+  /** Last activity (ms since 1970): text in or out, or the operator looked at it. */
+  touched?: number;
+  /** The QSO of this conversation is in the logbook. */
+  logged?: boolean;
 }
+
+/** Closing idle conversations is checked this often (ms). */
+export const SWEEP_MS = 30_000;
 
 /** A frequency change of more than this many Hz starts a new conversation. */
 export const NEW_CONVERSATION_HZ = 500;
@@ -72,6 +83,14 @@ class AppState {
   settingsOpen = $state(false);
   /** Q-code library panel (slide-out). */
   qOpen = $state(false);
+  /** Highest sample in the last tenth of a second, 0 to 1 and above (after the gain). */
+  audioPeak = $state(0);
+  /** The decoder filter bandwidth in Hz, for the lines in the audio waterfall. */
+  bandwidthHz = $state<number | null>(null);
+  /** More than 0: "close all" waits for a yes because this many conversations hold an unlogged QSO. */
+  closeAllAsk = $state(0);
+  /** The operator switches contest mode on while an earlier number is stored: continue or restart? */
+  contestAsk = $state(false);
   /** Seconds left of a simulated transmission in practice mode. */
   practiceBusy = $state(false);
   /** Blocks waiting to be sent to the radio. */
@@ -146,8 +165,16 @@ class AppState {
     this.shown.callLocked = v;
   }
 
+  private blankQso(): Qso {
+    return emptyQso(this.settings?.default_rst ?? '5NN');
+  }
+
   private makeSession(freq: number): Session {
-    return { id: this.nextId++, freq, started: clockNow(), messages: [], qso: emptyQso(), callLocked: false };
+    return { id: this.nextId++, freq, started: clockNow(), messages: [], qso: this.blankQso(), callLocked: false, touched: Date.now() };
+  }
+
+  private touch(s: Session | undefined, now = Date.now()) {
+    if (s) s.touched = now;
   }
 
   /**
@@ -159,7 +186,7 @@ class AppState {
     this.tail = null;
     if (live && live.messages.length === 0) {
       live.freq = freq;
-      live.qso = emptyQso();
+      live.qso = this.blankQso();
       live.callLocked = false;
       this.viewId = live.id;
       return;
@@ -174,6 +201,75 @@ class AppState {
   /** The operator looks at another conversation. Nothing is lost in the live one. */
   show(id: number) {
     if (this.sessions.some((x) => x.id === id)) this.viewId = id;
+  }
+
+  /**
+   * The operator clicks a tab. An earlier conversation becomes the live one again and the radio
+   * goes to its frequency, so new text lands where it belongs. Without a radio that answers, or
+   * while transmitting, the conversation is only shown.
+   */
+  async openTab(id: number) {
+    const s = this.sessions.find((x) => x.id === id);
+    if (!s) return;
+    this.touch(s);
+    if (id === this.cur.id) {
+      this.viewId = id;
+      return;
+    }
+    const canTune = this.status.connected && !this.status.transmitting && !this.practiceBusy && s.freq > 0;
+    if (!canTune) {
+      this.viewId = id;
+      return;
+    }
+    const old = this.cur;
+    this.sessions = this.sessions.filter((x) => x.id !== id && !(x.id === old.id && old.messages.length === 0));
+    this.sessions.push(s);
+    this.viewId = id;
+    this.tail = null;
+    if (this.settleTimer) {
+      clearTimeout(this.settleTimer);
+      this.settleTimer = null;
+    }
+    this.persist();
+    if (Math.abs(this.status.frequency_hz - s.freq) >= 10) await this.setFrequency(s.freq);
+  }
+
+  /** A conversation with sent text and no logbook entry yet is not closed by itself. */
+  private holdsUnloggedQso(s: Session): boolean {
+    return !s.logged && s.messages.some((m) => m.from === 'tx');
+  }
+
+  /** Closes conversations that were idle longer than the setting. Never the live or the shown one. */
+  sweepTabs(now = Date.now()) {
+    const minutes = this.settings?.tabs_auto_close_minutes ?? 0;
+    if (minutes <= 0 || this.sessions.length < 2) return;
+    const limit = minutes * 60_000;
+    const keep = this.sessions.filter((s) => {
+      if (s.id === this.cur.id || s.id === this.viewId) return true;
+      if (this.holdsUnloggedQso(s)) return true;
+      if (s.messages.length === 0) return false;
+      return now - (s.touched ?? now) < limit;
+    });
+    if (keep.length !== this.sessions.length) {
+      this.sessions = keep;
+      this.persist();
+    }
+  }
+
+  /** "Close all": asks first when some conversations hold a QSO that is not in the logbook. */
+  requestCloseAll() {
+    const n = this.sessions.filter((s) => this.holdsUnloggedQso(s)).length;
+    if (n > 0) this.closeAllAsk = n;
+    else this.closeAllNow();
+  }
+
+  closeAllNow() {
+    this.closeAllAsk = 0;
+    this.tail = null;
+    const fresh = this.makeSession(this.status.frequency_hz);
+    this.sessions = [fresh];
+    this.viewId = fresh.id;
+    this.persist();
   }
 
   /** Removes an earlier conversation. The live one stays. */
@@ -294,6 +390,7 @@ class AppState {
     this.scopeLive = false;
     this.lastDecodeAt = { rx: 0, paddle: 0 };
     const earlier = api.demo ? [] : this.restore();
+    for (const e of earlier) e.touched = Date.now();
     this.nextId = Math.max(100, ...earlier.map((x) => x.id + 1), ...earlier.flatMap((x) => x.messages.map((m) => m.id + 1)));
     this.sessions = earlier;
     const first = this.makeSession(snap.status.frequency_hz);
@@ -307,9 +404,15 @@ class AppState {
     if (!api.demo) void this.checkUpdate(true);
     this.off?.();
     this.off = api.onEvents((ev) => this.onEvents(ev));
+    if (this.sweepTimer) clearInterval(this.sweepTimer);
+    this.sweepTimer = api.demo ? null : setInterval(() => this.sweepTabs(), SWEEP_MS);
   }
 
+  private sweepTimer: ReturnType<typeof setInterval> | null = null;
+
   dispose() {
+    if (this.sweepTimer) clearInterval(this.sweepTimer);
+    this.sweepTimer = null;
     if (this.settleTimer) clearTimeout(this.settleTimer);
     this.settleTimer = null;
     this.off?.();
@@ -351,6 +454,11 @@ class AppState {
       }
       if (ev.type === 'audio_level') {
         this.audioLevel = ev.dbfs;
+        this.audioPeak = ev.peak ?? 0;
+        continue;
+      }
+      if (ev.type === 'bandwidth') {
+        this.bandwidthHz = ev.hz;
         continue;
       }
       if (ev.type === 'audio') {
@@ -416,6 +524,7 @@ class AppState {
         }
       }
       this.lastDecodeAt[source] = now;
+      this.touch(live, now);
       if (target && source === 'rx') {
         const h = heardIn(target.text, this.settings?.station.calls ?? []);
         if (h.call) target.call = h.call;
@@ -439,6 +548,7 @@ class AppState {
       this.ingest('paddle', piece);
     }
     this.lastPaddleAt = now;
+    this.touch(live, now);
     this.persist();
   }
 
@@ -507,6 +617,8 @@ class AppState {
       NAME: this.cur.qso.name,
       QTH: this.cur.qso.qth,
       RST: this.cur.qso.rst,
+      // The serial number exists in contest mode only.
+      NR: this.settings?.contest_mode ? String(this.settings.contest_nr).padStart(3, '0') : '',
       MYNAME: st?.name ?? '',
       MYQTH: st?.qth ?? '',
     };
@@ -574,6 +686,7 @@ class AppState {
     const call = from === 'rx' ? heardIn(text, this.settings?.station.calls ?? []).call : undefined;
     const m: Message = { id: this.nextId++, from, call, text, time };
     this.cur.messages.push(m);
+    this.touch(this.cur);
     if (from === 'rx') this.applyHeard(text, m);
   }
 
@@ -599,7 +712,7 @@ class AppState {
         live = next;
         this.tail = null;
       }
-      live.qso = { ...emptyQso(), call: h.call };
+      live.qso = { ...this.blankQso(), call: h.call };
     }
     // Name and QTH only fill empty fields, and only for the station that is in the panel.
     if (h.call && h.call === live.qso.call) {
@@ -792,6 +905,120 @@ class AppState {
     } catch (e) {
       this.fail(e);
     }
+  }
+
+  /** Adds or replaces an own abbreviation in the code library. */
+  async addUserWord(code: string, meaning: string) {
+    const c = code.trim().toUpperCase().replace(/\s+/g, '');
+    const m = meaning.trim();
+    if (!this.settings || !c || !m) return;
+    const rest = this.settings.user_words.filter((w) => w.code !== c);
+    await this.patchSettings({ user_words: [...rest, { code: c, meaning: m }] });
+  }
+
+  async removeUserWord(code: string) {
+    if (!this.settings) return;
+    await this.patchSettings({ user_words: this.settings.user_words.filter((w) => w.code !== code) });
+  }
+
+  /** Sending is possible: the live conversation is on screen, not listening only, no SWR alert open. */
+  get canSend(): boolean {
+    return this.viewingLive && this.policy !== 'listen_only' && !(this.policy === 'live' && this.swrAlert);
+  }
+
+  /** A pile-up key (F1 to F4): sends its text when sending is possible. */
+  async pressPileup(fkey: string) {
+    const c = pileupChips.find((x) => x.fkey === fkey);
+    if (c && this.canSend) await this.sendChip(c.template);
+  }
+
+  /** Saves a change of the settings without the "saved" notice (for switches on the main screen). */
+  private async patchSettings(patch: Partial<Settings>) {
+    if (!this.settings) return;
+    const next = { ...($state.snapshot(this.settings) as Settings), ...patch };
+    try {
+      await this.api.saveSettings(next);
+      this.settings = next;
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** Gain, filter width and speed range of the decoder. Applies at once and is remembered. */
+  async setTuning(change: Partial<Tuning>) {
+    if (!this.settings) return;
+    const a = this.settings.audio;
+    const t: Tuning = {
+      gain_db: Math.min(20, Math.max(-20, change.gain_db ?? a.gain_db)),
+      wide_filter: change.wide_filter ?? a.wide_filter,
+      min_wpm: change.min_wpm ?? a.min_wpm,
+      max_wpm: change.max_wpm ?? a.max_wpm,
+      lock_wpm: change.lock_wpm ?? a.lock_wpm,
+    };
+    t.min_wpm = Math.min(55, Math.max(5, Math.round(t.min_wpm)));
+    t.max_wpm = Math.min(60, Math.max(t.min_wpm + 5, Math.round(t.max_wpm)));
+    t.lock_wpm = t.lock_wpm >= 5 ? Math.min(60, Math.round(t.lock_wpm)) : 0;
+    try {
+      await this.api.setTuning(t);
+      Object.assign(this.settings.audio, t);
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** Weak, medium or strong: how strict the decoder is about signals in noise. */
+  async setPreset(name: PresetName) {
+    await this.setSquelch(PRESETS[name]);
+  }
+
+  /** The preset that matches the squelch value, or null for a hand-set value. */
+  get preset(): PresetName | null {
+    const v = this.settings?.audio.squelch;
+    return (Object.keys(PRESETS) as PresetName[]).find((k) => Math.abs(PRESETS[k] - (v ?? 0)) < 0.05) ?? null;
+  }
+
+  async setAfc(on: boolean) {
+    try {
+      await this.api.setAfc(on);
+      if (this.settings) this.settings.audio.afc = on;
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** Once: the decoder moves to the strongest keyed tone heard lately. */
+  async goStrongest() {
+    try {
+      await this.api.goStrongest();
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** The signal report used in chips and new conversations: 5NN or 599. */
+  async setDefaultRst(v: Settings['default_rst']) {
+    await this.patchSettings({ default_rst: v });
+  }
+
+  /** Contest mode on: with a stored number the operator chooses to continue or restart. */
+  async requestContest(on: boolean) {
+    if (!this.settings) return;
+    if (!on) {
+      this.contestAsk = false;
+      await this.patchSettings({ contest_mode: false });
+      return;
+    }
+    if (this.settings.contest_nr > 1) this.contestAsk = true;
+    else await this.patchSettings({ contest_mode: true });
+  }
+
+  async answerContest(restart: boolean) {
+    this.contestAsk = false;
+    await this.patchSettings({ contest_mode: true, ...(restart ? { contest_nr: 1 } : {}) });
+  }
+
+  async setContestNr(n: number) {
+    await this.patchSettings({ contest_nr: Math.min(9999, Math.max(1, Math.round(n) || 1)) });
   }
 
   /** True while the decoder judges that a clear signal is present. */

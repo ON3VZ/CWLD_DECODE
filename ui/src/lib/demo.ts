@@ -40,3 +40,16 @@ export const defaultChips = [
   { id: 'qrz', key: 'chip.qrz', template: 'QRZ? DE {MYCALL} K' },
   { id: 'bye', key: 'chip.bye', template: '{CALL} DE {MYCALL} TNX FER QSO 73 SK' },
 ];
+
+/** Quick replies for a pile-up, on the keys F1 to F4. {RST} is the report in the QSO panel (5NN by default). */
+export const pileupChips = [
+  { id: 'pu1', key: 'chip.pu1', fkey: 'F1', template: '{MYCALL}' },
+  { id: 'pu2', key: 'chip.pu2', fkey: 'F2', template: '{MYCALL} {MYCALL}' },
+  { id: 'pu3', key: 'chip.pu3', fkey: 'F3', template: 'R {RST} TU' },
+  { id: 'pu4', key: 'chip.pu4', fkey: 'F4', template: 'AGN?' },
+];
+
+/** Extra chips in contest mode. {NR} is the serial number. */
+export const contestChips = [
+  { id: 'exchange', key: 'chip.exchange', template: '{CALL} {RST} {NR}' },
+];

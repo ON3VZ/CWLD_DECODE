@@ -50,6 +50,27 @@ export interface AudioSettings {
   squelch: number;
   /** The decoder moves to the strongest signal by itself when its pitch is quiet. */
   auto_tone: boolean;
+  /** Extra gain on the incoming audio, -20 to +20 dB (decoder and meter, not the recording). */
+  gain_db: number;
+  /** Double filter bandwidth, for drifting or chirpy signals. */
+  wide_filter: boolean;
+  /** Slowest and fastest speed the decoder looks for (5 to 60 WPM). */
+  min_wpm: number;
+  max_wpm: number;
+  /** Fixed speed in WPM. 0: follow the speed. */
+  lock_wpm: number;
+  /** Follow a drifting tone. */
+  afc: boolean;
+}
+
+export type DefaultRst = '5NN' | '599';
+
+export interface Tuning {
+  gain_db: number;
+  wide_filter: boolean;
+  min_wpm: number;
+  max_wpm: number;
+  lock_wpm: number;
 }
 
 export interface AudioStatus {
@@ -93,6 +114,21 @@ export interface Settings {
   band_scope: boolean;
   /** Show the narrow audio waterfall (what the decoder hears). */
   audio_waterfall: boolean;
+  /** The signal report in chips: 5NN (default) or 599. */
+  default_rst: DefaultRst;
+  /** Close idle conversations after this many minutes. 0: never. */
+  tabs_auto_close_minutes: number;
+  /** Contest mode: {NR} is filled in. */
+  contest_mode: boolean;
+  /** The next serial number in contest mode. */
+  contest_nr: number;
+  /** Own abbreviations added to the code library. */
+  user_words: UserWord[];
+}
+
+export interface UserWord {
+  code: string;
+  meaning: string;
 }
 
 export interface RadioStatus {
@@ -142,6 +178,8 @@ export interface DecoderStats {
   snr_db: number | null;
   /** Real share of correct characters, only in practice mode where the keyed text is known. */
   accuracy: number | null;
+  /** The decoder filter bandwidth in Hz (the filter setting, not a measurement). */
+  bandwidth_hz?: number | null;
 }
 
 export type CoreEvent =
@@ -150,7 +188,8 @@ export type CoreEvent =
   | { type: 'decoder'; stats: DecoderStats }
   | { type: 'decode'; source: 'rx' | 'paddle'; text: string; conf: number[]; tentative: TentativeChar[]; wpm: number }
   | { type: 'waterfall'; bins: number[]; lo_hz: number; hz_per_bin: number }
-  | { type: 'audio_level'; dbfs: number }
+  | { type: 'audio_level'; dbfs: number; peak: number }
+  | { type: 'bandwidth'; hz: number }
   | { type: 'audio'; status: AudioStatus }
   | { type: 'swr_alert'; alert: SwrAlert }
   | { type: 'swr_cleared' };
@@ -196,6 +235,11 @@ export interface Api {
   setTone(hz: number): Promise<void>;
   setSquelch(value: number): Promise<void>;
   setAutoTone(on: boolean): Promise<void>;
+  /** Gain, filter width and speed range of the running decoder. */
+  setTuning(t: Tuning): Promise<void>;
+  setAfc(on: boolean): Promise<void>;
+  /** Once: the decoder moves to the strongest keyed tone heard lately. */
+  goStrongest(): Promise<void>;
   /** Returns the path of the new recording. */
   startRecording(): Promise<string>;
   stopRecording(): Promise<void>;

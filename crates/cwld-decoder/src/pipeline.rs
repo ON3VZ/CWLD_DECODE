@@ -88,7 +88,7 @@ impl Pipeline {
         let mut words = WordCorrector::new(cfg.language_model);
         words.junk_strength = cfg.junk_strength;
         let cfg_gate = cfg.cw_gate;
-        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: cfg.auto_tone.then(|| ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0 }
+        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0 }
     }
 
     /// Keyed CW is in the envelope (not just noise at this pitch).
@@ -126,17 +126,38 @@ impl Pipeline {
 
     /// Switches the automatic search for the strongest tone on or off.
     pub fn set_auto_tone(&mut self, on: bool) {
+        // The seeker keeps listening either way, so a one-shot "go to the strongest" has data.
         self.cfg.auto_tone = on;
-        if on && self.seeker.is_none() {
-            self.seeker = Some(ToneSeeker::new(self.cfg.sample_rate, 300.0, 1200.0));
+    }
+
+    /// AFC on or off (follows a drifting tone).
+    pub fn set_afc(&mut self, on: bool) {
+        self.cfg.afc = on;
+        self.front.set_afc(on);
+    }
+
+    /// Once: moves to the strongest keyed tone heard in the last seconds. Returns the new pitch,
+    /// or `None` when nothing clear is there or the pitch is already right.
+    pub fn go_strongest(&mut self) -> Option<f64> {
+        let c = self.seeker.as_ref()?.best()?;
+        let cur = self.front.tone_hz();
+        if c.score_db < 6.0 || (c.hz - cur).abs() < 5.0 {
+            return None;
         }
-        if !on {
-            self.seeker = None;
-        }
+        self.pending.clear();
+        self.dec = Decoder::new(self.cfg.decoder.clone());
+        self.words.discard();
+        self.front.retune(c.hz);
+        self.quiet_updates = 0;
+        self.hold_frames = (MANUAL_HOLD_S * FRAME_RATE) as usize;
+        Some(c.hz)
     }
 
     /// Moves to the strongest tone when the current pitch has been quiet for a while.
     fn consider_move(&mut self, incoming: usize) {
+        if !self.cfg.auto_tone {
+            return;
+        }
         let Some(sk) = &self.seeker else { return };
         let cur = self.front.tone_hz();
         // Is something still going on at the current pitch? A strong tone, or a weaker one the
@@ -162,6 +183,26 @@ impl Pipeline {
         self.quiet_updates = 0;
         self.hold_frames = (AUTO_HOLD_S * FRAME_RATE) as usize;
         self.process(&replay);
+    }
+
+    /// Wide filter: double bandwidth for drifting or chirpy signals.
+    pub fn set_wide(&mut self, wide: bool) {
+        self.cfg.bandwidth_factor = if wide { 2.4 } else { 1.2 };
+        let wpm = self.dec.wpm().unwrap_or(20.0);
+        self.front.set_bandwidth(self.cfg.bandwidth_factor / (1.2 / wpm));
+    }
+
+    /// The slowest and fastest speed to look for, or a fixed speed.
+    pub fn set_speed_range(&mut self, min: f64, max: f64, fixed: Option<f64>) {
+        self.cfg.decoder.wpm_min = min;
+        self.cfg.decoder.wpm_max = max;
+        self.cfg.decoder.fixed_wpm = fixed;
+        self.dec.set_speed_range(min, max, fixed);
+    }
+
+    /// The bandwidth of the decoder filter now, in Hz.
+    pub fn bandwidth_hz(&self) -> f64 {
+        self.front.bandwidth_hz()
     }
 
     /// The separation of signal and noise below which the evidence is ignored.

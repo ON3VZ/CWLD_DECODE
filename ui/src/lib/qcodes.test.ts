@@ -38,3 +38,12 @@ describe('qcodes', () => {
     expect(lookup('nonsense')).toBeUndefined();
   });
 });
+
+describe('codes used in a conversation', () => {
+  it('lists each known code once, in order, with own words and without plain numbers', async () => {
+    const { usedIn } = await import('./qcodes');
+    const out = usedIn('CQ DE ON3VZ TNX UR 599 599 QTH? TNX 73 TNX2U', [{ code: 'TNX2U', meaning: 'Thanks to you' }]);
+    expect(out.map((u) => u.code)).toEqual(['CQ', 'DE', 'TNX', 'UR', 'QTH', '73', 'TNX2U']);
+    expect(out[6].own).toBe('Thanks to you');
+  });
+});

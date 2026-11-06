@@ -1,3 +1,17 @@
+## 0.5.0 (settings in sections, pile-up keys, tabs, decoder controls)
+
+- Settings now has a menu on the left with sections: Station, Radio and SWR, Audio, Decoder, Sending, Display and language, Contest, Updates and about. No more one long list.
+- The window starts maximised.
+- The connection status follows the radio. When the radio is switched off or the cable is out, the status shows "Looking for radio" and CWLD tries to open the port again every 5 seconds (when "Connect when CWLD starts" is on). When the radio is back it connects by itself. (To be confirmed on your radio: the old driver already noticed silence after 3 seconds, so if the status still stays on connected, tell me what you did.)
+- New standard report setting (Settings, Sending): 5NN (default) or 599. It fills the report in new conversations and in the chips.
+- Pile-up keys: F1 your call, F2 your call twice, F3 "R" + report + "TU", F4 "AGN?". They also show as buttons under the chips. The Q-code panel moved from F1 to Ctrl+Q.
+- Codes and abbreviations: words with a known meaning in the conversation have a dotted underline and a tooltip. Under the conversation a list "Codes in this conversation" shows everything that was received or sent, with its meaning. In the Q panel you can add your own abbreviations (tab Own).
+- Tabs: a click on an earlier tab makes it the live conversation again and tunes the radio to its frequency (not while transmitting and not without a radio). Conversations without new text close by themselves after 15 minutes (Settings, Display, 0 switches it off). A conversation with sent text that is not logged never closes by itself. New button "Close all" keeps one empty conversation and asks first when sent text is not logged.
+- Contest mode (basis): a Contest button under the chips, and a setting. In contest mode the variable {NR} is filled with the serial number (three digits) and an extra chip "Exchange" appears (`{CALL} {RST} {NR}`). Switching it on again with a stored number asks: continue or start again at 1. Counting up after each logged QSO comes with the logbook.
+- Decoder controls, taken from what MRP40 offers: peak meter (5 to 90 percent is good, red above 90), input gain -20 to +20 dB, presets Weak/Medium/Strong (three positions of the squelch slider, chosen by feel and not measured), filter Narrow/Wide (double bandwidth), AFC switch (F7), "Strongest" once (F6), slowest and fastest speed (5 to 60 WPM, default 5 to 50) and a fixed speed. Red lines in the audio waterfall show the filter width.
+- Measured: not yet. The benchmark against MRP40 is a separate step. Note from the filter comparison: the CWLD filter has much gentler flanks than the published MRP40 filter (see docs/meetresultaten_decoder.md when the benchmark is done).
+- Not built yet: the "smart 4 second AFC" after a click when AFC is off, the logbook, dupe warnings, export and the sequence number counting up.
+
 ## 0.4.4 (installer no longer stuck on "Failed to kill CWLD")
 
 - Fixed (to be confirmed on Windows): the installer and the uninstaller stopped with "Failed to kill CWLD. Please close it first then try again" even after CWLD was closed. Cause: the WebView2 processes that draw the CWLD window ("WebView2: CWLD" in Task Manager) stayed alive after CWLD closed, and when one was ended by hand, WebView2 started it again. The installer asks Windows Restart Manager which processes still hold cwld.exe, and these leftovers counted.

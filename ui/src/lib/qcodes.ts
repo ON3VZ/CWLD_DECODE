@@ -139,3 +139,23 @@ export function lookup(word: string): QEntry | undefined {
   const w = word.toUpperCase().replace(/[?.,]+$/g, '');
   return Q_ENTRIES.find((e) => e.code === w || e.code === `<${w}>`);
 }
+
+/** Words of a text that are known Q-codes, abbreviations, prosigns or own words, once each, in order of appearance. */
+export function usedIn(text: string, own: { code: string; meaning: string }[] = []): { code: string; entry?: QEntry; own?: string }[] {
+  const seen = new Set<string>();
+  const out: { code: string; entry?: QEntry; own?: string }[] = [];
+  for (const raw of text.toUpperCase().split(/\s+/)) {
+    const w = raw.replace(/[?.,;:!]+$/g, '');
+    if (!w || seen.has(w)) continue;
+    const o = own.find((x) => x.code.toUpperCase() === w);
+    const e = lookup(w);
+    if (o) {
+      seen.add(w);
+      out.push({ code: w, own: o.meaning });
+    } else if (e && (!/^\d+$/.test(w) || ['72', '73', '88'].includes(w))) {
+      seen.add(w);
+      out.push({ code: w, entry: e });
+    }
+  }
+  return out;
+}

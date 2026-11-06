@@ -110,6 +110,26 @@ fn set_squelch(core: Core, value: f32) -> Result<(), Failure> {
 }
 
 #[tauri::command]
+fn set_tuning(core: Core, gain_db: f32, wide_filter: bool, min_wpm: u8, max_wpm: u8, lock_wpm: u8) -> Result<(), Failure> {
+    core.set_tuning(gain_db, wide_filter, min_wpm, max_wpm, lock_wpm)?;
+    let _ = core.save_settings();
+    Ok(())
+}
+
+#[tauri::command]
+fn set_afc(core: Core, on: bool) -> Result<(), Failure> {
+    core.set_afc(on)?;
+    let _ = core.save_settings();
+    Ok(())
+}
+
+#[tauri::command]
+fn go_strongest(core: Core) -> Result<(), Failure> {
+    core.go_strongest()?;
+    Ok(())
+}
+
+#[tauri::command]
 fn set_auto_tone(core: Core, on: bool) -> Result<(), Failure> {
     core.set_auto_tone(on)?;
     let _ = core.save_settings();
@@ -233,6 +253,9 @@ pub fn run() {
             decode_file,
             set_tone,
             set_squelch,
+            set_tuning,
+            set_afc,
+            go_strongest,
             set_auto_tone,
             start_recording,
             stop_recording,

@@ -18,11 +18,13 @@ pub struct DecoderConfig {
     /// Cost (nats) of every key-down segment. Raising it makes the decoder less willing to
     /// read noise blips as dots.
     pub mark_penalty: f64,
+    /// A fixed speed in WPM: the decoder does not look for another one.
+    pub fixed_wpm: Option<f64>,
 }
 
 impl Default for DecoderConfig {
     fn default() -> Self {
-        DecoderConfig { wpm_min: 5.0, wpm_max: 50.0, evidence_scale: 0.1, mark_sigma: 0.28, gap_sigma: 0.30, tentative_below: 0.9, mark_penalty: 0.0 }
+        DecoderConfig { wpm_min: 5.0, wpm_max: 50.0, evidence_scale: 0.1, mark_sigma: 0.28, gap_sigma: 0.30, tentative_below: 0.9, mark_penalty: 0.0, fixed_wpm: None }
     }
 }
 
@@ -158,6 +160,16 @@ impl Decoder {
 
     pub fn wpm(&self) -> Option<f64> {
         self.u.map(|u| 240.0 / u)
+    }
+
+    /// Changes the speed range, or fixes the speed (`fixed`). Applies from the next search.
+    pub fn set_speed_range(&mut self, min: f64, max: f64, fixed: Option<f64>) {
+        self.cfg.wpm_min = min;
+        self.cfg.wpm_max = max;
+        self.cfg.fixed_wpm = fixed;
+        if let (Some(w), true) = (fixed, self.u.is_some()) {
+            self.u = Some(240.0 / w);
+        }
     }
 
     pub fn is_locked(&self) -> bool {
@@ -430,6 +442,9 @@ impl Decoder {
     }
 
     fn candidate_units(&self, around: Option<f64>) -> Vec<f64> {
+        if let Some(w) = self.cfg.fixed_wpm {
+            return vec![240.0 / w];
+        }
         match around {
             Some(u) => [0.84, 0.92, 1.0, 1.09, 1.19].iter().map(|f| u * f).collect(),
             None => {

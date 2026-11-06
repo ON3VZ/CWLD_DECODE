@@ -7,6 +7,8 @@
   const mhz = $derived((app.status.frequency_hz / 1_000_000).toFixed(6));
   const sUnits = $derived(Math.min(9, Math.round((app.status.s_meter / 100) * 9 * 1.0)));
   let editing = $state(false);
+  /** A real radio is set up, it does not answer now, and CWLD tries again by itself. */
+  const searching = $derived(!app.status.connected && !!app.settings && app.settings.radio.kind !== 'simulator' && app.settings.radio.auto_connect && !!app.settings.radio.port);
   let value = $state('');
 
   function startEdit() {
@@ -51,9 +53,9 @@
       <span class="chip swr" class:bad={app.swr > (app.settings?.swr.limit ?? 1.5)}>{t('swr.chip', { swr: app.swr.toFixed(1) })}</span>
     {/if}
   </div>
-  <div class="conn" class:off={!app.status.connected}>
+  <div class="conn" class:off={!app.status.connected} class:search={searching} title={searching ? t('status.searching.help') : ''}>
     <span class="dot"></span>
-    {app.status.connected ? t('status.connected') : t('status.disconnected')}
+    {app.status.connected ? t('status.connected') : searching ? t('status.searching') : t('status.disconnected')}
     <span class="muted">{app.radioName}</span>
   </div>
   <ModeSwitch />
@@ -81,4 +83,7 @@
   .conn { display: flex; align-items: center; gap: 6px; font-size: 14px; margin-left: auto; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--listen); }
   .conn.off .dot { background: var(--muted); }
+  .conn.search .dot { background: var(--warn); animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) { .conn.search .dot { animation: none; } }
 </style>

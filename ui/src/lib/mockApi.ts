@@ -1,4 +1,4 @@
-import type { Api, AudioStatus, CoreEvent, CoreFailure, InputDevice, PortInfo, SwrAlert, RadioSettings, SendOutcome, Settings, Snapshot, TentativeChar, TxPolicy } from './types';
+import type { Api, AudioStatus, CoreEvent, CoreFailure, InputDevice, PortInfo, SwrAlert, RadioSettings, SendOutcome, Settings, Snapshot, TentativeChar, Tuning, TxPolicy } from './types';
 import { durationSeconds } from './morse';
 
 /** Same rule as the Rust keyer: blocks of at most 30 characters, cut on word boundaries. */
@@ -30,7 +30,7 @@ export function defaultSettings(): Settings {
     theme: 'dark',
     station: { calls: [], name: '', qth: '', locator: '' },
     swr: { enabled: true, limit: 1.5, qrx_after_stop: true },
-    audio: { input: '', tone_hz: 700, auto_start: true, record_dir: '', squelch: 3.5, auto_tone: true },
+    audio: { input: '', tone_hz: 700, auto_start: true, record_dir: '', squelch: 3.5, auto_tone: true, gain_db: 0, wide_filter: false, min_wpm: 5, max_wpm: 50, lock_wpm: 0, afc: true },
     radio: { kind: 'simulator', port: '', civ_address: 0xb6, baud: 115200, pipeline: false, auto_connect: true },
     last_policy: 'listen_only',
     first_run_done: false,
@@ -38,6 +38,11 @@ export function defaultSettings(): Settings {
     new_tab_seconds: 5,
     band_scope: true,
     audio_waterfall: true,
+    default_rst: '5NN',
+    tabs_auto_close_minutes: 15,
+    contest_mode: false,
+    contest_nr: 1,
+    user_words: [],
   };
 }
 
@@ -118,6 +123,26 @@ export class MockApi implements Api {
     this.settings.audio.tone_hz = v;
     this.audio = { ...this.audio, tone_hz: v };
     this.pending.push({ type: 'audio', status: { ...this.audio } });
+  }
+
+  async setTuning(t: Tuning) {
+    this.settings.audio = {
+      ...this.settings.audio,
+      gain_db: Math.min(20, Math.max(-20, t.gain_db)),
+      wide_filter: t.wide_filter,
+      min_wpm: t.min_wpm,
+      max_wpm: t.max_wpm,
+      lock_wpm: t.lock_wpm,
+    };
+  }
+
+  async setAfc(on: boolean) {
+    this.settings.audio.afc = on;
+  }
+
+  strongestCalls = 0;
+  async goStrongest() {
+    this.strongestCalls++;
   }
 
   async setSquelch(value: number) {

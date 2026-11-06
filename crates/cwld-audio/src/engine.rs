@@ -29,6 +29,25 @@ pub enum Source {
     Samples { rate: u32, data: Vec<f32>, realtime: bool },
 }
 
+/// Decoder settings that can change while listening.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Tuning {
+    /// Gain on the incoming audio for the decoder and the level meter (the recording stays raw).
+    pub gain_db: f32,
+    /// Double filter bandwidth.
+    pub wide: bool,
+    pub wpm_min: f32,
+    pub wpm_max: f32,
+    /// A fixed speed. `None`: follow the speed.
+    pub fixed_wpm: Option<f32>,
+}
+
+impl Default for Tuning {
+    fn default() -> Self {
+        Tuning { gain_db: 0.0, wide: false, wpm_min: 5.0, wpm_max: 50.0, fixed_wpm: None }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct EngineConfig {
     pub tone_hz: f64,
@@ -40,11 +59,13 @@ pub struct EngineConfig {
     pub min_separation: f32,
     /// Move to the strongest keyed tone by itself when the current pitch is quiet.
     pub auto_tone: bool,
+    pub afc: bool,
+    pub tuning: Tuning,
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
-        EngineConfig { tone_hz: 700.0, words: Vec::new(), waterfall_lo_hz: 200.0, waterfall_hi_hz: 1400.0, min_separation: 3.5, auto_tone: true }
+        EngineConfig { tone_hz: 700.0, words: Vec::new(), waterfall_lo_hz: 200.0, waterfall_hi_hz: 1400.0, min_separation: 3.5, auto_tone: true, afc: true, tuning: Tuning::default() }
     }
 }
 
@@ -62,10 +83,12 @@ pub enum EngineEvent {
     /// New final text with a confidence per character, and the not yet final tail.
     Decode { text: String, conf: Vec<f32>, tentative: Vec<TentativeOut>, wpm: f32 },
     Waterfall { bins: Vec<u8>, lo_hz: f64, hz_per_bin: f64 },
-    /// Input level in dB below full scale, about ten times a second.
-    Level { dbfs: f32 },
-    /// Mean confidence of the last characters, and the signal to noise ratio in the filter.
-    Stats { confidence: Option<f32>, snr_db: Option<f32> },
+    /// Input level in dB below full scale (RMS) and the highest sample in that stretch
+    /// (0 to 1, after the gain), about ten times a second.
+    Level { dbfs: f32, peak: f32 },
+    /// Mean confidence of the last characters, the signal to noise ratio in the filter, and the
+    /// filter bandwidth in Hz.
+    Stats { confidence: Option<f32>, snr_db: Option<f32>, bandwidth_hz: f32 },
     Tone { hz: f64 },
     /// Sent after a `reset`: everything decoded before this event belongs to the time before
     /// the reset.
@@ -81,10 +104,13 @@ enum Command {
     Retune(f64),
     Squelch(f32),
     AutoTone(bool),
+    Afc(bool),
+    GoStrongest,
     Reset { flush: bool },
     StartRecording(PathBuf),
     StopRecording,
     AddWords(Vec<String>),
+    Tuning(Tuning),
     Stop,
 }
 
@@ -137,6 +163,15 @@ impl Engine {
         let _ = self.cmd.send(Command::Squelch(v));
     }
 
+    pub fn set_afc(&self, on: bool) {
+        let _ = self.cmd.send(Command::Afc(on));
+    }
+
+    /// Once: move to the strongest keyed tone heard lately.
+    pub fn go_strongest(&self) {
+        let _ = self.cmd.send(Command::GoStrongest);
+    }
+
     pub fn set_auto_tone(&self, on: bool) {
         let _ = self.cmd.send(Command::AutoTone(on));
     }
@@ -153,6 +188,10 @@ impl Engine {
 
     pub fn stop_recording(&self) {
         let _ = self.cmd.send(Command::StopRecording);
+    }
+
+    pub fn set_tuning(&self, t: Tuning) {
+        let _ = self.cmd.send(Command::Tuning(t));
     }
 
     pub fn add_words(&self, words: Vec<String>) {
@@ -211,6 +250,9 @@ struct Worker {
     rec: Option<Recorder>,
     level_acc: f64,
     level_n: usize,
+    level_peak: f32,
+    /// Linear gain from `Tuning::gain_db`.
+    gain: f32,
     conf_window: Vec<f32>,
     last_tentative: String,
     last_stats: Instant,
@@ -237,15 +279,28 @@ impl Worker {
                 }
             }
         }
+        // The gain acts on the decoder, the waterfall and the meter. The recording was written above.
+        let gained: Vec<f32>;
+        let samples: &[f32] = if (self.gain - 1.0).abs() > 1e-6 {
+            gained = samples.iter().map(|s| s * self.gain).collect();
+            &gained
+        } else {
+            samples
+        };
         for s in samples {
             self.level_acc += (*s as f64).powi(2);
             self.level_n += 1;
+            let a = s.abs();
+            if a > self.level_peak {
+                self.level_peak = a;
+            }
         }
         if self.level_n >= (self.rate / 10) as usize {
             let rms = (self.level_acc / self.level_n as f64).sqrt();
-            self.send(EngineEvent::Level { dbfs: (20.0 * (rms + 1e-9).log10()) as f32 });
+            self.send(EngineEvent::Level { dbfs: (20.0 * (rms + 1e-9).log10()) as f32, peak: self.level_peak.min(4.0) });
             self.level_acc = 0.0;
             self.level_n = 0;
+            self.level_peak = 0.0;
         }
         self.scratch.clear();
         let mut lo = std::mem::take(&mut self.scratch);
@@ -298,7 +353,7 @@ impl Worker {
             self.conf_window.clear();
         }
         let present = self.pipe.cw_present();
-        self.send(EngineEvent::Stats { confidence: if present { cwld_types::mean_confidence(&self.conf_window) } else { None }, snr_db: if present { self.pipe.snr_db() } else { None } });
+        self.send(EngineEvent::Stats { confidence: if present { cwld_types::mean_confidence(&self.conf_window) } else { None }, snr_db: if present { self.pipe.snr_db() } else { None }, bandwidth_hz: self.pipe.bandwidth_hz() as f32 });
     }
 
     fn stop_recording(&mut self) {
@@ -309,6 +364,16 @@ impl Worker {
                 Err(e) => self.send(EngineEvent::Stopped { reason: Some(format!("recording: {e}")) }),
             }
         }
+    }
+
+    fn apply_tuning(&mut self, t: &Tuning) {
+        self.gain = 10f32.powf(t.gain_db.clamp(-20.0, 20.0) / 20.0);
+        self.pcfg.bandwidth_factor = if t.wide { 2.4 } else { 1.2 };
+        self.pcfg.decoder.wpm_min = t.wpm_min as f64;
+        self.pcfg.decoder.wpm_max = t.wpm_max as f64;
+        self.pcfg.decoder.fixed_wpm = t.fixed_wpm.map(|w| w as f64);
+        self.pipe.set_wide(t.wide);
+        self.pipe.set_speed_range(t.wpm_min as f64, t.wpm_max as f64, t.fixed_wpm.map(|w| w as f64));
     }
 
     fn command(&mut self, c: Command) -> bool {
@@ -326,6 +391,16 @@ impl Worker {
             Command::AutoTone(on) => {
                 self.pcfg.auto_tone = on;
                 self.pipe.set_auto_tone(on);
+            }
+            Command::Afc(on) => {
+                self.pcfg.afc = on;
+                self.pipe.set_afc(on);
+            }
+            Command::GoStrongest => {
+                if let Some(hz) = self.pipe.go_strongest() {
+                    self.reported_tone = hz;
+                    self.send(EngineEvent::Tone { hz });
+                }
             }
             Command::Reset { flush } => {
                 if flush {
@@ -357,6 +432,7 @@ impl Worker {
                 self.pipe.add_words(&refs);
                 self.words.extend(w);
             }
+            Command::Tuning(t) => self.apply_tuning(&t),
             Command::Stop => return false,
         }
         true
@@ -375,6 +451,11 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
     let mut pcfg = PipelineConfig::new(DECODE_RATE, cfg.tone_hz);
     pcfg.auto_tone = cfg.auto_tone;
     pcfg.min_separation = cfg.min_separation;
+    pcfg.afc = cfg.afc;
+    pcfg.bandwidth_factor = if cfg.tuning.wide { 2.4 } else { 1.2 };
+    pcfg.decoder.wpm_min = cfg.tuning.wpm_min as f64;
+    pcfg.decoder.wpm_max = cfg.tuning.wpm_max as f64;
+    pcfg.decoder.fixed_wpm = cfg.tuning.fixed_wpm.map(|w| w as f64);
     let mut pipe = Pipeline::new(pcfg.clone());
     let refs: Vec<&str> = cfg.words.iter().map(|s| s.as_str()).collect();
     pipe.add_words(&refs);
@@ -390,6 +471,8 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
         rec: None,
         level_acc: 0.0,
         level_n: 0,
+        level_peak: 0.0,
+        gain: 10f32.powf(cfg.tuning.gain_db.clamp(-20.0, 20.0) / 20.0),
         conf_window: Vec::new(),
         last_tentative: String::new(),
         last_stats: Instant::now(),

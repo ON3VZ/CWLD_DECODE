@@ -27,6 +27,14 @@
     return out;
   });
   const live = $derived(app.waterfallLive);
+  /** Edges of the decoder filter (about -3 dB), as a position in the strip. The whole width is about 1.92 times the setting. */
+  const edges = $derived.by(() => {
+    const bw = app.bandwidthHz;
+    if (!bw || !live) return null;
+    const half = 0.96 * bw;
+    const x = (hz: number) => ((hz - lo) / span - left) * zoom;
+    return { a: x(toneHz - half), b: x(toneHz + half), hz: Math.round(half * 2) };
+  });
 
   /** Dark for noise, blue to white only for real signals. A curve keeps the noise quiet. */
   function colour(v: number, data: Uint8ClampedArray, i: number) {
@@ -108,6 +116,10 @@
     {#each ticks as k (k.hz)}
       <span class="tick mono" style:left={`${k.x * 100}%`}>{k.hz}</span>
     {/each}
+    {#if edges}
+      <div class="edge" style:left={`${Math.min(100, Math.max(0, edges.a * 100))}%`} title={t('waterfall.filter', { hz: String(edges.hz) })}></div>
+      <div class="edge" style:left={`${Math.min(100, Math.max(0, edges.b * 100))}%`} title={t('waterfall.filter', { hz: String(edges.hz) })}></div>
+    {/if}
     <div class="tone" style:left={`${Math.min(100, Math.max(0, toneX * 100))}%`}></div>
     <span class="hz mono" style:left={`${Math.min(96, Math.max(0, toneX * 100 + 0.5))}%`}>{Math.round(toneHz)} Hz</span>
     <div class="zoom" role="group" aria-label={t('waterfall.zoom')}>
@@ -127,6 +139,7 @@
   canvas { height: 100%; display: block; }
   .live canvas { cursor: crosshair; }
   .tone { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(255, 90, 90, 0.8); pointer-events: none; }
+  .edge { position: absolute; top: 0; bottom: 0; border-left: 1px solid rgba(255, 70, 70, 0.9); pointer-events: none; }
   .hz { position: absolute; top: 3px; font-size: 12px; color: #ff8a8a; pointer-events: none; text-shadow: 0 0 3px #000; }
   .tick { position: absolute; bottom: 1px; font-size: 10px; color: rgba(190, 210, 230, 0.6); pointer-events: none; transform: translateX(-50%); text-shadow: 0 0 3px #000; }
   .zoom { position: absolute; right: 6px; top: 4px; display: flex; gap: 2px; }

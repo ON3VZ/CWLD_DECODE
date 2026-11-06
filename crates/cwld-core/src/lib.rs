@@ -13,6 +13,7 @@ use cwld_types::{morse, PolicyHandle, RadioCommand, RadioKind, RadioSettings, Ra
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use thiserror::Error;
 
 /// Frequency range accepted by the tuning command (Hz).
@@ -105,7 +106,9 @@ pub enum CoreEvent {
     /// One waterfall row, 0..255 per bin, starting at `lo_hz`.
     Waterfall { bins: Vec<u8>, lo_hz: f64, hz_per_bin: f64 },
     /// Input level, dB below full scale.
-    AudioLevel { dbfs: f32 },
+    AudioLevel { dbfs: f32, peak: f32 },
+    /// The bandwidth of the decoder filter in Hz, for the lines in the audio waterfall.
+    Bandwidth { hz: f32 },
     /// Audio started, stopped, failed, or a recording changed.
     Audio { status: AudioStatus },
 }
@@ -119,7 +122,22 @@ pub struct AppCore {
     audio: Mutex<audio::AudioState>,
     tx_track: Mutex<audio::TxTrack>,
     recordings_dir: Mutex<Option<PathBuf>>,
+    link: Mutex<LinkState>,
 }
+
+/// Watches the link to a real radio, so a switched-off radio or a pulled cable shows as
+/// not connected and CWLD tries again by itself.
+#[derive(Default)]
+struct LinkState {
+    /// A real radio was opened and the operator did not disconnect it.
+    wanted: bool,
+    /// The radio stopped answering or the port failed.
+    lost: bool,
+    last_try: Option<Instant>,
+}
+
+/// Pause between two tries to open the radio again.
+pub const RECONNECT_EVERY: Duration = Duration::from_secs(5);
 
 #[derive(Default)]
 struct SwrState {
@@ -151,6 +169,7 @@ impl AppCore {
             audio: Mutex::new(audio::AudioState::default()),
             tx_track: Mutex::new(audio::TxTrack::default()),
             recordings_dir: Mutex::new(None),
+            link: Mutex::new(LinkState::default()),
         }
     }
 
@@ -183,6 +202,11 @@ impl AppCore {
             let _ = rig.execute(&RadioCommand::SetScope(true));
         }
         drop(rig);
+        {
+            let mut link = self.link.lock().unwrap();
+            link.wanted = cfg.kind != RadioKind::Simulator;
+            link.lost = false;
+        }
         self.settings.lock().unwrap().radio = cfg.clone();
         self.save_settings()
     }
@@ -207,6 +231,7 @@ impl AppCore {
 
     /// Lets go of the radio (the port is closed when the driver is dropped).
     pub fn disconnect(&self) {
+        *self.link.lock().unwrap() = LinkState::default();
         let mut rig = self.rig.lock().unwrap();
         let _ = rig.execute(&RadioCommand::StopCw);
         let _ = rig.execute(&RadioCommand::SetScope(false));
@@ -296,7 +321,49 @@ impl AppCore {
     /// Called about every 500 ms by the shell.
     pub fn tick(&self) -> Vec<CoreEvent> {
         let events = self.rig.lock().unwrap().poll();
-        self.process(events)
+        let out = self.process(events);
+        if self.reconnect_due(Instant::now()) {
+            // The result is not an error for the operator: the next try follows in a few seconds.
+            let cfg = self.settings.lock().unwrap().radio.clone();
+            let _ = self.reopen(&cfg);
+        }
+        out
+    }
+
+    /// Updates the link state from the newest events and says whether it is time to open the
+    /// radio again. Only for a real radio that the operator has not disconnected, and only when
+    /// "connect automatically" is on.
+    fn reconnect_due(&self, now: Instant) -> bool {
+        let mut link = self.link.lock().unwrap();
+        if !link.wanted || !link.lost {
+            return false;
+        }
+        let cfg = self.settings.lock().unwrap().radio.clone();
+        if !cfg.auto_connect || cfg.kind == RadioKind::Simulator || cfg.port.trim().is_empty() {
+            return false;
+        }
+        match link.last_try {
+            Some(t) if now.duration_since(t) < RECONNECT_EVERY => false,
+            _ => {
+                link.last_try = Some(now);
+                true
+            }
+        }
+    }
+
+    /// Opens the radio port again without touching the link state (keeps "wanted" and "lost"
+    /// until the radio answers).
+    fn reopen(&self, cfg: &RadioSettings) -> Result<(), CoreError> {
+        let (wanted, lost, last) = {
+            let l = self.link.lock().unwrap();
+            (l.wanted, l.lost, l.last_try)
+        };
+        let r = self.connect(cfg);
+        let mut l = self.link.lock().unwrap();
+        l.wanted = wanted;
+        l.lost = lost;
+        l.last_try = last;
+        r
     }
 
     /// Called about every 100 ms: safety readings only (SWR).
@@ -310,6 +377,9 @@ impl AppCore {
         let mut out = Vec::new();
         for event in events {
             let swr = if let RigEvent::Swr(v) = &event { Some(*v) } else { None };
+            if let RigEvent::Connected(up) = &event {
+                self.link.lock().unwrap().lost = !*up;
+            }
             out.push(CoreEvent::Rig { event });
             if let Some(v) = swr {
                 if let Some(alert) = self.check_swr(v) {
@@ -373,6 +443,7 @@ impl AppCore {
         if let Some(e) = &self.audio.lock().unwrap().engine_ref() {
             e.add_words(words);
         }
+        let audio_cfg = new.audio.clone();
         let scope = new.band_scope;
         let was = std::mem::replace(&mut *self.settings.lock().unwrap(), new).band_scope;
         if scope != was {
@@ -380,6 +451,9 @@ impl AppCore {
             if rig.capabilities().scope {
                 let _ = rig.execute(&RadioCommand::SetScope(scope));
             }
+        }
+        if let Some(e) = &self.audio.lock().unwrap().engine_ref() {
+            e.set_tuning(audio::tuning_of(&audio_cfg));
         }
         self.save_settings()
     }
@@ -412,6 +486,38 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d.join("settings.json")
+    }
+
+    #[test]
+    fn a_lost_radio_is_opened_again_every_five_seconds_and_a_disconnect_stops_it() {
+        let c = AppCore::new(None);
+        c.settings.lock().unwrap().radio = RadioSettings { kind: RadioKind::Icom, port: "/dev/definitely-not-here".into(), ..RadioSettings::default() };
+        let t0 = Instant::now();
+        // Nothing wanted yet: no tries.
+        assert!(!c.reconnect_due(t0));
+        {
+            let mut l = c.link.lock().unwrap();
+            l.wanted = true;
+        }
+        // Still connected as far as we know: no tries.
+        assert!(!c.reconnect_due(t0));
+        // The radio stops answering.
+        c.process(vec![RigEvent::Connected(false)]);
+        assert!(c.reconnect_due(t0));
+        assert!(!c.reconnect_due(t0 + Duration::from_secs(2)));
+        assert!(c.reconnect_due(t0 + Duration::from_secs(6)));
+        // The radio answers again.
+        c.process(vec![RigEvent::Connected(true)]);
+        assert!(!c.reconnect_due(t0 + Duration::from_secs(20)));
+        // Lost again, then the operator disconnects: no more tries.
+        c.process(vec![RigEvent::Connected(false)]);
+        c.disconnect();
+        assert!(!c.reconnect_due(t0 + Duration::from_secs(40)));
+        // Switched off in the settings: no tries either.
+        c.link.lock().unwrap().wanted = true;
+        c.link.lock().unwrap().lost = true;
+        c.settings.lock().unwrap().radio.auto_connect = false;
+        assert!(!c.reconnect_due(t0 + Duration::from_secs(60)));
     }
 
     #[test]

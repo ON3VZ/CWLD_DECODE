@@ -54,7 +54,7 @@ Bovenaan staat de bandscoop van de radio: hetzelfde spectrum als op het scherm v
 
 ## 10. Codes en afkortingen
 
-Naast de knop Verzenden staat een knop **Q** (of druk op F1). Er schuift rechts een paneel open met Q-codes, veelgebruikte CW-afkortingen en prosigns, elk met uitleg in het Nederlands of Engels (volgens je taalinstelling).
+Naast de knop Verzenden staat een knop **Q** (of druk op Ctrl+Q). Er schuift rechts een paneel open met Q-codes, veelgebruikte CW-afkortingen en prosigns, elk met uitleg in het Nederlands of Engels (volgens je taalinstelling).
 
 1. Typ in het zoekvak een code of een woord uit de uitleg. "QTH" of "locatie" vindt beide QTH.
 2. Kies bovenaan Alles, Q-codes, Afkortingen of Prosigns om de lijst te beperken.
@@ -76,3 +76,36 @@ Meldt de installer van een update toch "CWLD is running" of "Failed to kill CWLD
 Lukt het nog niet: herstart de pc, open CWLD niet, en start meteen de installer.
 
 Vanaf 0.4.4 doet de installer stap 3 en 4 zelf.
+
+
+## 12. Instellingen in rubrieken
+
+Klik rechtsboven op het tandwiel. Links staat een menu: Station, Radio en SWR, Audio, Decoder, Zenden, Weergave en taal, Contest, Updates en info. Klik op een rubriek om die te zien. Onderaan staat OK om te bewaren en Sluiten om zonder bewaren te sluiten. Schuiven en schakelaars van de decoder werken meteen, de rest geldt na OK.
+
+## 13. Pile-up en snelle antwoorden
+
+Onder de gewone chips staat een rij Pile-up met vier knoppen en de toetsen F1 tot F4:
+
+- F1: je eigen roepletters.
+- F2: je eigen roepletters twee keer.
+- F3: R, je rapport en TU (bijvoorbeeld `R 5NN TU`). Het rapport komt uit het QSO-paneel en is standaard 5NN. Wil je 599, kies dat bij Instellingen, Zenden, Standaardrapport.
+- F4: AGN?
+
+De toetsen werken alleen als zenden mag: in LIVE of OEFENEN, niet bij LUISTEREN, en niet bij een openstaande SWR-melding. Het Q-paneel opent nu met Ctrl+Q.
+
+## 14. Gesprekken (tabjes) en contest
+
+- Klik op een ouder tabje: dat gesprek wordt weer het actieve, en de radio gaat naar de frequentie van dat gesprek. Tijdens het zenden of zonder radio wordt het alleen getoond.
+- Gesprekken zonder nieuwe tekst sluiten na 15 minuten (instelbaar bij Weergave en taal). Het gesprek waarin je zit en gesprekken met gezonden tekst die nog niet gelogd zijn sluiten niet vanzelf. De knop Alles sluiten laat één nieuw leeg gesprek open en vraagt eerst bevestiging als er nog niet-gelogde gesprekken zijn. (Het logboek zelf komt in een volgende versie, tot dan blijft een gesprek met gezonden tekst staan tot je het zelf sluit met het kruisje.)
+- Contest: klik onder de chips op Contest. Er verschijnt een chip Uitwisseling (`{CALL} {RST} {NR}`), en `{NR}` in elke chip wordt het volgnummer van drie cijfers. Zet je contest mode later weer aan terwijl er een nummer onthouden is, dan vraagt CWLD of je daar verdergaat of opnieuw begint bij 1. Het nummer telt voorlopig nog niet vanzelf op.
+
+## 15. Decoder bijstellen
+
+Onder het audio-waterfall (rechts) staan:
+
+- De piekmeter: tussen 5 en 90 procent is goed. Boven 90 procent wordt de ingang van de geluidskaart overbelast, zet dan het audioniveau van de radio of de versterking lager.
+- De versterking (-20 tot +20 dB) voor decoder en meter. Een opname blijft zoals ze binnenkwam.
+- Zwak, Midden, Sterk: hoe streng de decoder is. Zwak probeert ook vage signalen, Sterk leest alleen duidelijke. Dit zijn standen van de drempelschuif bij Instellingen, Decoder, naar gevoel gekozen en nog niet gemeten.
+- Smal of Breed: Breed heeft dubbele bandbreedte, voor driftende of tjirpende signalen. De twee rode lijnen in het waterfall tonen het filter.
+- Sterkste (F6): eenmalig naar het sterkste getoetste signaal van de laatste seconden. AFC (F7): aan of uit.
+- Bij Instellingen, Decoder: traagste en snelste snelheid (5 tot 60 WPM) en een vaste snelheid voor bakens.

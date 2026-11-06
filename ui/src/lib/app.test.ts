@@ -563,3 +563,209 @@ describe('inserting codes from the library', () => {
     expect(app.draft).toBe('DL1ABC TNX ');
   });
 });
+
+describe('report, pile-up keys and contest number', () => {
+  beforeEach(async () => {
+    await fresh();
+  });
+
+  it('the report is 5NN by default and 599 when the setting says so', async () => {
+    expect(app.cur.qso.rst).toBe('5NN');
+    await app.setDefaultRst('599');
+    app.newConversation(7_040_000);
+    app.cur.messages.push({ id: 9999, from: 'rx', text: 'CQ', time: '10:00' });
+    app.newConversation(7_041_000);
+    expect(app.cur.qso.rst).toBe('599');
+  });
+
+  it('the pile-up keys send a fixed text with the report from the QSO panel', async () => {
+    await app.requestPolicy('practice');
+    app.cur.qso.rst = '5NN';
+    const spy = vi.spyOn(app, 'sendChip');
+    await app.pressPileup('F3');
+    expect(spy).toHaveBeenCalledWith('R {RST} TU');
+    spy.mockClear();
+    await app.requestPolicy('listen_only');
+    await app.pressPileup('F1');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('{NR} has a value in contest mode only, and a stored number asks to continue or restart', async () => {
+    expect(app.vars.NR).toBe('');
+    await app.setContestNr(5);
+    await app.requestContest(true);
+    expect(app.contestAsk).toBe(true);
+    await app.answerContest(false);
+    expect(app.settings?.contest_mode).toBe(true);
+    expect(app.vars.NR).toBe('005');
+    await app.requestContest(false);
+    expect(app.vars.NR).toBe('');
+    await app.requestContest(true);
+    await app.answerContest(true);
+    expect(app.vars.NR).toBe('001');
+  });
+
+  it('contest mode on with number 1 needs no question', async () => {
+    await app.requestContest(true);
+    expect(app.contestAsk).toBe(false);
+    expect(app.settings?.contest_mode).toBe(true);
+  });
+});
+
+describe('tabs: jump to the frequency, close idle ones, close all', () => {
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    await fresh();
+    app.sessions[0].freq = 7_030_000;
+    app.sessions[0].messages = [];
+    app.status.frequency_hz = 7_030_000;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function twoTabs() {
+    const first = app.cur.id;
+    app.cur.messages.push({ id: 9001, from: 'rx', text: 'CQ DE DL1ABC', time: '10:00' });
+    app.status.frequency_hz = 14_030_000;
+    app.newConversation(14_030_000);
+    app.cur.messages.push({ id: 9002, from: 'rx', text: 'CQ DE F5XYZ', time: '10:01' });
+    return first;
+  }
+
+  it('clicking an earlier tab makes it live again and tunes the radio to its frequency', async () => {
+    const first = twoTabs();
+    const api = (app as unknown as { api: MockApi }).api;
+    const spy = vi.spyOn(api, 'setFrequency');
+    await app.openTab(first);
+    expect(app.cur.id).toBe(first);
+    expect(spy).toHaveBeenCalledWith(7_030_000);
+    // The jump itself does not open another tab.
+    vi.advanceTimersByTime(SETTLE_MS + 10);
+    expect(app.cur.id).toBe(first);
+    expect(app.sessions.length).toBe(2);
+  });
+
+  it('does not tune while transmitting, it only shows the tab', async () => {
+    const first = twoTabs();
+    const live = app.cur.id;
+    app.status.transmitting = true;
+    await app.openTab(first);
+    expect(app.shown.id).toBe(first);
+    expect(app.cur.id).toBe(live);
+  });
+
+  it('without a radio the tab is only shown', async () => {
+    const first = twoTabs();
+    const live = app.cur.id;
+    app.status.connected = false;
+    await app.openTab(first);
+    expect(app.shown.id).toBe(first);
+    expect(app.cur.id).toBe(live);
+  });
+
+  it('idle tabs close after the set time, but not the live one, the shown one or one with sent text', () => {
+    const first = twoTabs();
+    const live = app.cur.id;
+    // A third tab with sent text that is not logged.
+    app.newConversation(21_030_000);
+    app.cur.messages.push({ id: 9003, from: 'tx', text: 'CQ DE ON3VZ', time: '10:02' });
+    const third = app.cur.id;
+    app.newConversation(28_030_000);
+    app.cur.messages.push({ id: 9004, from: 'rx', text: 'CQ', time: '10:03' });
+    const fourth = app.cur.id;
+    const now = Date.now() + 16 * 60_000;
+    app.sweepTabs(now);
+    const ids = app.sessions.map((s) => s.id);
+    expect(ids).not.toContain(first);
+    expect(ids).not.toContain(live);
+    expect(ids).toContain(third);
+    expect(ids).toContain(fourth);
+  });
+
+  it('0 minutes switches the closing off', async () => {
+    const first = twoTabs();
+    app.settings!.tabs_auto_close_minutes = 0;
+    app.sweepTabs(Date.now() + 600 * 60_000);
+    expect(app.sessions.map((s) => s.id)).toContain(first);
+  });
+
+  it('close all asks first when sent text is not logged, and keeps one empty tab', () => {
+    twoTabs();
+    app.cur.messages.push({ id: 9005, from: 'tx', text: 'CQ', time: '10:05' });
+    app.requestCloseAll();
+    expect(app.closeAllAsk).toBe(1);
+    expect(app.sessions.length).toBe(2);
+    app.closeAllNow();
+    expect(app.closeAllAsk).toBe(0);
+    expect(app.sessions.length).toBe(1);
+    expect(app.cur.messages.length).toBe(0);
+    expect(app.viewingLive).toBe(true);
+  });
+
+  it('close all needs no question when nothing was sent', () => {
+    twoTabs();
+    app.requestCloseAll();
+    expect(app.sessions.length).toBe(1);
+    expect(app.closeAllAsk).toBe(0);
+  });
+});
+
+describe('decoder tuning and presets', () => {
+  beforeEach(async () => {
+    await fresh();
+  });
+
+  it('gain, filter and speed range are limited and remembered', async () => {
+    await app.setTuning({ gain_db: 55, wide_filter: true, min_wpm: 3, max_wpm: 100 });
+    const a = app.settings!.audio;
+    expect(a.gain_db).toBe(20);
+    expect(a.wide_filter).toBe(true);
+    expect(a.min_wpm).toBe(5);
+    expect(a.max_wpm).toBe(60);
+    await app.setTuning({ lock_wpm: 3 });
+    expect(app.settings!.audio.lock_wpm).toBe(0);
+    await app.setTuning({ lock_wpm: 18 });
+    expect(app.settings!.audio.lock_wpm).toBe(18);
+  });
+
+  it('the slowest speed keeps at least 5 WPM below the fastest', async () => {
+    await app.setTuning({ min_wpm: 40, max_wpm: 20 });
+    expect(app.settings!.audio.max_wpm - app.settings!.audio.min_wpm).toBeGreaterThanOrEqual(5);
+  });
+
+  it('presets set the squelch and the matching one is marked', async () => {
+    await app.setPreset('strong');
+    expect(app.settings!.audio.squelch).toBe(5.5);
+    expect(app.preset).toBe('strong');
+    await app.setSquelch(4.1);
+    expect(app.preset).toBeNull();
+  });
+
+  it('strongest and AFC reach the core', async () => {
+    const api = (app as unknown as { api: MockApi }).api;
+    await app.goStrongest();
+    expect(api.strongestCalls).toBe(1);
+    await app.setAfc(false);
+    expect(app.settings!.audio.afc).toBe(false);
+  });
+
+  it('the peak and the filter width come from the core events', () => {
+    (app as unknown as { onEvents(e: unknown[]): void }).onEvents([
+      { type: 'audio_level', dbfs: -20, peak: 0.42 },
+      { type: 'bandwidth', hz: 25 },
+    ]);
+    expect(app.audioPeak).toBeCloseTo(0.42);
+    expect(app.bandwidthHz).toBe(25);
+  });
+
+  it('own words are added, replaced and removed', async () => {
+    await app.addUserWord('tnx2u', 'Thanks to you');
+    expect(app.settings!.user_words).toEqual([{ code: 'TNX2U', meaning: 'Thanks to you' }]);
+    await app.addUserWord('TNX2U', 'Many thanks');
+    expect(app.settings!.user_words.length).toBe(1);
+    expect(app.settings!.user_words[0].meaning).toBe('Many thanks');
+    await app.removeUserWord('TNX2U');
+    expect(app.settings!.user_words.length).toBe(0);
+  });
+});

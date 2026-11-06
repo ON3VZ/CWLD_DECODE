@@ -4,11 +4,20 @@
   import { Q_ENTRIES, entryMeaning, searchEntries, type QKind } from '../lib/qcodes';
 
   let query = $state('');
-  let tab = $state<'all' | QKind>('all');
+  let tab = $state<'all' | QKind | 'own'>('all');
   let search: HTMLInputElement;
 
-  const tabs: Array<'all' | QKind> = ['all', 'q', 'abbr', 'prosign'];
+  const tabs: Array<'all' | QKind | 'own'> = ['all', 'q', 'abbr', 'prosign', 'own'];
+  let newCode = $state('');
+  let newMeaning = $state('');
+  async function addOwn(e: Event) {
+    e.preventDefault();
+    await app.addUserWord(newCode, newMeaning);
+    newCode = '';
+    newMeaning = '';
+  }
   const rows = $derived(searchEntries(Q_ENTRIES.filter((e) => tab === 'all' || e.kind === tab), query, i18n.lang));
+  const ownRows = $derived((app.settings?.user_words ?? []).filter((w) => !query.trim() || w.code.includes(query.trim().toUpperCase()) || w.meaning.toUpperCase().includes(query.trim().toUpperCase())));
 
   $effect(() => {
     search?.focus();
@@ -28,8 +37,24 @@
     {/each}
   </div>
   <p class="muted hint">{t('qlib.hint')}</p>
+  {#if tab === 'own' || tab === 'all'}
+    <form class="own" onsubmit={addOwn}>
+      <input class="mono" placeholder={t('qlib.own.code')} aria-label={t('qlib.own.code')} bind:value={newCode} maxlength="12" />
+      <input placeholder={t('qlib.own.meaning')} aria-label={t('qlib.own.meaning')} bind:value={newMeaning} />
+      <button class="btn" type="submit" disabled={!newCode.trim() || !newMeaning.trim()}>{t('qlib.own.add')}</button>
+    </form>
+  {/if}
   <ul>
-    {#each rows as e (e.kind + e.code)}
+    {#if tab === 'own' || tab === 'all'}
+      {#each ownRows as w (w.code)}
+        <li>
+          <button class="code mono" onclick={() => app.insertText(w.code)}>{w.code}</button>
+          <div class="txt"><span>{w.meaning}</span><span class="muted ask">{t('qlib.own.tag')}</span></div>
+          <button class="link" onclick={() => app.removeUserWord(w.code)} aria-label={t('qlib.own.remove')} title={t('qlib.own.remove')}>×</button>
+        </li>
+      {/each}
+    {/if}
+    {#each tab === 'own' ? [] : rows as e (e.kind + e.code)}
       <li>
         <button class="code mono" disabled={e.insertable === false} title={e.insertable === false ? t('qlib.noinsert') : ''} onclick={() => app.insertText(e.code)}>{e.code}</button>
         <div class="txt">
@@ -41,7 +66,7 @@
         </div>
       </li>
     {:else}
-      <li class="muted">{t('qlib.none')}</li>
+      {#if !ownRows.length}<li class="muted">{t('qlib.none')}</li>{/if}
     {/each}
   </ul>
 </aside>
@@ -57,6 +82,10 @@
   .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
   .tabs button { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; cursor: pointer; color: inherit; }
   .tabs button.on { border-color: var(--accent); color: var(--accent); }
+  .own { display: flex; gap: 6px; }
+  .own input { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; color: var(--text); min-width: 0; }
+  .own input:first-child { width: 6em; }
+  .own input:nth-child(2) { flex: 1; }
   .hint { margin: 0; font-size: 13px; }
   ul { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 6px; }
   li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid var(--line); }

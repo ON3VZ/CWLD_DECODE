@@ -11,4 +11,4 @@ pub mod ring;
 pub mod waterfall;
 
 pub use device::{list_inputs, InputDevice};
-pub use engine::{Engine, EngineConfig, EngineEvent, Source, TentativeOut};
+pub use engine::{Engine, EngineConfig, EngineEvent, Source, TentativeOut, Tuning};

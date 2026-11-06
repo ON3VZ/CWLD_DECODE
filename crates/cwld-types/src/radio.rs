@@ -182,6 +182,8 @@ pub struct DecoderStats {
     /// Signal to noise ratio in the decoder filter, when a signal is present.
     pub snr_db: Option<f32>,
     pub accuracy: Option<f32>,
+    /// The bandwidth the decoder filter has now, in Hz (the settings of the filter, not measured).
+    pub bandwidth_hz: Option<f32>,
 }
 
 /// Number of characters the confidence meter looks back over.

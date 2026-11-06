@@ -5,7 +5,7 @@
 
 use crate::{AppCore, CoreError, CoreEvent};
 use cwld_radio::Rig;
-use cwld_audio::{list_inputs, Engine, EngineConfig, EngineEvent, InputDevice, Source};
+use cwld_audio::{list_inputs, Engine, EngineConfig, EngineEvent, InputDevice, Source, Tuning};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -93,7 +93,7 @@ impl AppCore {
         let mut words: Vec<String> = s.station.calls.clone();
         words.extend(s.station.name.split_whitespace().map(|w| w.to_string()));
         words.extend(s.station.qth.split_whitespace().map(|w| w.to_string()));
-        let cfg = EngineConfig { tone_hz: s.audio.safe_tone() as f64, words, min_separation: s.audio.safe_squelch(), auto_tone: s.audio.auto_tone, ..Default::default() };
+        let cfg = EngineConfig { tone_hz: s.audio.safe_tone() as f64, words, min_separation: s.audio.safe_squelch(), auto_tone: s.audio.auto_tone, afc: s.audio.afc, tuning: tuning_of(&s.audio), ..Default::default() };
         let mut st = self.audio.lock().unwrap();
         match Engine::start(source, cfg) {
             Ok(e) => {
@@ -135,6 +135,40 @@ impl AppCore {
         self.settings.lock().unwrap().audio.squelch = v;
         if let Some(e) = &self.audio.lock().unwrap().engine {
             e.set_squelch(v);
+        }
+        Ok(())
+    }
+
+    /// AFC on or off, remembered.
+    pub fn set_afc(&self, on: bool) -> Result<(), CoreError> {
+        self.settings.lock().unwrap().audio.afc = on;
+        if let Some(e) = &self.audio.lock().unwrap().engine {
+            e.set_afc(on);
+        }
+        Ok(())
+    }
+
+    /// Once: the decoder moves to the strongest keyed tone heard lately.
+    pub fn go_strongest(&self) -> Result<(), CoreError> {
+        if let Some(e) = &self.audio.lock().unwrap().engine {
+            e.go_strongest();
+        }
+        Ok(())
+    }
+
+    /// Changes the gain, filter width and speed range of the running decoder, and remembers them.
+    pub fn set_tuning(&self, gain_db: f32, wide_filter: bool, min_wpm: u8, max_wpm: u8, lock_wpm: u8) -> Result<(), CoreError> {
+        let audio = {
+            let mut s = self.settings.lock().unwrap();
+            s.audio.gain_db = gain_db;
+            s.audio.wide_filter = wide_filter;
+            s.audio.min_wpm = min_wpm;
+            s.audio.max_wpm = max_wpm;
+            s.audio.lock_wpm = lock_wpm;
+            s.audio.clone()
+        };
+        if let Some(e) = &self.audio.lock().unwrap().engine {
+            e.set_tuning(tuning_of(&audio));
         }
         Ok(())
     }
@@ -285,10 +319,11 @@ impl AppCore {
                     }
                 }
                 EngineEvent::Waterfall { bins, lo_hz, hz_per_bin } => out.push(CoreEvent::Waterfall { bins, lo_hz, hz_per_bin }),
-                EngineEvent::Level { dbfs } => out.push(CoreEvent::AudioLevel { dbfs }),
-                EngineEvent::Stats { confidence, snr_db } => {
+                EngineEvent::Level { dbfs, peak } => out.push(CoreEvent::AudioLevel { dbfs, peak }),
+                EngineEvent::Stats { confidence, snr_db, bandwidth_hz } => {
+                    out.push(CoreEvent::Bandwidth { hz: bandwidth_hz });
                     if let Some(c) = confidence {
-                        out.push(CoreEvent::Decoder { stats: cwld_types::DecoderStats { confidence: c, snr_db, accuracy: None } });
+                        out.push(CoreEvent::Decoder { stats: cwld_types::DecoderStats { confidence: c, snr_db, accuracy: None, bandwidth_hz: Some(bandwidth_hz) } });
                     }
                 }
                 other => {
@@ -345,6 +380,12 @@ impl AppCore {
 }
 
 /// `YYYYMMDD-HHMMSS` in UTC, without a date library.
+/// The decoder tuning from the settings, kept inside its ranges.
+pub(crate) fn tuning_of(a: &cwld_types::AudioSettings) -> Tuning {
+    let (lo, hi) = a.safe_wpm_range();
+    Tuning { gain_db: a.safe_gain_db(), wide: a.wide_filter, wpm_min: lo as f32, wpm_max: hi as f32, fixed_wpm: a.safe_lock_wpm().map(|w| w as f32) }
+}
+
 pub fn timestamp(t: SystemTime) -> String {
     let secs = t.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let days = (secs / 86_400) as i64;
@@ -513,6 +554,21 @@ mod tests {
             assert!(c.audio_status().error.is_some());
             assert!(!c.audio_status().running);
         }
+    }
+
+    #[test]
+    fn tuning_is_remembered_and_kept_in_range() {
+        let c = core();
+        c.set_tuning(6.0, true, 8, 40, 0).unwrap();
+        let a = c.settings().audio;
+        assert_eq!((a.gain_db, a.wide_filter, a.min_wpm, a.max_wpm, a.lock_wpm), (6.0, true, 8, 40, 0));
+        let t = tuning_of(&a);
+        assert!(t.wide && t.fixed_wpm.is_none() && t.wpm_min == 8.0 && t.wpm_max == 40.0);
+        c.set_tuning(99.0, false, 1, 200, 18).unwrap();
+        let t = tuning_of(&c.settings().audio);
+        assert_eq!(t.gain_db, 20.0);
+        assert_eq!((t.wpm_min, t.wpm_max), (5.0, 60.0));
+        assert_eq!(t.fixed_wpm, Some(18.0));
     }
 
     #[test]

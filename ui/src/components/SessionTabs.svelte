@@ -8,7 +8,7 @@
     {#each app.sessions as s (s.id)}
       {@const live = s.id === app.cur.id}
       <div class="tab" class:on={s.id === app.shown.id} class:live>
-        <button role="tab" aria-selected={s.id === app.shown.id} class="name mono" onclick={() => app.show(s.id)} title={live ? t('tabs.live.help') : t('tabs.old.help')}>
+        <button role="tab" aria-selected={s.id === app.shown.id} class="name mono" onclick={() => app.openTab(s.id)} title={live ? t('tabs.live.help') : t('tabs.old.help')}>
           {#if live}<span class="dot"></span>{/if}{app.title(s)}
         </button>
         {#if !live}
@@ -18,6 +18,9 @@
     {/each}
   </div>
   <button class="btn newqso" onclick={() => app.newConversation()} title={t('tabs.new.help')}>+ {t('tabs.new')}</button>
+  {#if app.sessions.length > 1 || app.cur.messages.length > 0}
+    <button class="btn newqso" onclick={() => app.requestCloseAll()} title={t('tabs.closeall.help')}>{t('tabs.closeall')}</button>
+  {/if}
 </nav>
 
 <style>

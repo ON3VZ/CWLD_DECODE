@@ -109,7 +109,24 @@ pub struct AudioSettings {
     pub squelch: f32,
     /// Move to the strongest signal by itself when the current pitch is quiet.
     pub auto_tone: bool,
+    /// Extra gain on the incoming audio for decoding and the level meter, -20 to +20 dB. The
+    /// recording stays untouched.
+    pub gain_db: f32,
+    /// Wide decoder filter (double bandwidth) for drifting or chirpy signals.
+    pub wide_filter: bool,
+    /// Slowest and fastest speed the decoder looks for, in WPM.
+    pub min_wpm: u8,
+    pub max_wpm: u8,
+    /// Fixed speed in WPM (beacons, a station with a steady speed). 0: follow the speed by itself.
+    pub lock_wpm: u8,
+    /// Follow a drifting tone by itself.
+    pub afc: bool,
 }
+
+pub const GAIN_MAX_DB: f32 = 20.0;
+pub const WPM_FLOOR: u8 = 5;
+pub const WPM_CEILING: u8 = 60;
+pub const MAX_WPM_DEFAULT: u8 = 50;
 
 /// The range of the squelch setting, and its default.
 pub const SQUELCH_MIN: f32 = 1.0;
@@ -123,7 +140,7 @@ pub const NEW_TAB_SECONDS_DEFAULT: u32 = 5;
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new(), squelch: SQUELCH_DEFAULT, auto_tone: true }
+        AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new(), squelch: SQUELCH_DEFAULT, auto_tone: true, gain_db: 0.0, wide_filter: false, min_wpm: WPM_FLOOR, max_wpm: MAX_WPM_DEFAULT, lock_wpm: 0, afc: true }
     }
 }
 
@@ -135,6 +152,27 @@ impl AudioSettings {
         } else {
             self.squelch.clamp(SQUELCH_MIN, SQUELCH_MAX)
         }
+    }
+
+    /// The gain, kept in range even after a hand-edited file.
+    pub fn safe_gain_db(&self) -> f32 {
+        if self.gain_db.is_nan() {
+            0.0
+        } else {
+            self.gain_db.clamp(-GAIN_MAX_DB, GAIN_MAX_DB)
+        }
+    }
+
+    /// Slowest and fastest speed, each inside 5 to 60 WPM and at least 5 WPM apart.
+    pub fn safe_wpm_range(&self) -> (u8, u8) {
+        let lo = self.min_wpm.clamp(WPM_FLOOR, WPM_CEILING - 5);
+        let hi = self.max_wpm.clamp(lo + 5, WPM_CEILING);
+        (lo, hi)
+    }
+
+    /// The fixed speed, or `None` for automatic.
+    pub fn safe_lock_wpm(&self) -> Option<u8> {
+        (self.lock_wpm >= WPM_FLOOR).then(|| self.lock_wpm.min(WPM_CEILING))
     }
 
     /// The pitch, kept in a range where CW tones live, even after a hand-edited file.
@@ -205,6 +243,46 @@ pub struct Settings {
     pub band_scope: bool,
     /// Show the narrow audio waterfall (what the decoder hears).
     pub audio_waterfall: bool,
+    /// The signal report used in chips: `5NN` (default) or `599`.
+    pub default_rst: DefaultRst,
+    /// Close conversations without activity after this many minutes. 0: never.
+    pub tabs_auto_close_minutes: u32,
+    /// Contest mode: the serial number `{NR}` is filled in and counted.
+    pub contest_mode: bool,
+    /// The next serial number in contest mode.
+    pub contest_nr: u32,
+    /// Words and abbreviations the operator added to the code library.
+    pub user_words: Vec<UserWord>,
+}
+
+/// An own abbreviation with its meaning, shown in tooltips and in the code library.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UserWord {
+    pub code: String,
+    pub meaning: String,
+}
+
+pub const TABS_AUTO_CLOSE_DEFAULT: u32 = 15;
+pub const TABS_AUTO_CLOSE_MAX: u32 = 240;
+
+/// How the signal report is sent: cut number `5NN` or in full `599`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum DefaultRst {
+    #[default]
+    #[serde(rename = "5NN")]
+    Nn,
+    #[serde(rename = "599")]
+    Full,
+}
+
+impl DefaultRst {
+    pub fn text(self) -> &'static str {
+        match self {
+            DefaultRst::Nn => "5NN",
+            DefaultRst::Full => "599",
+        }
+    }
 }
 
 impl Default for Settings {
@@ -223,6 +301,11 @@ impl Default for Settings {
             new_tab_seconds: NEW_TAB_SECONDS_DEFAULT,
             band_scope: true,
             audio_waterfall: true,
+            default_rst: DefaultRst::default(),
+            tabs_auto_close_minutes: TABS_AUTO_CLOSE_DEFAULT,
+            contest_mode: false,
+            contest_nr: 1,
+            user_words: Vec::new(),
         }
     }
 }
@@ -358,6 +441,37 @@ mod tests {
         assert!(!Station::is_valid_call("ON3VZ//P"));
         assert!(!Station::is_valid_call("HELLO"));
         assert!(!Station::is_valid_call("ON"));
+    }
+
+    #[test]
+    fn report_is_5nn_by_default_and_old_files_still_load() {
+        let s: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(s.default_rst, DefaultRst::Nn);
+        assert_eq!(s.default_rst.text(), "5NN");
+        assert_eq!(s.tabs_auto_close_minutes, 15);
+        assert!(!s.contest_mode);
+        let s: Settings = serde_json::from_str(r#"{"default_rst":"599"}"#).unwrap();
+        assert_eq!(s.default_rst.text(), "599");
+    }
+
+    #[test]
+    fn decoder_tuning_is_kept_in_range() {
+        let mut a = AudioSettings::default();
+        assert_eq!(a.safe_gain_db(), 0.0);
+        assert_eq!(a.safe_wpm_range(), (5, 50));
+        assert_eq!(a.safe_lock_wpm(), None);
+        a.gain_db = 99.0;
+        assert_eq!(a.safe_gain_db(), 20.0);
+        a.gain_db = f32::NAN;
+        assert_eq!(a.safe_gain_db(), 0.0);
+        a.min_wpm = 58;
+        a.max_wpm = 10;
+        let (lo, hi) = a.safe_wpm_range();
+        assert!(lo <= 55 && hi >= lo + 5 && hi <= 60);
+        a.lock_wpm = 4;
+        assert_eq!(a.safe_lock_wpm(), None);
+        a.lock_wpm = 99;
+        assert_eq!(a.safe_lock_wpm(), Some(60));
     }
 
     #[test]

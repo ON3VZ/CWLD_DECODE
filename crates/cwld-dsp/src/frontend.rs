@@ -164,6 +164,11 @@ impl Frontend {
         self.alpha = 1.0 - (-2.0 * PI * fc / self.cfg.sample_rate as f64).exp();
     }
 
+    /// AFC on or off.
+    pub fn set_afc(&mut self, on: bool) {
+        self.cfg.afc = on;
+    }
+
     pub fn bandwidth_hz(&self) -> f64 {
         self.cfg.bandwidth_hz
     }

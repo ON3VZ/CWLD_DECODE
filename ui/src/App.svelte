@@ -27,13 +27,30 @@
     if (e.key === 'Escape') {
       if (app.confirmLive) app.confirmLive = false;
       else if (app.settingsOpen) app.settingsOpen = false;
+      else if (app.closeAllAsk) app.closeAllAsk = 0;
+      else if (app.contestAsk) app.contestAsk = false;
       else if (app.qOpen) app.qOpen = false;
       else app.stop();
       return;
     }
-    if (e.key === 'F1') {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'q' || e.key === 'Q')) {
       e.preventDefault();
       app.qOpen = !app.qOpen;
+      return;
+    }
+    if (e.key === 'F1' || e.key === 'F2' || e.key === 'F3' || e.key === 'F4') {
+      e.preventDefault();
+      if (!app.settingsOpen && !app.confirmLive) void app.pressPileup(e.key);
+      return;
+    }
+    if (e.key === 'F6') {
+      e.preventDefault();
+      void app.goStrongest();
+      return;
+    }
+    if (e.key === 'F7') {
+      e.preventDefault();
+      void app.setAfc(!(app.settings?.audio.afc ?? true));
       return;
     }
     const tag = (e.target as HTMLElement | null)?.tagName;
@@ -79,6 +96,30 @@
   {#if app.confirmLive}<ConfirmLive />{/if}
   {#if app.settingsOpen}<SettingsDialog />{/if}
   {#if app.qOpen}<QCodePanel />{/if}
+  {#if app.closeAllAsk}
+    <div class="scrim" role="presentation">
+      <div class="ask" role="alertdialog" aria-modal="true" aria-labelledby="ca-title">
+        <h2 id="ca-title">{t('tabs.closeall')}</h2>
+        <p>{t('tabs.closeall.ask', { n: String(app.closeAllAsk) })}</p>
+        <div class="act">
+          <button class="btn" onclick={() => (app.closeAllAsk = 0)}>{t('tabs.cancel')}</button>
+          <button class="btn danger" onclick={() => app.closeAllNow()}>{t('tabs.closeall.yes')}</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+  {#if app.contestAsk && !app.settingsOpen}
+    <div class="scrim" role="presentation">
+      <div class="ask" role="alertdialog" aria-modal="true" aria-labelledby="ct-title">
+        <h2 id="ct-title">{t('contest.chip')}</h2>
+        <p>{t('contest.ask', { nr: String(app.settings.contest_nr) })}</p>
+        <div class="act">
+          <button class="btn primary" onclick={() => app.answerContest(false)}>{t('contest.continue')}</button>
+          <button class="btn" onclick={() => app.answerContest(true)}>{t('contest.restart')}</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 {:else}
   <div class="loading muted">CWLD</div>
 {/if}
@@ -89,6 +130,11 @@
   .center { display: flex; flex-direction: column; min-height: 0; gap: 10px; }
   .side { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; }
   .demo { padding: 4px 16px 8px; font-size: 12px; }
+  .scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; z-index: 30; }
+  .ask { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; width: min(420px, 92vw); display: flex; flex-direction: column; gap: 10px; }
+  .ask h2 { margin: 0; font-size: 18px; }
+  .ask p { margin: 0; }
+  .act { display: flex; gap: 8px; justify-content: flex-end; }
   .loading { display: grid; place-items: center; height: 100%; }
   .views { display: flex; gap: 14px; padding: 3px 12px; border-bottom: 1px solid var(--line); }
   .views .link { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }

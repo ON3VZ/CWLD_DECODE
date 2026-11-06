@@ -118,4 +118,31 @@ mod tests {
         c.cw_gate = false;
         assert!(Pipeline::new(c).cw_present());
     }
+
+    #[test]
+    fn a_fixed_speed_and_the_wide_filter_still_decode() {
+        let g = generate(&CwSpec { text: "CQ CQ DE ON3VZ ON3VZ K".into(), wpm: 20.0, snr_db: Some(15.0), lead_s: 1.0, trail_s: 2.0, ..Default::default() });
+        let mut cfg = PipelineConfig::new(g.sample_rate, 700.0);
+        cfg.decoder.fixed_wpm = Some(20.0);
+        let text = decode_samples(&g.samples, cfg);
+        assert!(text.contains("ON3VZ"), "fixed 20: {text:?}");
+        let mut cfg = PipelineConfig::new(g.sample_rate, 700.0);
+        cfg.bandwidth_factor = 2.4;
+        let text = decode_samples(&g.samples, cfg);
+        assert!(text.contains("ON3VZ"), "wide: {text:?}");
+    }
+
+    #[test]
+    fn a_speed_range_keeps_the_decoder_inside_it() {
+        // Fast keying at 40 WPM, decoder told to look only between 5 and 25 WPM: it must not
+        // report the right text (it cannot see 40), and with the full range it must.
+        let g = generate(&CwSpec { text: "CQ CQ DE ON3VZ ON3VZ K".into(), wpm: 40.0, snr_db: Some(20.0), lead_s: 1.0, trail_s: 2.0, ..Default::default() });
+        let mut cfg = PipelineConfig::new(g.sample_rate, 700.0);
+        cfg.decoder.wpm_min = 5.0;
+        cfg.decoder.wpm_max = 25.0;
+        let narrow = decode_samples(&g.samples, cfg);
+        let full = decode_samples(&g.samples, PipelineConfig::new(g.sample_rate, 700.0));
+        assert!(full.contains("ON3VZ"), "full: {full:?}");
+        assert!(!narrow.contains("CQ CQ DE ON3VZ ON3VZ K"), "narrow: {narrow:?}");
+    }
 }
