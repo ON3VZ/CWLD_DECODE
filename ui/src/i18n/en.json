@@ -305,5 +305,9 @@
   "qlib.own.tag": "Own word",
   "status.searching": "Looking for radio",
   "status.searching.help": "The radio does not answer (off, or the cable is out). CWLD tries again every few seconds.",
-  "chip.exchange": "Exchange"
+  "chip.exchange": "Exchange",
+  "status.simulator": "Simulator, no radio",
+  "status.simulator.help": "CWLD is running on the built-in simulator. Nothing real is connected. Choose your radio in Settings, section Radio and SWR.",
+  "banner.noradio": "No radio chosen yet: CWLD is running on a simulator, not on your radio.",
+  "banner.noradio.btn": "Choose radio"
 }

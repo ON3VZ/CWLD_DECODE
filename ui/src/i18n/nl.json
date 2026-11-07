@@ -305,5 +305,9 @@
   "qlib.own.tag": "Eigen woord",
   "status.searching": "Radio zoeken",
   "status.searching.help": "De radio antwoordt niet (uit, of de kabel is los). CWLD probeert elke paar seconden opnieuw.",
-  "chip.exchange": "Uitwisseling"
+  "chip.exchange": "Uitwisseling",
+  "status.simulator": "Simulator, geen radio",
+  "status.simulator.help": "CWLD draait op de ingebouwde simulator. Er is niets echt verbonden. Kies je radio in Instellingen, rubriek Radio en SWR.",
+  "banner.noradio": "Nog geen radio gekozen: CWLD draait op een simulator, niet op je radio.",
+  "banner.noradio.btn": "Radio kiezen"
 }

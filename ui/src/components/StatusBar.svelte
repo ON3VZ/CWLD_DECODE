@@ -9,6 +9,8 @@
   let editing = $state(false);
   /** A real radio is set up, it does not answer now, and CWLD tries again by itself. */
   const searching = $derived(!app.status.connected && !!app.settings && app.settings.radio.kind !== 'simulator' && app.settings.radio.auto_connect && !!app.settings.radio.port);
+  /** The radio type is still Simulator: nothing real is connected, whatever the status says. */
+  const simulated = $derived(!!app.settings && app.settings.radio.kind === 'simulator' && app.status.connected);
   let value = $state('');
 
   function startEdit() {
@@ -53,10 +55,10 @@
       <span class="chip swr" class:bad={app.swr > (app.settings?.swr.limit ?? 1.5)}>{t('swr.chip', { swr: app.swr.toFixed(1) })}</span>
     {/if}
   </div>
-  <div class="conn" class:off={!app.status.connected} class:search={searching} title={searching ? t('status.searching.help') : ''}>
+  <div class="conn" class:off={!app.status.connected} class:search={searching} class:sim={simulated} title={simulated ? t('status.simulator.help') : searching ? t('status.searching.help') : ''}>
     <span class="dot"></span>
-    {app.status.connected ? t('status.connected') : searching ? t('status.searching') : t('status.disconnected')}
-    <span class="muted">{app.radioName}</span>
+    {simulated ? t('status.simulator') : app.status.connected ? t('status.connected') : searching ? t('status.searching') : t('status.disconnected')}
+    {#if !simulated}<span class="muted">{app.radioName}</span>{/if}
   </div>
   <ModeSwitch />
   <button class="btn" onclick={() => (app.settingsOpen = true)} aria-label={t('settings.title')}>⚙</button>
@@ -83,6 +85,8 @@
   .conn { display: flex; align-items: center; gap: 6px; font-size: 14px; margin-left: auto; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--listen); }
   .conn.off .dot { background: var(--muted); }
+  .conn.sim .dot { background: var(--warn); }
+  .conn.sim { color: var(--warn); font-weight: 600; }
   .conn.search .dot { background: var(--warn); animation: pulse 1.4s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: 0.3; } }
   @media (prefers-reduced-motion: reduce) { .conn.search .dot { animation: none; } }

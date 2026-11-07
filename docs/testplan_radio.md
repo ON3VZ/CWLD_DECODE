@@ -133,3 +133,15 @@ Geen radio nodig.
 
 1. Klik onder de chips op Contest. Verwacht: er verschijnt een chip Uitwisseling (`{CALL} 5NN 001`) en bij de Contest-knop staat 001. Kijk met de muis boven de chip: de tooltip toont de tekst.
 2. Zet het nummer op 5, zet contest uit en weer aan. Verwacht: de vraag Doorgaan of Opnieuw bij 1.
+
+## A23. Installer sluit CWLD af (0.5.1)
+
+1. Laat CWLD draaien, met de radio verbonden en audio aan. Start het installatiebestand van de nieuwe versie (of gebruik de updateknop).
+2. Verwacht: het installatievenster toont "Stopping CWLD..." en eventueel "Waiting for CWLD to close (1)", en daarna "CWLD has stopped". De installatie loopt door zonder de melding "Failed to kill CWLD".
+3. Lukt het niet, dan staat er in het venster hoe je cwld.exe in Taakbeheer beëindigt (tabblad Details, klik rechts op cwld.exe, Taak beëindigen). Meld mij wat er in het venster stond.
+
+## A24. Simulator is zichtbaar (0.5.1)
+
+1. Start CWLD met een vers instellingenbestand (of kies in Instellingen, rubriek Radio en SWR, bij Type radio de Simulator). Verwacht: rechtsboven staat oranje "Simulator, geen radio" in plaats van groen "Verbonden", en onder de statusbalk staat een oranje balk "Nog geen radio gekozen" met een knop Radio kiezen. De knop opent de instellingen.
+2. Kies je IC-7300 MK II, kies de COM-poort en klik Verbinden. Verwacht: de oranje balk en het oranje label verdwijnen. Bij een ingeschakelde radio staat er groen "Verbonden" met de naam van de radio.
+3. Zet de radio uit. Verwacht binnen enkele seconden "Radio zoeken" (geen groen "Verbonden"). Zet hem weer aan: hij verbindt vanzelf. Dit moet kloppen als Type radio op IC-7300 MK II staat. Meld het als het anders is.

@@ -1,3 +1,8 @@
+## 0.5.1 (installer fix, simulator made visible)
+
+- The radio type "Simulator" is the default until you choose a radio. It always reported "Connected", which looked like a real radio. Now the status bar shows an orange "Simulator, no radio", and the real app shows a banner "No radio chosen yet" with a button that opens the settings.
+- Installer: fixed "Failed to kill CWLD". After ending cwld.exe the installer now waits up to about 15 seconds until it is really gone (it holds the USB serial port and the sound card for a moment) and shows what it is doing in the install window. If CWLD does not stop, the window says how to end it in Task Manager.
+
 ## 0.5.0 (settings in sections, pile-up keys, tabs, decoder controls)
 
 - Settings now has a menu on the left with sections: Station, Radio and SWR, Audio, Decoder, Sending, Display and language, Contest, Updates and about. No more one long list.
