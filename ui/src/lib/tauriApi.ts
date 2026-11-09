@@ -1,4 +1,4 @@
-import type { Api, AudioStatus, CoreEvent, InputDevice, PortInfo, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
+import type { Activation, ActivationStats, Api, AudioStatus, CheckIssue, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, InputDevice, PortInfo, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -57,6 +57,24 @@ export async function createTauriApi(): Promise<Api> {
     goStrongest: () => invoke<void>('go_strongest'),
     startRecording: () => invoke<string>('start_recording'),
     stopRecording: () => invoke<void>('stop_recording'),
+    logAdd: (qso: LogQso) => invoke<LogQso>('log_add', { qso }),
+    logList: (filter: LogFilter) => invoke<LogQso[]>('log_list', { filter }),
+    logUpdate: (qso: LogQso) => invoke<void>('log_update', { qso }),
+    logDelete: (id: number) => invoke<void>('log_delete', { id }),
+    logClearTest: () => invoke<number>('log_clear_test'),
+    logNextTestSerial: () => invoke<number>('log_next_test_serial'),
+    logDupe: (call: string, contest: string, session: number, test: boolean) => invoke<DupeInfo>('log_dupe', { call, contest, session, test }),
+    logExport: (filter: LogFilter, contestId: string) => invoke<ExportResult>('log_export', { filter, contestId }),
+    logCheck: (filter: LogFilter) => invoke<CheckIssue[]>('log_check', { filter }),
+    practiceStart: (noise: boolean, volume: number, seed: number) => invoke<AudioStatus>('practice_start', { noise, volume, seed }),
+    practiceStop: () => invoke<void>('practice_stop'),
+    practiceKey: (signal: PracticeSignal) => invoke<number>('practice_key', { signal }),
+    practiceClear: () => invoke<void>('practice_clear'),
+    practiceVolume: (volume: number) => invoke<void>('practice_volume', { volume }),
+    activationStart: (activation: Activation) => invoke<Activation>('activation_start', { activation }),
+    activationEnd: () => invoke<void>('activation_end'),
+    activationCurrent: () => invoke<Activation | null>('activation_current'),
+    activationStats: (id: number) => invoke<ActivationStats>('activation_stats', { id }),
     demo: false,
     onEvents(handler) {
       let off: (() => void) | null = null;

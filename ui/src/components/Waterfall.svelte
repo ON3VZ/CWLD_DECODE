@@ -52,7 +52,7 @@
     const r = canvas.getBoundingClientRect();
     const frac = (e.clientX - r.left) / r.width;
     // The canvas is wider than the strip when zoomed, so this is the fraction of the full range.
-    app.setTone(lo + frac * span);
+    app.setTone(lo + frac * span, true);
   }
 
   onMount(() => {

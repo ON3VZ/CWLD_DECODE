@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ContestProfiles from './ContestProfiles.svelte';
   import { tick } from 'svelte';
   import { app, PRESETS } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
@@ -85,6 +86,8 @@
       draft.contest_mode = app.settings.contest_mode;
       draft.contest_nr = app.settings.contest_nr;
       draft.user_words = $state.snapshot(app.settings.user_words);
+      draft.contest = $state.snapshot(app.settings.contest);
+      draft.profile = app.settings.profile;
     }
     await app.saveSettings(draft);
     app.settingsOpen = false;
@@ -119,6 +122,24 @@
             <input class="mono" bind:value={draft.station.locator} />
             <small class="muted">{t('settings.locator.help')}</small>
           </label>
+
+          <h3>{t('profile.title')}</h3>
+          <small class="muted">{t('profile.help')}</small>
+          {#each draft.profiles as p (p.id)}
+            <div class="group">
+              <div class="row">
+                <label>{t('profile.name')}<input bind:value={p.name} /></label>
+                <label>{t('profile.suffix')}<input class="mono short" bind:value={p.suffix} placeholder="/P" /></label>
+                <label>{t('profile.grid')}<input class="mono short" bind:value={p.grid} placeholder="JO20EE" /></label>
+                <label>{t('profile.power')}<input class="mono short" bind:value={p.power} placeholder="20" /></label>
+              </div>
+              <div class="row">
+                <label>{t('profile.rig')}<input bind:value={p.rig} /></label>
+                <label>{t('profile.antenna')}<input bind:value={p.antenna} /></label>
+                <label>{t('profile.comment')}<input bind:value={p.comment} /></label>
+              </div>
+            </div>
+          {/each}
         {/if}
 
         {#if section === 'radio'}
@@ -336,6 +357,21 @@
           <label class="check"><input type="checkbox" bind:checked={draft.audio_waterfall} /> {t('view.audio_waterfall')}</label>
           <small class="muted">{t('view.audio_waterfall.help')}</small>
 
+          <label>{t('view.scope_size')}
+            <select bind:value={draft.scope_size}>
+              <option value="small">{t('view.size.small')}</option>
+              <option value="medium">{t('view.size.medium')}</option>
+              <option value="large">{t('view.size.large')}</option>
+            </select>
+          </label>
+          <label>{t('view.scope_size_contest')}
+            <select bind:value={draft.scope_size_contest}>
+              <option value="small">{t('view.size.small')}</option>
+              <option value="medium">{t('view.size.medium')}</option>
+              <option value="large">{t('view.size.large')}</option>
+            </select>
+          </label>
+
           <h3>{t('tabs.settings')}</h3>
           <label>{t('tabs.wait')}
             <input class="mono short" type="number" min="1" max="30" step="1" bind:value={draft.new_tab_seconds} />
@@ -366,6 +402,7 @@
             <small class="muted">{t('contest.nr.help')}</small>
           </label>
           <small class="muted">{t('contest.later')}</small>
+          {#if app.settings}<ContestProfiles />{/if}
         {/if}
 
         {#if section === 'updates'}
@@ -385,6 +422,9 @@
             {#if app.updateInfo.notes}<pre class="notes">{app.updateInfo.notes}</pre>{/if}
           {/if}
           <small class="muted">{t('update.privacy')}</small>
+          <h3>{t('wiz.again')}</h3>
+          <p class="muted">{t('wiz.again.help')}</p>
+          <div class="row"><button class="btn" type="button" onclick={() => { app.settingsOpen = false; app.wizardOpen = true; }}>{t('wiz.again')}</button></div>
         {/if}
       </div>
     </div>

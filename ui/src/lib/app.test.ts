@@ -769,3 +769,382 @@ describe('decoder tuning and presets', () => {
     expect(app.settings!.user_words.length).toBe(0);
   });
 });
+
+describe('contest profiles in the app', () => {
+  beforeEach(async () => {
+    await fresh();
+  });
+
+  it('own variables are available in templates, with the defaults for Belgium', () => {
+    expect(app.vars.SEC).toBe('WLD');
+    expect(app.vars.ZONE).toBe('14');
+    expect(app.vars.ITU).toBe('27');
+    expect(app.vars.PWR).toBe('20');
+  });
+
+  it('choosing a profile gives its call chips and its exchange, and shows its note', async () => {
+    await app.requestContest(true);
+    await app.selectContestProfile('uba-dx-cw');
+    const chips = app.contestChipList;
+    expect(chips.map((c) => c.label)).toContain('TEST UBA');
+    expect(chips.find((c) => c.id === 'exchange')?.template).toBe('{CALL} {RST} {NR} {SEC}');
+    expect(app.contestNote).not.toBeNull();
+    await app.setContestSent(1);
+    expect(app.contestChipList.find((c) => c.id === 'exchange')?.template).toBe('{CALL} {RST} {NR}');
+    await app.selectContestProfile('cqwpx-cw');
+    expect(app.settings?.contest.sent_index).toBe(0);
+  });
+
+  it('without a profile the plain exchange chip stays', () => {
+    expect(app.contestProfile).toBeNull();
+    expect(app.contestChipList.map((c) => c.id)).toEqual(['exchange']);
+  });
+
+  it('the serial number is shown only when the exchange uses it, and as cut numbers when asked', async () => {
+    await app.requestContest(true);
+    await app.setContestNr(19);
+    await app.selectContestProfile('cqww-cw');
+    expect(app.serialUsed).toBe(false);
+    await app.selectContestProfile('cqwpx-cw');
+    expect(app.serialUsed).toBe(true);
+    expect(app.vars.NR).toBe('019');
+    const id = await app.copyContestProfile('cqwpx-cw', 'Cut');
+    const p = app.settings!.contest.profiles.find((x) => x.id === id)!;
+    await app.saveContestProfile({ ...p, cut_numbers: true });
+    await app.selectContestProfile(id!);
+    expect(app.vars.NR).toBe('T1N');
+    expect(app.serialText).toBe('T1N');
+  });
+
+  it('own profiles can be made, changed, copied and deleted; built-in ones cannot', async () => {
+    const id = (await app.newContestProfile('Club'))!;
+    expect(app.settings!.contest.profiles.map((p) => p.name)).toEqual(['Club']);
+    const p = app.settings!.contest.profiles[0];
+    await app.saveContestProfile({ ...p, name: 'Club 2' });
+    expect(app.settings!.contest.profiles[0].name).toBe('Club 2');
+    await app.saveContestProfile({ ...p, id: 'cqww-cw', name: 'Hacked' });
+    expect(app.settings!.contest.profiles).toHaveLength(1);
+    await app.selectContestProfile(id);
+    await app.deleteContestProfile('cqww-cw');
+    expect(app.settings!.contest.profiles).toHaveLength(1);
+    await app.deleteContestProfile(id);
+    expect(app.settings!.contest.profiles).toHaveLength(0);
+    expect(app.settings!.contest.active).toBe('');
+  });
+
+  it('own variables can be changed and a bad import gives an error and changes nothing', async () => {
+    await app.saveContestVars([{ name: 'AGE', value: '55' }]);
+    expect(app.vars.AGE).toBe('55');
+    expect(app.vars.SEC).toBeUndefined();
+    const r = await app.importContest('not json', false);
+    expect(r).toBeNull();
+    expect(app.error).not.toBeNull();
+    expect(app.settings!.contest.vars).toEqual([{ name: 'AGE', value: '55' }]);
+  });
+
+  it('a backup can be restored by importing it', async () => {
+    const id = (await app.newContestProfile('Backup me'))!;
+    await app.saveContestVars([{ name: 'AGE', value: '55' }]);
+    const text = (await import('./contest')).exportText(app.settings!.contest);
+    await app.deleteContestProfile(id);
+    await app.saveContestVars([]);
+    const r = await app.importContest(text, false);
+    expect(r).toEqual({ added: 1, skipped: 0 });
+    expect(app.settings!.contest.profiles.map((p) => p.name)).toEqual(['Backup me']);
+    expect(app.vars.AGE).toBe('55');
+  });
+});
+
+describe('logbook and contest entry', () => {
+  beforeEach(async () => {
+    await fresh();
+    await app.requestContest(true);
+    await app.selectContestProfile('uba-dx-cw');
+    app.clearEntry();
+  });
+
+  it('logging writes the QSO, raises the number and clears the line', async () => {
+    app.selectCall('pa3abc');
+    app.entry.nr = '012';
+    expect(app.entryComplete).toBe(true);
+    expect(await app.logQso()).toBe(true);
+    expect(app.recent).toHaveLength(1);
+    expect(app.recent[0]).toMatchObject({ call: 'PA3ABC', nr_sent: 1, nr_rcvd: '012', contest: 'uba-dx-cw', test: false, extra_sent: 'WLD' });
+    expect(app.settings?.contest_nr).toBe(2);
+    expect(app.qso.call).toBe('');
+    expect(app.qsoCount).toBe(1);
+  });
+
+  it('refuses to log without a call', async () => {
+    expect(await app.logQso()).toBe(false);
+    expect(app.recent).toHaveLength(0);
+    expect(app.settings?.contest_nr).toBe(1);
+  });
+
+  it('the same call on the same band again is a dupe, a Belgian station needs its section', async () => {
+    app.selectCall('ON4XYZ');
+    expect(app.entryComplete).toBe(false);
+    app.entry.nr = '5';
+    app.entry.extra = 'ANR';
+    expect(app.entryComplete).toBe(true);
+    await app.logQso();
+    app.selectCall('ON4XYZ');
+    await app.refreshDupe();
+    expect(app.dupeInfo?.dupe?.call).toBe('ON4XYZ');
+    app.selectCall('PA3ABC');
+    await app.refreshDupe();
+    expect(app.dupeInfo?.dupe).toBeNull();
+  });
+
+  it('a new contest starts at 001 and earlier QSOs no longer count as dupes', async () => {
+    app.selectCall('PA3ABC');
+    app.entry.nr = '1';
+    await app.logQso();
+    await app.requestContest(false);
+    await app.requestContest(true);
+    expect(app.contestAsk).toBe(true);
+    await app.answerContest(true);
+    expect(app.settings?.contest_nr).toBe(1);
+    expect(app.contestSession).toBe(2);
+    app.selectCall('PA3ABC');
+    await app.refreshDupe();
+    expect(app.dupeInfo?.dupe).toBeNull();
+    expect(app.qsoCount).toBe(0);
+  });
+
+  it('test mode logs apart with its own number and leaves the real number alone', async () => {
+    await app.setTestMode(true);
+    expect(app.serialText).toBe('001');
+    app.selectCall('PA3ABC');
+    app.entry.nr = '1';
+    await app.logQso();
+    expect(app.testNr).toBe(2);
+    expect(app.serialText).toBe('002');
+    expect(app.settings?.contest_nr).toBe(1);
+    expect(app.recent[0].test).toBe(true);
+    await app.clearTestLog();
+    expect(app.qsoCount).toBe(0);
+    await app.setTestMode(false);
+    expect(app.serialText).toBe('001');
+  });
+
+  it('changing the call after the exchange was sent warns about the unlogged number', async () => {
+    await app.requestPolicy('practice');
+    app.selectCall('PA3ABC');
+    await app.pressContestKey('F2');
+    expect(app.sentPending).toEqual({ call: 'PA3ABC', nr: '001' });
+    app.selectCall('DL1XYZ');
+    expect(app.warning).toContain('001');
+    expect(app.warning).toContain('PA3ABC');
+    expect(app.sentPending).toBeNull();
+  });
+
+  it('sending the exchange does not raise the number, logging does', async () => {
+    await app.requestPolicy('practice');
+    app.selectCall('PA3ABC');
+    await app.pressContestKey('F2');
+    await app.pressContestKey('F2');
+    expect(app.settings?.contest_nr).toBe(1);
+    app.entry.nr = '9';
+    await app.logQso();
+    expect(app.settings?.contest_nr).toBe(2);
+  });
+
+  it('Enter in Run: CQ, exchange, AGN, then TU with log once the reply is complete', async () => {
+    await app.requestPolicy('practice');
+    await app.pressEnter();
+    expect(app.messages[app.messages.length - 1]?.text).toContain('TEST UBA');
+    app.selectCall('PA3ABC');
+    await app.pressEnter();
+    expect(app.exchangeSent).toBe(true);
+    expect(app.messages[app.messages.length - 1]?.text).toContain('PA3ABC 5NN 001 WLD');
+    await app.pressEnter();
+    expect(app.messages[app.messages.length - 1]?.text).toBe('AGN');
+    app.entry.nr = '33';
+    await app.pressEnter();
+    expect(app.recent[0]?.call).toBe('PA3ABC');
+    expect(app.settings?.contest_nr).toBe(2);
+  });
+
+  it('proposes report and number from the reply after our exchange, and Tab takes them over', async () => {
+    await app.requestPolicy('practice');
+    app.selectCall('PA3ABC');
+    await app.pressContestKey('F2');
+    app.ingest('rx', 'PA3ABC DE ON3VZ 5NN 023');
+    expect(app.suggestion).toMatchObject({ rst: '5NN', nr: '023' });
+    app.acceptSuggestion();
+    expect(app.entry.nr).toBe('023');
+  });
+
+  it('a word clicked in the decoded text goes where the operator says', () => {
+    app.assignWord('anr', 'extra');
+    app.assignWord('T2N', 'nr');
+    app.assignWord('hans', 'name');
+    expect(app.entry.extra).toBe('ANR');
+    expect(app.entry.nr).toBe('029');
+    expect(app.qso.name).toBe('HANS');
+  });
+
+  it('outside contest mode a normal QSO is logged without a number', async () => {
+    await app.requestContest(false);
+    app.selectCall('F4XYZ');
+    app.entry.rst = '579';
+    await app.logQso();
+    expect(app.recent).toHaveLength(1);
+    expect(app.recent[0]).toMatchObject({ call: 'F4XYZ', contest: '', nr_sent: 0, rst_rcvd: '579' });
+    expect(app.settings?.contest_nr).toBe(1);
+  });
+});
+
+describe('station profiles and activations (C-3)', () => {
+  beforeEach(async () => {
+    await fresh();
+  });
+
+  it('switches profile and the on-air call gets the suffix', async () => {
+    const portable = app.settings!.profiles.find((p) => p.suffix)!;
+    await app.setProfile(portable.id);
+    expect(app.settings!.profile).toBe(portable.id);
+    expect(app.myCall).toBe(`ON3VZ${portable.suffix}`.toUpperCase());
+  });
+
+  it('refuses a portable activation without a grid and a bad reference', async () => {
+    const portable = app.settings!.profiles.find((p) => p.suffix)!;
+    await app.setProfile(portable.id);
+    expect(await app.startActivation({ grid: '' })).toBe('activation_grid_missing');
+    expect(await app.startActivation({ grid: 'JO20QE', wwff: 'ONFF599' })).toBe('activation_wwff');
+    expect(await app.startActivation({ grid: 'ZZ99', wwff: '' })).toBe('activation_grid');
+    expect(app.activation).toBeNull();
+  });
+
+  it('starts an activation, locks the profile and ends it again', async () => {
+    const portable = app.settings!.profiles.find((p) => p.suffix)!;
+    await app.setProfile(portable.id);
+    expect(await app.startActivation({ grid: 'jo20qe', wwff: 'onff-0599', power: '5' })).toBeNull();
+    expect(app.activation?.wwff).toBe('ONFF-0599');
+    expect(app.activation?.grid).toBe('JO20QE');
+    const home = app.settings!.profiles.find((p) => !p.suffix)!;
+    await app.setProfile(home.id);
+    expect(app.settings!.profile).toBe(portable.id);
+    await app.endActivation();
+    expect(app.activation).toBeNull();
+    await app.setProfile(home.id);
+    expect(app.settings!.profile).toBe(home.id);
+  });
+
+  it('stores the scope sizes', async () => {
+    await app.setScopeSize('scope_size', 'large');
+    await app.setScopeSize('scope_size_contest', 'small');
+    expect(app.settings!.scope_size).toBe('large');
+    expect(app.settings!.scope_size_contest).toBe('small');
+  });
+});
+
+describe('practice simulator (O)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('needs practice mode', async () => {
+    await fresh();
+    await app.requestPolicy('listen_only');
+    await app.startExercise();
+    expect(app.practiceRun).toBeNull();
+    expect(app.error).toBeTruthy();
+  });
+
+  it('runs a QSO against a simulated station, logs it in the test log and scores it', async () => {
+    vi.useFakeTimers();
+    const api = await fresh();
+    await app.requestPolicy('practice');
+    await app.setPracticeCfg({ exercise: 'they_cq', decoder_help: true });
+    await app.startExercise();
+    expect(app.practiceRun?.exercise).toBe('they_cq');
+    expect(app.testMode).toBe(true);
+    expect(api.practiceLog).toHaveLength(1);
+    const call = api.practiceLog[0].text.split(' DE ')[1].split(' ')[0];
+    await vi.advanceTimersByTimeAsync(20);
+    api.practiceEndAll();
+    api.flush();
+    await app.send(`${call} DE ON3VZ ON3VZ K`);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(api.practiceLog).toHaveLength(2);
+    const info = api.practiceLog[1].text;
+    expect(info).toContain(`ON3VZ DE ${call}`);
+    api.practiceEndAll();
+    api.flush();
+    await vi.advanceTimersByTimeAsync(20);
+    const name = info.split(' NAME ')[1].split(' ')[0];
+    app.qso = { ...app.qso, call, name, qth: '' };
+    app.entry = { ...app.entry, rst: info.split(' RST ')[1].split(' ')[0] };
+    expect(await app.logQso()).toBe(true);
+    await app.stopExercise();
+    expect(app.practiceRun).toBeNull();
+    expect(api.practiceRunning).toBe(false);
+    expect(app.testMode).toBe(false);
+    expect(app.practiceScore?.logged).toBe(1);
+    expect(app.practiceScore?.correct).toBe(1);
+    expect(api.transmitCommands).toBe(0);
+  });
+
+  it('leaving practice mode ends the exercise', async () => {
+    await fresh();
+    await app.requestPolicy('practice');
+    await app.startExercise();
+    expect(app.practiceRun).not.toBeNull();
+    await app.requestPolicy('listen_only');
+    expect(app.practiceRun).toBeNull();
+  });
+
+  it('hides decoded text without decoder help', async () => {
+    await fresh();
+    await app.requestPolicy('practice');
+    await app.setPracticeCfg({ decoder_help: false });
+    await app.startExercise();
+    expect(app.hideRx).toBe(true);
+    await app.stopExercise();
+    expect(app.hideRx).toBe(false);
+  });
+});
+
+describe('contest practice (O)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('F1 calls CQ and simulated callers answer', async () => {
+    vi.useFakeTimers();
+    const api = await fresh();
+    await app.requestPolicy('practice');
+    await app.selectContestProfile('cqwpx-cw');
+    await app.setPracticeCfg({ exercise: 'contest', pileup: 3 });
+    await app.startExercise();
+    expect(app.settings!.contest_mode).toBe(true);
+    for (let i = 0; i < 5 && api.practiceLog.length === 0; i++) {
+      await app.pressContestKey('F1');
+      expect(app.practiceBusy).toBe(true);
+      await vi.advanceTimersByTimeAsync(15_000);
+    }
+    expect(api.practiceLog.length).toBeGreaterThan(0);
+    await app.stopExercise();
+    expect(app.settings!.contest_mode).toBe(false);
+  });
+});
+
+describe('guided first start', () => {
+  it('stays closed in the browser demo', async () => {
+    await fresh();
+    expect(app.wizardOpen).toBe(false);
+  });
+
+  it('opens on a real first run and not once it has been done', async () => {
+    const first = new MockApi();
+    Object.defineProperty(first, 'demo', { value: false });
+    await app.init(first);
+    expect(app.wizardOpen).toBe(true);
+    const done = new MockApi({ first_run_done: true });
+    Object.defineProperty(done, 'demo', { value: false });
+    await app.init(done);
+    expect(app.wizardOpen).toBe(false);
+  });
+});

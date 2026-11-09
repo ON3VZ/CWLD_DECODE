@@ -109,6 +109,72 @@ pub(crate) mod open {
     }
 }
 
+/// Playback of the practice band on the default output (headphones or speakers).
+#[cfg(feature = "device")]
+pub(crate) mod output {
+    use crate::ring::Consumer;
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+
+    /// Most audio the ring may hold before the oldest is skipped: keeps the delay short.
+    const MAX_BACKLOG: usize = 3200;
+
+    /// Opens the default output and plays `cons` (mono at `in_rate`) on every channel.
+    pub fn open(mut cons: Consumer, in_rate: u32) -> Result<cpal::Stream, String> {
+        let host = cpal::default_host();
+        let device = host.default_output_device().ok_or_else(|| "no audio output".to_string())?;
+        let config = device.default_output_config().map_err(|e| e.to_string())?;
+        let channels = config.channels().max(1) as usize;
+        let step = in_rate as f64 / config.sample_rate().0 as f64;
+        let fmt = config.sample_format();
+        let stream_cfg: cpal::StreamConfig = config.into();
+        let mut prev = 0f32;
+        let mut cur = 0f32;
+        let mut frac = 0f64;
+        // Linear interpolation from the band rate to the device rate. An empty ring plays silence.
+        let mut next = move || {
+            while cons.len() > MAX_BACKLOG {
+                cons.pop();
+            }
+            while frac >= 1.0 {
+                prev = cur;
+                cur = cons.pop().unwrap_or(0.0);
+                frac -= 1.0;
+            }
+            let v = prev + (cur - prev) * frac as f32;
+            frac += step;
+            v
+        };
+        macro_rules! build {
+            ($t:ty, $conv:expr) => {{
+                let conv = $conv;
+                device.build_output_stream(
+                    &stream_cfg,
+                    move |data: &mut [$t], _: &cpal::OutputCallbackInfo| {
+                        for frame in data.chunks_mut(channels) {
+                            let v = conv(next());
+                            for s in frame.iter_mut() {
+                                *s = v;
+                            }
+                        }
+                    },
+                    |_e| {},
+                    None,
+                )
+            }};
+        }
+        let stream = match fmt {
+            cpal::SampleFormat::F32 => build!(f32, |v: f32| v),
+            cpal::SampleFormat::I16 => build!(i16, |v: f32| (v.clamp(-1.0, 1.0) * 32767.0) as i16),
+            cpal::SampleFormat::U16 => build!(u16, |v: f32| ((v.clamp(-1.0, 1.0) * 32767.0) + 32768.0) as u16),
+            cpal::SampleFormat::I32 => build!(i32, |v: f32| (v.clamp(-1.0, 1.0) as f64 * 2_147_483_647.0) as i32),
+            other => return Err(format!("unsupported sample format {other:?}")),
+        }
+        .map_err(|e| e.to_string())?;
+        stream.play().map_err(|e| e.to_string())?;
+        Ok(stream)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

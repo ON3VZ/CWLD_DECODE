@@ -66,6 +66,29 @@ impl Consumer {
         n
     }
 
+    /// One sample, or `None` when the ring is empty.
+    pub fn pop(&mut self) -> Option<f32> {
+        let r = &self.0;
+        let tail = r.tail.load(Ordering::Relaxed);
+        let head = r.head.load(Ordering::Acquire);
+        if head == tail {
+            return None;
+        }
+        let x = unsafe { *r.buf[tail % r.cap].get() };
+        r.tail.store(tail.wrapping_add(1), Ordering::Release);
+        Some(x)
+    }
+
+    /// Samples waiting.
+    pub fn len(&self) -> usize {
+        let r = &self.0;
+        r.head.load(Ordering::Acquire).wrapping_sub(r.tail.load(Ordering::Relaxed))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Samples lost because the consumer was too slow.
     pub fn dropped(&self) -> u64 {
         self.0.dropped.load(Ordering::Relaxed)
@@ -93,6 +116,17 @@ mod tests {
             }
         }
         assert_eq!(c.dropped(), 0);
+    }
+
+    #[test]
+    fn single_pop_and_len() {
+        let (mut p, mut c) = ring(4);
+        p.push(&[1.0, 2.0]);
+        assert_eq!(c.len(), 2);
+        assert_eq!(c.pop(), Some(1.0));
+        assert_eq!(c.pop(), Some(2.0));
+        assert_eq!(c.pop(), None);
+        assert!(c.is_empty());
     }
 
     #[test]

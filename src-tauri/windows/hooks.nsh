@@ -32,6 +32,11 @@
   ${Loop}
   ${If} $0 == 0
     DetailPrint "CWLD is still running after 15 seconds. Close it in Task Manager (Details tab, cwld.exe, End task) and run the installer again."
+    ; Show exactly which process it is (id and file path), so a failure can be traced.
+    nsExec::ExecToStack `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -Filter \"Name='cwld.exe'\" | ForEach-Object { 'pid ' + $$_.ProcessId + ' ' + $$_.ExecutablePath }"`
+    Pop $0
+    Pop $2
+    DetailPrint "Process found: $2"
   ${Else}
     DetailPrint "CWLD has stopped"
   ${EndIf}

@@ -53,8 +53,8 @@
     </div>
   </div>
   <div class="ctl">
-    <button class="btn small" onclick={() => app.goStrongest()} title={t('audio.panel.strongest.help')}><kbd>F6</kbd> {t('audio.panel.strongest')}</button>
-    <button class="btn small" class:on={app.settings?.audio.afc ?? true} aria-pressed={app.settings?.audio.afc ?? true} onclick={() => app.setAfc(!(app.settings?.audio.afc ?? true))} title={t('decoder.afc.help')}><kbd>F7</kbd> AFC</button>
+    <button class="btn small" onclick={() => app.goStrongest()} title={t('audio.panel.strongest.help')}><kbd>{app.settings?.contest_mode ? 'Ctrl+F6' : 'F6'}</kbd> {t('audio.panel.strongest')}</button>
+    <button class="btn small" class:on={app.settings?.audio.afc ?? true} aria-pressed={app.settings?.audio.afc ?? true} onclick={() => app.setAfc(!(app.settings?.audio.afc ?? true))} title={t('decoder.afc.help')}><kbd>{app.settings?.contest_mode ? 'Ctrl+F7' : 'F7'}</kbd> AFC</button>
   </div>
 </section>
 

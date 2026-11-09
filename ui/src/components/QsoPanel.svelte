@@ -28,6 +28,18 @@
   <label>{t('qso.name')}<input bind:value={app.qso.name} /></label>
   <label>{t('qso.rst')}<input class="mono" bind:value={app.qso.rst} /></label>
   <label>{t('qso.qth')}<input bind:value={app.qso.qth} /></label>
+  {#if app.activation && !app.settings?.contest_mode}
+    <label>{t('qso.theirref')}
+      <span class="refrow">
+        <select bind:value={app.theirRef.prog} aria-label={t('qso.theirref')}><option>WWFF</option><option>POTA</option><option>SOTA</option></select>
+        <input class="mono" bind:value={app.theirRef.ref} placeholder={app.theirRef.prog === 'WWFF' ? 'ONFF-0123' : ''} />
+      </span>
+    </label>
+  {/if}
+  {#if !app.settings?.contest_mode}
+    <label>{t('contest.rcvd.rst')}<input class="mono" bind:value={app.entry.rst} /></label>
+    <button class="btn primary" onclick={() => app.logQso()} disabled={!app.qso.call.trim()} title={t('log.qso.help')}>{t('contest.log')}</button>
+  {/if}
   <p class="muted small">{t('qso.hint')}</p>
 </section>
 
@@ -38,6 +50,8 @@
   .small { font-size: 12px; }
   label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 2px; }
   input { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 16px; color: var(--text); }
+  .refrow { display: grid; grid-template-columns: 5.5em 1fr; gap: 6px; }
+  select { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; color: var(--text); }
   .mode { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); margin-top: -4px; }
   .auto { color: var(--listen); font-weight: 600; }
   .locked span { color: var(--warn); font-weight: 600; }

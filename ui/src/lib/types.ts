@@ -124,6 +124,97 @@ export interface Settings {
   contest_nr: number;
   /** Own abbreviations added to the code library. */
   user_words: UserWord[];
+  /** Contest profiles of the operator, the active profile and own variables. */
+  contest: ContestSettings;
+  /** Stations (home, portable) and the one in use. */
+  profiles: StationProfile[];
+  profile: string;
+  /** Height of the band scope outside and in contest mode. */
+  scope_size: ScopeSize;
+  scope_size_contest: ScopeSize;
+  practice: PracticeSettings;
+}
+
+export type ScopeSize = 'small' | 'medium' | 'large';
+
+/** Choices of the practice simulator (see the Rust struct PracticeSettings). */
+export interface PracticeSettings {
+  exercise: 'they_cq' | 'you_cq' | 'contest';
+  wpm_min: number;
+  wpm_max: number;
+  strength: 'weak' | 'medium' | 'strong';
+  noise: boolean;
+  qsb: boolean;
+  pileup: number;
+  minutes: number;
+  decoder_help: boolean;
+  volume: number;
+}
+
+/** One transmission of a simulated station on the practice band. */
+export interface PracticeSignal {
+  text: string;
+  wpm: number;
+  tone_hz: number;
+  snr_db: number;
+  qsb_depth: number;
+  jitter: number;
+  delay_s: number;
+  seed: number;
+}
+
+export interface StationProfile {
+  id: string;
+  name: string;
+  /** Added to the base call: empty at home, /P portable. */
+  suffix: string;
+  grid: string;
+  power: string;
+  rig: string;
+  antenna: string;
+  comment: string;
+}
+
+export interface ContestVar {
+  name: string;
+  value: string;
+}
+
+export interface SentTemplate {
+  /** Plain text, or `i18n:key` for a built-in label. */
+  label: string;
+  template: string;
+}
+
+export interface RecvField {
+  name: string;
+  label: string;
+  kind: 'text' | 'number' | 'choice';
+  choices: string[];
+  /** The field applies only to calls starting with one of these. Empty: always. */
+  only_prefixes: string[];
+}
+
+export interface ContestProfile {
+  id: string;
+  name: string;
+  note: string;
+  calls: string[];
+  sent: SentTemplate[];
+  recv: RecvField | null;
+  /** Send the serial number as cut numbers (0 as T, 9 as N). */
+  cut_numbers: boolean;
+}
+
+export interface ContestSettings {
+  /** Id of the active profile (built-in or own). Empty: none. */
+  active: string;
+  /** Which sent template of the active profile is used. */
+  sent_index: number;
+  profiles: ContestProfile[];
+  vars: ContestVar[];
+  /** Which run of the contest this is; a new contest raises it. */
+  session: number;
 }
 
 export interface UserWord {
@@ -192,7 +283,8 @@ export type CoreEvent =
   | { type: 'bandwidth'; hz: number }
   | { type: 'audio'; status: AudioStatus }
   | { type: 'swr_alert'; alert: SwrAlert }
-  | { type: 'swr_cleared' };
+  | { type: 'swr_cleared' }
+  | { type: 'practice_done'; ids: number[] };
 
 export type SendOutcome = { kind: 'sent' } | { kind: 'simulated'; seconds: number };
 
@@ -206,6 +298,100 @@ export interface CoreFailure {
 export interface UpdateInfo {
   version: string;
   notes: string;
+}
+
+/** One logged contact (see the Rust struct Qso). */
+export interface LogQso {
+  id: number;
+  /** Seconds since 1970, UTC. 0: the core fills in the time. */
+  ts: number;
+  call: string;
+  band: string;
+  freq_hz: number;
+  mode: string;
+  rst_sent: string;
+  rst_rcvd: string;
+  nr_sent: number;
+  nr_rcvd: string;
+  extra_sent: string;
+  extra_rcvd: string;
+  name: string;
+  qth: string;
+  comment: string;
+  /** Id of the contest profile, empty for a normal QSO. */
+  contest: string;
+  session: number;
+  my_call: string;
+  test: boolean;
+  deleted: boolean;
+  station_call: string;
+  operator: string;
+  my_grid: string;
+  tx_pwr: string;
+  my_rig: string;
+  my_antenna: string;
+  activation_id: number;
+  my_wwff: string;
+  my_pota: string;
+  my_sota: string;
+  their_prog: string;
+  their_ref: string;
+  exported_to: string;
+}
+
+export interface Activation {
+  id: number;
+  profile: string;
+  grid: string;
+  power: string;
+  wwff: string;
+  pota: string;
+  sota: string;
+  note: string;
+  started_ts: number;
+  ended_ts: number;
+}
+
+export interface ActivationStats {
+  total: number;
+  unique: number;
+  crosses_midnight: boolean;
+}
+
+export interface CheckIssue {
+  severity: 'error' | 'warning';
+  code: string;
+  id: number;
+  detail: string;
+}
+
+export interface LogFilter {
+  from_ts?: number | null;
+  to_ts?: number | null;
+  band?: string;
+  contest?: string;
+  session?: number | null;
+  /** Undefined or null: both logs. False: the real log. True: the test log. */
+  test?: boolean | null;
+  include_deleted?: boolean;
+  activation?: number | null;
+  not_exported?: boolean;
+  limit?: number;
+}
+
+export interface DupeInfo {
+  dupe: LogQso | null;
+  other_bands: string[];
+}
+
+export interface ExportResult {
+  path: string;
+  count: number;
+  text: string;
+}
+
+export function emptyLogQso(): LogQso {
+  return { id: 0, ts: 0, call: '', band: '', freq_hz: 0, mode: 'CW', rst_sent: '', rst_rcvd: '', nr_sent: 0, nr_rcvd: '', extra_sent: '', extra_rcvd: '', name: '', qth: '', comment: '', contest: '', session: 0, my_call: '', test: false, deleted: false, station_call: '', operator: '', my_grid: '', tx_pwr: '', my_rig: '', my_antenna: '', activation_id: 0, my_wwff: '', my_pota: '', my_sota: '', their_prog: '', their_ref: '', exported_to: '' };
 }
 
 export interface Api {
@@ -243,6 +429,29 @@ export interface Api {
   /** Returns the path of the new recording. */
   startRecording(): Promise<string>;
   stopRecording(): Promise<void>;
+  logAdd(qso: LogQso): Promise<LogQso>;
+  logList(filter: LogFilter): Promise<LogQso[]>;
+  logUpdate(qso: LogQso): Promise<void>;
+  logDelete(id: number): Promise<void>;
+  /** Wipes the test log. Returns how many QSOs were removed. */
+  logClearTest(): Promise<number>;
+  logNextTestSerial(): Promise<number>;
+  logDupe(call: string, contest: string, session: number, test: boolean): Promise<DupeInfo>;
+  /** Writes an ADIF file in the CWLD folder. `contestId` is the ADIF CONTEST_ID. */
+  logExport(filter: LogFilter, contestId: string): Promise<ExportResult>;
+  /** What an export of these QSOs would contain and what is wrong with it. */
+  logCheck(filter: LogFilter): Promise<CheckIssue[]>;
+  /** Starts the practice band in place of the radio audio (practice mode only). */
+  practiceStart(noise: boolean, volume: number, seed: number): Promise<AudioStatus>;
+  practiceStop(): Promise<void>;
+  /** One transmission of a simulated station. Returns its id for the practice_done event. */
+  practiceKey(signal: PracticeSignal): Promise<number>;
+  practiceClear(): Promise<void>;
+  practiceVolume(volume: number): Promise<void>;
+  activationStart(a: Activation): Promise<Activation>;
+  activationEnd(): Promise<void>;
+  activationCurrent(): Promise<Activation | null>;
+  activationStats(id: number): Promise<ActivationStats>;
   /** True for the browser stand-in: the conversation starts with example text. */
   readonly demo: boolean;
   /** Poll for events (the Tauri shell pushes them, the mock generates them). */

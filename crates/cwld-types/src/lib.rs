@@ -10,4 +10,4 @@ pub mod settings;
 
 pub use policy::{PolicyHandle, TxPolicy};
 pub use radio::{mean_confidence, CommandClass, DecoderStats, RadioCommand, RadioMode, RadioStatus, RigEvent, ScopeSweep, CONFIDENCE_WINDOW};
-pub use settings::{UserWord, DefaultRst, GAIN_MAX_DB, MAX_WPM_DEFAULT, TABS_AUTO_CLOSE_DEFAULT, TABS_AUTO_CLOSE_MAX, WPM_CEILING, WPM_FLOOR, SQUELCH_DEFAULT, SQUELCH_MAX, SQUELCH_MIN, AudioSettings, Language, RadioKind, RadioSettings, Settings, Station, SwrSettings, Theme};
+pub use settings::{ContestProfile, ContestSettings, ContestVar, RecvField, SentTemplate, UserWord, DefaultRst, GAIN_MAX_DB, MAX_WPM_DEFAULT, TABS_AUTO_CLOSE_DEFAULT, TABS_AUTO_CLOSE_MAX, WPM_CEILING, WPM_FLOOR, SQUELCH_DEFAULT, SQUELCH_MAX, SQUELCH_MIN, AudioSettings, Language, RadioKind, RadioSettings, PracticeSettings, ScopeSize, Settings, Station, StationProfile, SwrSettings, Theme, default_profiles};

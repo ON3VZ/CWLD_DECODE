@@ -89,6 +89,9 @@ impl AppCore {
 
     pub fn start_audio_source(&self, source: Source) -> Result<AudioStatus, CoreError> {
         self.stop_audio();
+        if !matches!(source, Source::Practice { .. }) {
+            self.forget_practice();
+        }
         let s = self.settings.lock().unwrap().clone();
         let mut words: Vec<String> = s.station.calls.clone();
         words.extend(s.station.name.split_whitespace().map(|w| w.to_string()));
@@ -320,6 +323,7 @@ impl AppCore {
                 }
                 EngineEvent::Waterfall { bins, lo_hz, hz_per_bin } => out.push(CoreEvent::Waterfall { bins, lo_hz, hz_per_bin }),
                 EngineEvent::Level { dbfs, peak } => out.push(CoreEvent::AudioLevel { dbfs, peak }),
+                EngineEvent::PracticeDone { ids } => out.push(CoreEvent::PracticeDone { ids }),
                 EngineEvent::Stats { confidence, snr_db, bandwidth_hz } => {
                     out.push(CoreEvent::Bandwidth { hz: bandwidth_hz });
                     if let Some(c) = confidence {

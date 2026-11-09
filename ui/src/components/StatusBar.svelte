@@ -36,6 +36,11 @@
     {/if}
   </div>
   <div class="info">
+    {#if app.settings && app.settings.profiles.length > 1}
+      <select class="chip prof" aria-label={t('profile.station')} title={app.activation ? t('profile.locked') : t('profile.station')} disabled={!!app.activation} value={app.settings.profile} onchange={(e) => app.setProfile((e.currentTarget as HTMLSelectElement).value)}>
+        {#each app.settings.profiles as p (p.id)}<option value={p.id}>{p.name} {app.settings.station.calls[0] ? `(${(app.settings.station.calls[0] + p.suffix).toUpperCase()})` : ''}</option>{/each}
+      </select>
+    {/if}
     <span class="chip">{app.status.mode.toUpperCase()}</span>
     <span class="chip">{app.status.cw_wpm} WPM</span>
     <span class="chip" class:tx={app.status.transmitting}>{app.status.transmitting ? t('status.tx') : t('status.rx')}</span>
@@ -65,6 +70,7 @@
 </header>
 
 <style>
+  .prof { background: var(--panel2); border: 1px solid var(--line); color: var(--text); max-width: 15em; }
   .bar { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .brand { font-weight: 800; letter-spacing: 0.08em; color: var(--accent); }
   .freq { display: flex; align-items: baseline; gap: 6px; }

@@ -11,9 +11,9 @@ use serde::Serialize;
 use std::path::PathBuf;
 #[cfg(feature = "device")]
 use std::sync::atomic::{AtomicBool, Ordering};
+use cwld_dsp::PracticeBand;
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, TryRecvError};
-#[cfg(feature = "device")]
-use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -25,8 +25,11 @@ pub enum Source {
     Device { name: Option<String> },
     /// A WAV file, played at real speed (`realtime`) or as fast as possible.
     File { path: PathBuf, realtime: bool },
-    /// Samples in memory (tests, practice mode).
+    /// Samples in memory (tests).
     Samples { rate: u32, data: Vec<f32>, realtime: bool },
+    /// The practice band: simulated stations, rendered in real time, decoded like the radio and
+    /// played on the default output (when `play` is set and the build has sound card support).
+    Practice { band: Arc<Mutex<PracticeBand>>, play: bool, volume: f32 },
 }
 
 /// Decoder settings that can change while listening.
@@ -96,6 +99,8 @@ pub enum EngineEvent {
     Recording { active: bool, seconds: f64, path: String },
     /// Samples were lost because the audio thread could not keep up.
     Overrun { samples: u64 },
+    /// Practice band transmissions that ended.
+    PracticeDone { ids: Vec<u64> },
     /// The source ended (file) or failed (`reason`).
     Stopped { reason: Option<String> },
 }
@@ -111,6 +116,7 @@ enum Command {
     StopRecording,
     AddWords(Vec<String>),
     Tuning(Tuning),
+    Volume(f32),
     Stop,
 }
 
@@ -194,6 +200,11 @@ impl Engine {
         let _ = self.cmd.send(Command::Tuning(t));
     }
 
+    /// Loudness of the practice band on the output, 0 to 1.
+    pub fn set_volume(&self, v: f32) {
+        let _ = self.cmd.send(Command::Volume(v));
+    }
+
     pub fn add_words(&self, words: Vec<String>) {
         let _ = self.cmd.send(Command::AddWords(words));
     }
@@ -213,10 +224,40 @@ enum Input {
     #[cfg(feature = "device")]
     Ring { cons: Consumer, failed: Arc<AtomicBool>, reported_drops: u64, _stream: cpal::Stream },
     Memory { data: Vec<f32>, pos: usize, realtime: bool, rate: u32, started: Instant },
+    Band { band: Arc<Mutex<PracticeBand>>, rate: u32, pos: u64, started: Instant, out: Option<BandOut>, volume: f32 },
+}
+
+/// Where the practice band goes to be heard.
+struct BandOut {
+    prod: crate::ring::Producer,
+    #[cfg(feature = "device")]
+    _stream: cpal::Stream,
+}
+
+fn open_output(rate: u32) -> Result<Option<BandOut>, String> {
+    #[cfg(feature = "device")]
+    {
+        let (mut prod, cons) = crate::ring::ring(rate as usize * 2);
+        // A quarter second of silence first, so the sound card never runs dry.
+        prod.push(&vec![0.0; rate as usize / 4]);
+        let stream = crate::device::output::open(cons, rate)?;
+        Ok(Some(BandOut { prod, _stream: stream }))
+    }
+    #[cfg(not(feature = "device"))]
+    {
+        let _ = rate;
+        Ok(None)
+    }
 }
 
 fn open(source: Source) -> Result<(Input, u32, String), String> {
     match source {
+        Source::Practice { band, play, volume } => {
+            let rate = band.lock().unwrap().sample_rate();
+            let out = if play { open_output(rate)? } else { None };
+            let name = if out.is_some() { "practice band (speakers)" } else { "practice band" };
+            Ok((Input::Band { band, rate, pos: 0, started: Instant::now(), out, volume: volume.clamp(0.0, 1.0) }, rate, name.into()))
+        }
         Source::Samples { rate, data, realtime } => Ok((Input::Memory { data, pos: 0, realtime, rate, started: Instant::now() }, rate, "samples".into())),
         Source::File { path, realtime } => {
             let f = std::fs::File::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -433,6 +474,7 @@ impl Worker {
                 self.words.extend(w);
             }
             Command::Tuning(t) => self.apply_tuning(&t),
+            Command::Volume(_) => {}
             Command::Stop => return false,
         }
         true
@@ -486,6 +528,9 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
         loop {
             match cmds.try_recv() {
                 Ok(c) => {
+                    if let (Command::Volume(v), Input::Band { volume, .. }) = (&c, &mut input) {
+                        *volume = v.clamp(0.0, 1.0);
+                    }
                     if !w.command(c) {
                         w.stop_recording();
                         return;
@@ -514,6 +559,27 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
                     return;
                 }
                 w.process(&buf);
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Input::Band { band, rate, pos, started, out, volume } => {
+                // As many samples as real time asks for, at most one second after a stall.
+                let target = (started.elapsed().as_secs_f64() * *rate as f64) as u64;
+                let n = target.saturating_sub(*pos).min(*rate as u64) as usize;
+                *pos = target;
+                let (samples, done) = {
+                    let mut b = band.lock().unwrap();
+                    let x = if n > 0 { b.render(n) } else { Vec::new() };
+                    (x, b.take_finished())
+                };
+                if let Some(o) = out.as_mut() {
+                    let v = *volume;
+                    let loud: Vec<f32> = samples.iter().map(|s| s * v).collect();
+                    o.prod.push(&loud);
+                }
+                w.process(&samples);
+                if !done.is_empty() {
+                    w.send(EngineEvent::PracticeDone { ids: done });
+                }
                 std::thread::sleep(Duration::from_millis(20));
             }
             Input::Memory { data, pos, realtime, rate, started } => {
@@ -575,6 +641,27 @@ mod tests {
     fn upsample(x: &[f32], factor: usize) -> Vec<f32> {
         // Simple sample-and-hold is fine here: the resampler filters the images away.
         x.iter().flat_map(|v| std::iter::repeat(*v).take(factor)).collect()
+    }
+
+    #[test]
+    fn practice_band_is_decoded_live_and_reports_the_end() {
+        let band = Arc::new(Mutex::new(PracticeBand::new(8000, 7, true)));
+        let id = band.lock().unwrap().add(&cwld_dsp::BandSignal { text: "TEST DL1ABC".into(), wpm: 28.0, snr_db: 18.0, delay_s: 0.3, ..Default::default() });
+        let e = Engine::start(Source::Practice { band: band.clone(), play: false, volume: 0.5 }, EngineConfig::default()).unwrap();
+        let mut text = String::new();
+        let mut done = false;
+        let until = Instant::now() + Duration::from_secs(12);
+        while Instant::now() < until && !(done && text.contains("DL1ABC")) {
+            if let Some(ev) = e.next_event(Duration::from_millis(200)) {
+                match ev {
+                    EngineEvent::Decode { text: t, .. } => text.push_str(&t),
+                    EngineEvent::PracticeDone { ids } => done |= ids.contains(&id),
+                    _ => {}
+                }
+            }
+        }
+        assert!(done, "no PracticeDone");
+        assert!(text.contains("DL1ABC"), "decoded {text:?}");
     }
 
     #[test]

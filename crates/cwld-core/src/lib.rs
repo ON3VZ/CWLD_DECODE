@@ -2,6 +2,12 @@
 //! (mode switching, the transmit path, validation) are testable without a window.
 
 pub mod audio;
+mod log;
+pub mod practice;
+
+pub use cwld_log::{LogFilter, Qso};
+pub use log::{ActivationStats, DupeInfo, ExportResult};
+pub use cwld_log::{Activation, CheckIssue, Severity};
 
 pub use audio::{AudioStatus, DecodeSource};
 pub use cwld_audio::{InputDevice, Source as AudioSource, TentativeOut};
@@ -36,6 +42,11 @@ pub enum CoreError {
     Settings(String),
     #[error("audio: {0}")]
     Audio(String),
+    #[error("logbook: {0}")]
+    Log(String),
+    /// A value the operator gave is not acceptable. The code says which one.
+    #[error("invalid: {0}")]
+    Invalid(&'static str),
 }
 
 impl CoreError {
@@ -49,6 +60,8 @@ impl CoreError {
             CoreError::Rig(e) => e.code(),
             CoreError::Settings(_) => "settings",
             CoreError::Audio(_) => "audio",
+            CoreError::Log(_) => "log",
+            CoreError::Invalid(c) => c,
         }
     }
 }
@@ -111,6 +124,8 @@ pub enum CoreEvent {
     Bandwidth { hz: f32 },
     /// Audio started, stopped, failed, or a recording changed.
     Audio { status: AudioStatus },
+    /// Practice band transmissions that ended (see `practice_key`).
+    PracticeDone { ids: Vec<u64> },
 }
 
 pub struct AppCore {
@@ -123,6 +138,9 @@ pub struct AppCore {
     tx_track: Mutex<audio::TxTrack>,
     recordings_dir: Mutex<Option<PathBuf>>,
     link: Mutex<LinkState>,
+    logbook: Mutex<cwld_log::Logbook>,
+    /// The practice band while a practice exercise runs.
+    practice: Mutex<Option<std::sync::Arc<Mutex<cwld_dsp::PracticeBand>>>>,
 }
 
 /// Watches the link to a real radio, so a switched-off radio or a pulled cable shows as
@@ -160,6 +178,11 @@ impl AppCore {
         if settings.band_scope && rig.capabilities().scope {
             let _ = rig.execute(&RadioCommand::SetScope(true));
         }
+        let logbook = settings_path
+            .as_deref()
+            .and_then(|p| p.parent().map(|d| d.join("logbook.db")))
+            .and_then(|p| cwld_log::Logbook::open(&p).ok())
+            .unwrap_or_else(|| cwld_log::Logbook::open_memory().expect("in-memory logbook"));
         AppCore {
             policy,
             rig: Mutex::new(rig),
@@ -168,8 +191,10 @@ impl AppCore {
             swr: Mutex::new(SwrState::default()),
             audio: Mutex::new(audio::AudioState::default()),
             tx_track: Mutex::new(audio::TxTrack::default()),
+            practice: Mutex::new(None),
             recordings_dir: Mutex::new(None),
             link: Mutex::new(LinkState::default()),
+            logbook: Mutex::new(logbook),
         }
     }
 
@@ -264,6 +289,10 @@ impl AppCore {
         if current == TxPolicy::Live && policy != TxPolicy::Live {
             // Stop is always allowed by the guard, also in the new mode.
             let _ = self.rig.lock().unwrap().execute(&RadioCommand::StopCw);
+        }
+        if current == TxPolicy::Practice && policy != TxPolicy::Practice && self.practice_running() {
+            // The simulated stations never stay on air outside practice.
+            self.practice_stop();
         }
         self.policy.set(policy);
         let mut s = self.settings.lock().unwrap();

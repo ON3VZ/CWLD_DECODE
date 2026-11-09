@@ -145,3 +145,86 @@ Geen radio nodig.
 1. Start CWLD met een vers instellingenbestand (of kies in Instellingen, rubriek Radio en SWR, bij Type radio de Simulator). Verwacht: rechtsboven staat oranje "Simulator, geen radio" in plaats van groen "Verbonden", en onder de statusbalk staat een oranje balk "Nog geen radio gekozen" met een knop Radio kiezen. De knop opent de instellingen.
 2. Kies je IC-7300 MK II, kies de COM-poort en klik Verbinden. Verwacht: de oranje balk en het oranje label verdwijnen. Bij een ingeschakelde radio staat er groen "Verbonden" met de naam van de radio.
 3. Zet de radio uit. Verwacht binnen enkele seconden "Radio zoeken" (geen groen "Verbonden"). Zet hem weer aan: hij verbindt vanzelf. Dit moet kloppen als Type radio op IC-7300 MK II staat. Meld het als het anders is.
+
+## A25. Wedstrijdprofielen (0.6.0)
+
+1. Klik onder de chips op Contest. Verwacht: er verschijnt een keuzelijst (standaard "Geen profiel"). Kies UBA DX Contest CW. Verwacht: een gele opmerking over de regels, een tweede keuzelijst "Vanuit België", een chip TEST UBA en een chip Uitwisseling.
+2. Wijs met de muis naar de chip Uitwisseling. Verwacht: de tooltip toont `{DX-CALL} 5NN 001 WLD` (met de roepletters in het QSO-paneel). Kies in de tweede lijst "Vanuit het buitenland". Verwacht: de tooltip toont de uitwisseling zonder WLD.
+3. Zet de radio in Luisteren en klik op de chip. Verwacht: er wordt niets gezonden. Zet CWLD in Oefenen en klik op de chip. Verwacht: je hoort de uitwisseling in de zijtoon.
+4. Open Instellingen, rubriek Contest. Verwacht: een lijst met profielen, een editor en onder Eigen variabelen `SEC` WLD, `ZONE` 14, `ITU` 27 en `PWR` 20. Verander `SEC` en kijk of de chip Uitwisseling mee verandert.
+5. Kies CQ WW DX CW in de lijst, klik op Kopiëren, zet Verkorte cijfers aan en klik op Profiel opslaan. Kies het profiel op het hoofdscherm. Verwacht (bij een profiel met `{NR}`, zoals CQ WPX): het volgnummer toont als TT1.
+6. Probeer bij Eigen variabelen een variabele `CALL` of `NR` te maken. Verwacht: een foutmelding.
+7. Exporteer al je profielen (knop onderaan). Verwacht: een bestand `cwld-contest-backup.json` dat je kunt openen. Verwijder een eigen profiel en importeer het bestand. Verwacht: het profiel is terug. Meld mij of de download in de app werkt (op Windows) en waar het bestand terechtkomt.
+8. Lees de opmerking bij CQ WW DX. Verwacht: de waarschuwing dat een CW-decoder als hulpmiddel telt.
+
+## A26. Contest mode: een QSO in Run (0.7.0)
+
+1. Zet CWLD in Oefenen (je hoort de zijtoon, er wordt niets uitgezonden). Klik Contest en kies UBA DX Contest CW. Controleer bij Instellingen, Station of je roepletters ingevuld zijn.
+2. Druk Enter met een lege invoerregel. Verwacht: `TEST UBA ON3VZ` in het gesprek.
+3. Typ `PA3ABC` in Call en druk Enter. Verwacht: `PA3ABC 5NN 001 WLD`. Het nummer naast Log blijft 001.
+4. Druk nog eens Enter zonder iets in te vullen. Verwacht: `AGN`. Het nummer is nog 001.
+5. Vul bij Nr ontv. `12` in en druk Enter. Verwacht: `TU ON3VZ`, het QSO staat in het logpaneel, het nummer is 002 en de invoerregel is leeg.
+6. Typ `ON4XYZ`. Verwacht: het veld UBA-sectie wordt actief (alleen bij Belgische stations).
+
+## A27. Contest mode: S&P, dupes, waarschuwing (0.7.0)
+
+1. Druk Ctrl+R. Verwacht: S&P is gekleurd. Typ `DL1ABC`, Enter. Verwacht: alleen `ON3VZ`. Vul `5` in bij Nr ontv. en druk Enter. Verwacht: je uitwisseling gaat uit en het QSO wordt gelogd.
+2. Typ `DL1ABC` nog eens. Verwacht: een rode DUPE met tijd en band.
+3. Typ `PA3XYZ`, druk F2 (uitwisseling) en typ daarna `PA3QQQ` zonder te loggen. Verwacht: een waarschuwing met het gezonden nummer en PA3XYZ.
+4. Controleer dat het nummer nog hetzelfde is als voor de F2.
+
+## A28. Testmodus (0.7.0)
+
+1. Klik Test. Verwacht: oranje rand, TEST in de inforegel, het nummer begint bij 001. Log twee QSO's. Verwacht: het nummer gaat naar 003 en het logpaneel toont ze.
+2. Zet Test uit. Verwacht: het echte nummer staat nog op wat het was en de testQSO's staan niet in het logpaneel.
+3. Zet Test aan, klik Testlog wissen. Verwacht: het logpaneel is leeg en het testnummer is weer 001.
+
+## A29. Klikken en voorstellen (0.7.0)
+
+1. Klik in een ontvangen bericht op een woord. Verwacht: een menu met Roepletters, Rapport, Nummer, Extra veld, Naam en QTH. Kies Nummer. Verwacht: het woord staat in Nr ontv.
+2. Zend je uitwisseling en laat de decoder een antwoord als `5NN 023 ANR` horen (bijvoorbeeld met een opname). Verwacht: een grijs voorstel onder de invoerregel. Druk Tab in een leeg veld: het wordt overgenomen.
+
+## A30. Export, logpaneel, bandscoop, AFC (0.7.0)
+
+1. Klik in het logpaneel op Exporteren, kies Alle QSO's, controleer CONTEST_ID en klik Exporteren. Verwacht: "n QSO's opgeslagen in ..." met een pad onder Documenten, CWLD. Open het bestand in Kladblok: ADIF-velden zoals `<CALL:6>PA3ABC`. Importeer het in Log4OM en meld hoe de velden aankomen (vooral STX, SRX en CONTEST_ID).
+2. Verbeter een QSO met de knop Verbeter en verwijder er een (twee stappen).
+3. Zet CWLD af en weer aan. Verwacht: de QSO's staan er nog. Controleer dat naast `logbook.db` in de CWLD-map van de app een `logbook.db.bak` staat (map %APPDATA%\io.github.on3vz.cwld).
+4. Bandscoop: is hij lager (165 pixels) en nog goed leesbaar?
+5. Klik in het audio-waterfall op een signaal terwijl AFC aan staat. Verwacht: de toon blijft ongeveer 4 seconden waar je klikte en volgt daarna het signaal. Meld of dat prettig werkt.
+
+
+## A31. Profielen en activaties (0.8.0)
+
+1. Controleer in de statusbalk de keuzelijst met profielen. Kies Portable. Verwacht: ON3VZ/P als roepletters in de berichten (variabele {MYCALL}).
+2. Klik op Nieuwe activatie, laat het grid leeg en klik Starten. Verwacht: melding dat het grid ontbreekt.
+3. Vul ONFF599 in. Verwacht: rode rand en tekst dat het niet op ONFF-0599 lijkt. Vul ONFF-0599 en een grid in en start. Verwacht: paneel met referentie en grid in grote letters, de profielkeuze is vergrendeld.
+4. Log twee QSO's, een ervan met een andere roepletters. Verwacht: teller 2 QSO's en 2 unieke. Log er een met dezelfde roepletters: unieke blijft gelijk.
+
+## A32. Export met controle (0.8.0)
+
+1. Open Exporteren, kies Huidige activatie en klik Controleren. Verwacht: Controle geslaagd, of een lijst met waarschuwingen. De knop Exporteren is pas actief na de controle.
+2. Exporteer. Verwacht: bestand met naam zoals `ON3VZ-P @ ONFF-0599 datum.adi` in Documenten, CWLD. Open het in Kladblok: MY_GRIDSQUARE, MY_SIG, MY_SIG_INFO, STATION_CALLSIGN en TX_PWR staan erin.
+3. Open Exporteren en kies Alleen QSO's die nog niet geëxporteerd zijn. Verwacht: 0 QSO's of alleen de nieuwe.
+4. Importeer het bestand in Log4OM en in PoLo en stuur me beide exportbestanden (open punt: veld voor veld vergelijken).
+5. Instellingen, Weergave: zet de hoogte van de bandscoop op klein, midden en groot. Controleer dat contestmodus de eigen keuze volgt.
+
+## A33. Oefenen tegen gesimuleerde stations (0.9.0)
+
+1. Zet de AF-knop van de radio dicht. Klik OEFENEN. Verwacht: paneel Oefenen rechts.
+2. Kies QSO: een station roept CQ en klik Oefening starten. Verwacht: na ongeveer 1 seconde hoor je via de pc een CQ en de decoder toont hem. Controleer dat de radio niet zendt (geen TX-lampje, vermogensmeter stil).
+3. Antwoord met de chip Antwoord. Verwacht: het station geeft rapport, naam en QTH. Zend je rapport, het station sluit af met 73. Log het QSO.
+4. Klik Stoppen en score tonen. Verwacht: 1 juist van 1 gelogd. Daarna luistert de decoder weer naar de radio (zet de AF-knop terug open).
+5. Kies Contest (Run), profiel CQ WPX, 3 aanroepers, 5 minuten. Druk F1. Verwacht: een of meer stations roepen, op licht verschillende toonhoogtes. Werk er enkele af met Enter en F2/F3. Probeer NR? (F7) en een deel van een roepletters met een vraagteken.
+6. Vink Hulp van de decoder uit. Verwacht: ontvangen tekst wordt puntjes.
+7. Schakel tijdens een oefening naar LUISTEREN. Verwacht: de oefening stopt, de stations zwijgen.
+8. Meld: is het volume goed, klinken de stations natuurlijk, kraakt of hapert het geluid, en is de snelheid waarop stations reageren realistisch?
+
+## A34. Begeleide eerste start (0.10.0)
+
+1. Open Instellingen, Updates en info, klik op Begeleide start. Verwacht: venster met vier stappen. Esc sluit het niet, Overslaan wel.
+2. Stap 1: kies Icom IC-7300 MK II terwijl de radio aan staat. Verwacht: de poort van de CI-V (Serial Port A) is al gekozen. Klik op Test de verbinding. Verwacht: Verbonden en de frequentie in kHz.
+3. Trek de USB-kabel uit en klik op Opnieuw zoeken. Verwacht: de lijst met drie controles. Steek de kabel terug.
+4. Stap 2: zet CI-V Transceive op OFF in de radio, draai aan de knop. Meld wat het venster toont (volgt de frequentie toch dankzij het opvragen?). Zet het daarna op ON en controleer dat de melding Goed verschijnt.
+5. Stap 3: de radio-ingang staat voorgesteld. Klik op Begin te luisteren. Verwacht: niveaubalk beweegt bij een signaal. Zet in Windows de microfoon-privacy uit en meld wat er gebeurt.
+6. Stap 4: vul je gegevens in en kijk naar de stille test. Klik op Klaar. Verwacht: niets gezonden, CWLD start voortaan verbonden en luisterend.
+7. Wis de instellingen (map %APPDATA%\io.github.on3vz.cwld, bestand settings.json hernoemen) en start CWLD. Verwacht: het venster opent vanzelf.

@@ -1,8 +1,14 @@
-import type { Api, AudioStatus, Tuning, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
+import type { Activation, ActivationStats, Api, DupeInfo, LogQso, AudioStatus, Tuning, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
 import { i18n, t } from './i18n.svelte';
-import { demoMessages, demoSignals, pileupChips, type Message, type Signal } from './demo';
+import { activeProfile, activeSent, copyProfile as copyContestProfileData, cutNumber, isBuiltin, mergeImport, newProfileId, ownVars, parseImport, usesSerial, allProfiles, plain } from './contest';
+import { demoMessages, demoSignals, pileupChips, contestChips, type Message, type Signal } from './demo';
 import { expand } from './template';
+import { bandOf } from './adif';
+import { emptyLogQso } from './types';
+import { contestKeys, enterAction, entryComplete, nextSerial, suggestFrom, type RunMode, type Suggestion } from './contestlog';
 import { heardIn } from './qso';
+import { PracticeSim, type Score, type SimTx } from './sim';
+import type { PracticeSettings } from './types';
 import { durationSeconds, playSidetone } from './morse';
 
 export interface Qso {
@@ -81,6 +87,8 @@ class AppState {
   notice = $state<string | null>(null);
   confirmLive = $state(false);
   settingsOpen = $state(false);
+  /** The guided first start. Opens by itself until it has been finished or skipped once. */
+  wizardOpen = $state(false);
   /** Q-code library panel (slide-out). */
   qOpen = $state(false);
   /** Highest sample in the last tenth of a second, 0 to 1 and above (after the gain). */
@@ -398,6 +406,11 @@ class AppState {
     this.viewId = first.id;
     if (api.demo) for (const m of demoMessages) this.ingest(m.from, m.text, m.time);
     this.ready = true;
+    this.wizardOpen = !api.demo && !snap.settings.first_run_done;
+    this.resetEntry();
+    this.testMode = false;
+    void this.refreshLog();
+    void this.refreshActivation();
     this.updateState = 'idle';
     this.updateInfo = null;
     api.appVersion().then((v) => (this.version = v)).catch(() => {});
@@ -472,6 +485,10 @@ class AppState {
         this.cancelPractice();
         continue;
       }
+      if (ev.type === 'practice_done') {
+        this.practiceDone(ev.ids);
+        continue;
+      }
       if (ev.type === 'swr_cleared') {
         this.swrAlert = null;
         continue;
@@ -525,7 +542,7 @@ class AppState {
       }
       this.lastDecodeAt[source] = now;
       this.touch(live, now);
-      if (target && source === 'rx') {
+      if (target && source === 'rx' && !this.hideRx) {
         const h = heardIn(target.text, this.settings?.station.calls ?? []);
         if (h.call) target.call = h.call;
         this.applyHeard(target.text, target);
@@ -604,12 +621,20 @@ class AppState {
     this.warning = null;
   }
 
+  /** The station profile in use (home, portable). */
+  get profile() {
+    const s = this.settings;
+    return s?.profiles.find((p) => p.id === s.profile) ?? null;
+  }
+
+  /** The call on the air: the first call of the operator plus the suffix of the profile (ON3VZ/P). */
   get myCall(): string {
-    return this.settings?.station.calls[0] ?? '';
+    const base = this.settings?.station.calls[0] ?? '';
+    return base ? `${base}${this.profile?.suffix ?? ''}`.toUpperCase() : '';
   }
 
   /** Variables for chip templates. */
-  get vars() {
+  get vars(): Record<string, string> {
     const st = this.settings?.station;
     return {
       CALL: this.cur.qso.call,
@@ -617,11 +642,19 @@ class AppState {
       NAME: this.cur.qso.name,
       QTH: this.cur.qso.qth,
       RST: this.cur.qso.rst,
-      // The serial number exists in contest mode only.
-      NR: this.settings?.contest_mode ? String(this.settings.contest_nr).padStart(3, '0') : '',
+      // The serial number exists in contest mode only. Cut numbers when the profile asks for it.
+      NR: this.settings?.contest_mode ? this.serialText : '',
       MYNAME: st?.name ?? '',
       MYQTH: st?.qth ?? '',
+      // Own variables: reserved names are left out by ownVars, so they never replace the names above.
+      ...ownVars(this.settings?.contest),
     };
+  }
+
+  /** The next serial number as it is sent: three digits, as cut numbers when the profile asks for it. */
+  get serialText(): string {
+    const nr = String(this.testMode ? this.testNr : (this.settings?.contest_nr ?? 1)).padStart(3, '0');
+    return activeProfile(this.settings?.contest)?.cut_numbers ? cutNumber(nr) : nr;
   }
 
   private fail(e: unknown) {
@@ -656,6 +689,7 @@ class AppState {
   private async applyPolicy(p: TxPolicy, confirmed: boolean) {
     try {
       this.cancelPractice();
+      if (p !== 'practice' && this.practiceRun) await this.stopExercise();
       await this.api.setPolicy(p, confirmed);
       this.policy = p;
       if (this.settings) this.settings.last_policy = p;
@@ -668,6 +702,7 @@ class AppState {
   selectCall(call: string) {
     this.qso = { ...this.qso, call: call.toUpperCase() };
     this.callLocked = true;
+    this.noteCallChange();
   }
 
   /** Back to automatic: the next decoded station fills `{CALL}` again. */
@@ -687,7 +722,16 @@ class AppState {
     const m: Message = { id: this.nextId++, from, call, text, time };
     this.cur.messages.push(m);
     this.touch(this.cur);
-    if (from === 'rx') this.applyHeard(text, m);
+    if (from === 'rx') {
+      const before = this.qso.call;
+      this.applyHeard(text, m);
+      if (this.qso.call !== before) this.noteCallChange();
+      // In contest mode, after our exchange, propose what the other station sent back.
+      if (this.settings?.contest_mode && this.qso.call && this.exchangeSent) {
+        const sug = suggestFrom(text, this.settings.contest, this.qso.call);
+        if (Object.keys(sug).length) this.suggestion = { ...this.suggestion, ...sug };
+      }
+    }
   }
 
   /**
@@ -744,7 +788,11 @@ class AppState {
         this.notice = t('composer.simulated', { seconds: out.seconds.toFixed(1) });
         this.practiceBusy = true;
         this.stopSidetone = playSidetone(clean, this.status.cw_wpm);
-        this.practiceTimer = setTimeout(() => this.cancelPractice(), out.seconds * 1000 + 100);
+        this.practiceTimer = setTimeout(() => {
+          this.cancelPractice();
+          // Your transmission is over: the simulated stations react to it.
+          if (this.sim) this.simKey(this.sim.userSent(clean, Date.now() / 1000));
+        }, out.seconds * 1000 + 100);
       }
       this.draft = '';
       this.persist();
@@ -875,9 +923,23 @@ class AppState {
   }
 
   /** The decoder listens to another pitch (a click on the waterfall). */
-  async setTone(hz: number) {
+  private afcHold: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Sets the decoder tone. After a click in the waterfall the AFC waits 4 seconds, so it does not
+   * pull the tone away from the spot the operator picked before the signal has settled.
+   */
+  async setTone(hz: number, fromClick = false) {
     const v = Math.round(Math.min(1500, Math.max(200, hz)));
     try {
+      if (fromClick && this.settings?.audio.afc) {
+        await this.api.setAfc(false);
+        if (this.afcHold) clearTimeout(this.afcHold);
+        this.afcHold = setTimeout(() => {
+          this.afcHold = null;
+          if (this.settings?.audio.afc) void this.api.setAfc(true).catch(() => {});
+        }, 4000);
+      }
       await this.api.setTone(v);
       if (this.audio) this.audio.tone_hz = v;
       if (this.settings) this.settings.audio.tone_hz = v;
@@ -978,6 +1040,10 @@ class AppState {
   }
 
   async setAfc(on: boolean) {
+    if (this.afcHold) {
+      clearTimeout(this.afcHold);
+      this.afcHold = null;
+    }
     try {
       await this.api.setAfc(on);
       if (this.settings) this.settings.audio.afc = on;
@@ -1009,16 +1075,578 @@ class AppState {
       return;
     }
     if (this.settings.contest_nr > 1) this.contestAsk = true;
-    else await this.patchSettings({ contest_mode: true });
+    else {
+      await this.patchSettings({ contest_mode: true });
+      this.resetEntry();
+      void this.refreshLog();
+    }
   }
 
   async answerContest(restart: boolean) {
     this.contestAsk = false;
-    await this.patchSettings({ contest_mode: true, ...(restart ? { contest_nr: 1 } : {}) });
+    if (restart && this.settings) {
+      // A new contest: the number starts again and earlier QSOs no longer count as dupes.
+      const c = $state.snapshot(this.settings.contest) as Settings['contest'];
+      await this.patchSettings({ contest_mode: true, contest_nr: 1, contest: { ...c, session: (c.session || 1) + 1 } });
+    } else {
+      await this.patchSettings({ contest_mode: true });
+    }
+    this.resetEntry();
+    void this.refreshLog();
   }
 
   async setContestNr(n: number) {
     await this.patchSettings({ contest_nr: Math.min(9999, Math.max(1, Math.round(n) || 1)) });
+  }
+
+
+
+  // ---- Practice simulator ----
+
+  /** The running exercise, or null. */
+  practiceRun = $state<{ exercise: PracticeSettings['exercise']; startedTs: number; endsAt: number | null } | null>(null);
+  /** The score of the last exercise, shown until the operator closes it. */
+  practiceScore = $state<Score | null>(null);
+  private sim: PracticeSim | null = null;
+  private simIds = new Map<number, string>();
+  private simTimer: ReturnType<typeof setInterval> | null = null;
+  private practiceRestore: { contest_mode: boolean; testMode: boolean; audio: boolean } | null = null;
+
+  /** Without decoder help the decoded text is hidden: train your ear. */
+  get hideRx(): boolean {
+    return !!this.practiceRun && !this.settings?.practice.decoder_help;
+  }
+
+  async setPracticeCfg(patch: Partial<PracticeSettings>) {
+    if (!this.settings) return;
+    await this.patchSettings({ practice: { ...($state.snapshot(this.settings.practice) as PracticeSettings), ...patch } });
+    if (patch.volume !== undefined && this.practiceRun) {
+      try {
+        await this.api.practiceVolume(patch.volume);
+      } catch {
+        /* the volume is not important enough to bother the operator */
+      }
+    }
+  }
+
+  /** Starts an exercise: the decoder listens to the practice band, QSOs go to the test log. */
+  async startExercise() {
+    if (!this.settings || this.practiceRun) return;
+    if (this.policy !== 'practice') {
+      this.error = t('error.practice_mode_needed');
+      return;
+    }
+    const cfg = $state.snapshot(this.settings.practice) as PracticeSettings;
+    if (cfg.exercise === 'contest' && !this.settings.contest.active) {
+      this.error = t('practice.need_profile');
+      return;
+    }
+    this.error = null;
+    this.practiceScore = null;
+    this.practiceRestore = { contest_mode: this.settings.contest_mode, testMode: this.testMode, audio: !!this.audio?.running };
+    const seed = Math.floor(Math.random() * 1e9) + 1;
+    try {
+      this.audio = await this.api.practiceStart(cfg.noise, cfg.volume, seed);
+    } catch (e) {
+      this.practiceRestore = null;
+      this.fail(e);
+      return;
+    }
+    const wantContest = cfg.exercise === 'contest';
+    if (this.settings.contest_mode !== wantContest) await this.patchSettings({ contest_mode: wantContest });
+    await this.setTestMode(true);
+    if (wantContest) this.runMode = 'run';
+    // A fresh conversation, so the exercise does not mix with what was on the screen.
+    if (this.cur.messages.length) this.newConversation();
+    const now = Date.now() / 1000;
+    this.sim = new PracticeSim({ cfg, myCall: this.myCall, myName: this.settings.station.name.split(/\s+/)[0] ?? '', toneHz: this.settings.audio.tone_hz, contest: $state.snapshot(this.settings.contest) as Settings['contest'], seed });
+    this.practiceRun = { exercise: cfg.exercise, startedTs: Math.floor(now), endsAt: wantContest && cfg.minutes > 0 ? now + cfg.minutes * 60 : null };
+    this.simKey(this.sim.start(now));
+    this.simTimer = setInterval(() => this.simTick(), 500);
+  }
+
+  private simTick() {
+    if (!this.sim || !this.practiceRun) return;
+    const now = Date.now() / 1000;
+    if (this.practiceRun.endsAt && now >= this.practiceRun.endsAt) {
+      void this.stopExercise();
+      return;
+    }
+    // Nobody calls while you are sending.
+    if (!this.practiceBusy) this.simKey(this.sim.tick(now));
+  }
+
+  private simKey(txs: SimTx[]) {
+    for (const { call, ...signal } of txs) {
+      this.api.practiceKey(signal).then(
+        (id) => this.simIds.set(id, call),
+        (e) => {
+          // The station never got on the air: let the simulator know at once.
+          this.sim?.done(call, Date.now() / 1000);
+          this.fail(e);
+        },
+      );
+    }
+  }
+
+  private practiceDone(ids: number[]) {
+    for (const id of ids) {
+      const call = this.simIds.get(id);
+      this.simIds.delete(id);
+      if (call && this.sim) this.simKey(this.sim.done(call, Date.now() / 1000));
+    }
+  }
+
+  /** Ends the exercise, shows the score and gives the decoder back to the radio. */
+  async stopExercise() {
+    const run = this.practiceRun;
+    const sim = this.sim;
+    if (!run || !sim) return;
+    if (this.simTimer) clearInterval(this.simTimer);
+    this.simTimer = null;
+    this.sim = null;
+    this.practiceRun = null;
+    this.simIds.clear();
+    try {
+      await this.api.practiceClear();
+      await this.api.practiceStop();
+    } catch (e) {
+      this.fail(e);
+    }
+    let logged: LogQso[] = [];
+    try {
+      logged = (await this.api.logList({ test: true, from_ts: run.startedTs })).filter((q) => q.ts >= run.startedTs);
+    } catch (e) {
+      this.fail(e);
+    }
+    this.practiceScore = sim.score(logged, Date.now() / 1000);
+    const r = this.practiceRestore;
+    this.practiceRestore = null;
+    if (r) {
+      if (this.settings && this.settings.contest_mode !== r.contest_mode) await this.patchSettings({ contest_mode: r.contest_mode });
+      await this.setTestMode(r.testMode);
+      if (r.audio) await this.startAudio();
+      else if (this.audio) this.audio = { ...this.audio, running: false };
+    }
+  }
+
+  // ---- Station profiles and activations ----
+
+  activation = $state<Activation | null>(null);
+  actStats = $state<ActivationStats | null>(null);
+  /** The other station's park or summit reference (park to park), for the next QSO. */
+  theirRef = $state({ prog: 'WWFF', ref: '' });
+
+  async refreshActivation() {
+    if (!this.api) return;
+    try {
+      this.activation = await this.api.activationCurrent();
+      this.actStats = this.activation ? await this.api.activationStats(this.activation.id) : null;
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** The operator chooses another station. Never changes by itself, and not during an activation. */
+  async setProfile(id: string) {
+    if (this.activation || !this.settings?.profiles.some((p) => p.id === id)) return;
+    await this.patchSettings({ profile: id });
+  }
+
+  /** Starts an activation. Returns an error code of the core for the form, or null when it worked. */
+  async startActivation(a: Partial<Activation>): Promise<string | null> {
+    try {
+      this.activation = await this.api.activationStart({ id: 0, profile: '', grid: '', power: '', wwff: '', pota: '', sota: '', note: '', started_ts: 0, ended_ts: 0, ...a });
+      await this.refreshActivation();
+      return null;
+    } catch (e) {
+      return codeOf(e);
+    }
+  }
+
+  async endActivation() {
+    try {
+      await this.api.activationEnd();
+      this.activation = null;
+      this.actStats = null;
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async setScopeSize(key: 'scope_size' | 'scope_size_contest', v: Settings['scope_size']) {
+    await this.patchSettings({ [key]: v } as Partial<Settings>);
+  }
+
+  // ---- Logbook and contest entry ----
+
+  /** Run (you call CQ) or S&P (you answer stations). */
+  runMode = $state<RunMode>('run');
+  /** Test mode: QSOs go to the separate test log and the number counts apart. */
+  testMode = $state(false);
+  /** Received report, serial number and extra field of the station being worked. */
+  entry = $state({ rst: '', nr: '', extra: '' });
+  /** Our exchange (or our call in S&P) was sent for the current call. */
+  exchangeSent = $state(false);
+  mycallSent = $state(false);
+  /** The number that was sent but not logged yet, with the call it was sent to. */
+  sentPending = $state<{ call: string; nr: string } | null>(null);
+  /** Proposal from the decoder for the fields of the entry line. Grey until accepted. */
+  suggestion = $state<Suggestion>({});
+  dupeInfo = $state<DupeInfo | null>(null);
+  /** The last QSOs of the log on screen (5), the count and the times of this contest run. */
+  recent = $state<LogQso[]>([]);
+  qsoCount = $state(0);
+  qsoTimes = $state<number[]>([]);
+  /** Sections and other extra values logged before, for completing while typing. */
+  knownExtra = $state<string[]>([]);
+  testNr = $state(1);
+  exportOpen = $state(false);
+  editing = $state<LogQso | null>(null);
+  lastLogged = $state<LogQso | null>(null);
+
+  /** The id written in the log: the profile, or `free` without one. Empty outside contest mode. */
+  get contestId(): string {
+    if (!this.settings?.contest_mode) return '';
+    return this.contestProfile?.id ?? 'free';
+  }
+  get contestSession(): number {
+    return this.settings?.contest.session ?? 1;
+  }
+  get band(): string {
+    return bandOf(this.status.frequency_hz);
+  }
+  /** The messages behind F1 to F8 for the current mode. */
+  get contestKeyList() {
+    return contestKeys(this.runMode, this.settings?.contest);
+  }
+  get entryComplete(): boolean {
+    return entryComplete(this.settings?.contest, this.qso.call, this.entry.nr, this.entry.extra);
+  }
+  /** The received extra field applies to this call (for example the section of a Belgian station). */
+  get recvField() {
+    const f = this.contestProfile?.recv ?? null;
+    return f;
+  }
+
+  resetEntry() {
+    this.entry = { rst: this.settings?.default_rst ?? '5NN', nr: '', extra: '' };
+    this.exchangeSent = false;
+    this.mycallSent = false;
+    this.sentPending = null;
+    this.suggestion = {};
+    this.dupeInfo = null;
+  }
+
+  /** The call on the entry line changed (typed, clicked or heard): check dupes, warn about an unlogged number. */
+  noteCallChange() {
+    const call = this.qso.call.trim().toUpperCase();
+    if (this.sentPending && this.sentPending.call !== call) {
+      this.warning = t('contest.unlogged', { nr: this.sentPending.nr, call: this.sentPending.call });
+      this.sentPending = null;
+      this.exchangeSent = false;
+      this.mycallSent = false;
+      this.entry = { ...this.entry, nr: '', extra: '' };
+      this.suggestion = {};
+    }
+    void this.refreshDupe();
+  }
+
+  async refreshDupe() {
+    const call = this.qso.call.trim().toUpperCase();
+    if (!call || !this.settings?.contest_mode) {
+      this.dupeInfo = null;
+      return;
+    }
+    try {
+      this.dupeInfo = await this.api.logDupe(call, this.contestId, this.contestSession, this.testMode);
+    } catch {
+      this.dupeInfo = null;
+    }
+  }
+
+  /** Loads the last QSOs, the count and the times for the rate. */
+  async refreshLog() {
+    if (!this.api) return;
+    try {
+      const contest = this.contestId;
+      const all = await this.api.logList(contest ? { contest, session: this.contestSession, test: this.testMode } : { test: this.testMode, limit: 500 });
+      this.recent = all.slice(0, 5);
+      this.qsoCount = all.length;
+      this.qsoTimes = all.map((q) => q.ts);
+      this.knownExtra = [...new Set(all.map((q) => q.extra_rcvd.toUpperCase()).filter(Boolean))].sort();
+      if (this.testMode) this.testNr = await this.api.logNextTestSerial();
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async setTestMode(on: boolean) {
+    this.testMode = on;
+    this.resetEntry();
+    await this.refreshLog();
+    await this.refreshDupe();
+  }
+
+  async clearTestLog() {
+    try {
+      await this.api.logClearTest();
+      await this.refreshLog();
+      this.notice = t('contest.test.cleared');
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  setRunMode(m: RunMode) {
+    this.runMode = m;
+  }
+
+  /** A function key in contest mode: sends its message and notes what has been sent. */
+  async pressContestKey(key: string): Promise<boolean> {
+    const k = this.contestKeyList.find((x) => x.key === key);
+    if (!k) return false;
+    if (this.canSend) {
+      const r = expand(k.template, this.vars);
+      if (r.missing.length) {
+        this.error = t('composer.missing', { vars: r.missing.join(', ') });
+        return true;
+      }
+      await this.send(r.text);
+      if (this.error) return true;
+      this.noteSent(key, k.template);
+    }
+    if (k.log) await this.logQso();
+    return true;
+  }
+
+  private noteSent(key: string, template: string) {
+    if (key === 'F2' && template.includes('{NR}') && this.serialUsed) this.sentPending = { call: this.qso.call.trim().toUpperCase(), nr: this.serialText };
+    if (key === 'F2') this.exchangeSent = true;
+    if (key === 'F1' && this.runMode === 'sp') this.mycallSent = true;
+  }
+
+  /** Enter does the next logical thing (N1MM calls it ESM). */
+  async pressEnter() {
+    const a = enterAction(this.runMode, { call: this.qso.call, exchangeSent: this.exchangeSent, mycallSent: this.mycallSent, complete: this.entryComplete });
+    if (a.key) {
+      const k = this.contestKeyList.find((x) => x.key === a.key);
+      if (k && this.canSend) {
+        const r = expand(k.template, this.vars);
+        if (r.missing.length) {
+          this.error = t('composer.missing', { vars: r.missing.join(', ') });
+          return;
+        }
+        await this.send(r.text);
+        if (this.error) return;
+        this.noteSent(a.key, k.template);
+      }
+    }
+    if (a.log) await this.logQso();
+  }
+
+  /** Puts the decoder's proposal in the empty fields. */
+  acceptSuggestion() {
+    const s = this.suggestion;
+    this.entry = { rst: s.rst ?? this.entry.rst, nr: this.entry.nr || s.nr || '', extra: this.entry.extra || s.extra || '' };
+    this.suggestion = {};
+  }
+
+  /** The operator tells where a word of the decoded text belongs. */
+  assignWord(word: string, target: 'call' | 'rst' | 'nr' | 'extra' | 'name' | 'qth') {
+    const w = word.toUpperCase().replace(/[^A-Z0-9/]/g, '');
+    if (!w) return;
+    if (target === 'call') this.selectCall(w);
+    else if (target === 'rst') this.entry = { ...this.entry, rst: w };
+    else if (target === 'nr') this.entry = { ...this.entry, nr: w.replace(/T/g, '0').replace(/N/g, '9') };
+    else if (target === 'extra') this.entry = { ...this.entry, extra: w };
+    else if (target === 'name') this.qso = { ...this.qso, name: w };
+    else this.qso = { ...this.qso, qth: w };
+  }
+
+  /** Extra values of the sent exchange (everything except the call, report and number), for the log. */
+  private extraSent(): string {
+    const tpl = activeSent(this.settings?.contest);
+    if (!tpl) return '';
+    const names = [...tpl.matchAll(/\{([A-Z0-9_]+)\}/g)].map((m) => m[1]).filter((n) => !['CALL', 'RST', 'NR'].includes(n));
+    return names.map((n) => this.vars[n] ?? '').filter(Boolean).join(' ');
+  }
+
+  /** Writes the QSO of the entry line to the log, raises the number and clears the line. */
+  async logQso(): Promise<boolean> {
+    if (!this.settings) return false;
+    const call = this.qso.call.trim().toUpperCase();
+    if (!call) {
+      this.error = t('log.nocall');
+      return false;
+    }
+    const contest = this.settings.contest_mode;
+    const useNr = contest && this.serialUsed;
+    const nrSent = useNr ? (this.testMode ? this.testNr : this.settings.contest_nr) : 0;
+    const q: LogQso = {
+      ...emptyLogQso(),
+      call, band: this.band, freq_hz: this.status.frequency_hz, mode: 'CW',
+      rst_sent: this.qso.rst, rst_rcvd: this.entry.rst || this.settings.default_rst,
+      nr_sent: nrSent, nr_rcvd: this.entry.nr.trim(),
+      extra_sent: contest ? this.extraSent() : '', extra_rcvd: this.entry.extra.trim().toUpperCase(),
+      name: this.qso.name, qth: this.qso.qth, comment: '',
+      contest: this.contestId, session: this.contestSession, my_call: this.myCall, test: this.testMode,
+      their_prog: this.theirRef.ref.trim() ? this.theirRef.prog : '', their_ref: this.theirRef.ref.trim().toUpperCase(),
+    };
+    try {
+      this.lastLogged = await this.api.logAdd(q);
+    } catch (e) {
+      this.fail(e);
+      return false;
+    }
+    this.cur.logged = true;
+    void this.refreshActivation();
+    this.sentPending = null;
+    this.theirRef = { prog: this.theirRef.prog, ref: '' };
+    if (useNr) {
+      if (this.testMode) this.testNr = nextSerial(this.testNr);
+      else await this.setContestNr(nextSerial(this.settings.contest_nr));
+    }
+    this.notice = t('log.saved', { call });
+    this.qso = { ...this.qso, call: '', name: '', qth: '' };
+    this.callLocked = false;
+    this.resetEntry();
+    await this.refreshLog();
+    this.persist();
+    return true;
+  }
+
+  clearEntry() {
+    this.qso = { ...this.qso, call: '', name: '', qth: '' };
+    this.callLocked = false;
+    this.resetEntry();
+  }
+
+  async saveEdit(q: LogQso) {
+    try {
+      await this.api.logUpdate(q);
+      this.editing = null;
+      await this.refreshLog();
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async deleteQso(id: number) {
+    try {
+      await this.api.logDelete(id);
+      await this.refreshLog();
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async checkLog(filter: import('./types').LogFilter) {
+    return this.api.logCheck(filter);
+  }
+  async exportLog(filter: import('./types').LogFilter, contestId: string) {
+    return this.api.logExport(filter, contestId);
+  }
+
+  // ---- Contest profiles ----
+
+  /** The note of a profile that was just chosen. Shown once, the operator closes it. */
+  contestNote = $state<string | null>(null);
+
+  get contestProfile() {
+    return activeProfile(this.settings?.contest);
+  }
+
+  /** Chips of the active profile: its calls and the exchange. Without a profile only the plain exchange. */
+  get contestChipList(): { id: string; label: string; template: string }[] {
+    const c = this.settings?.contest;
+    const p = activeProfile(c);
+    if (!p) return contestChips.map((x) => ({ id: x.id, label: t(x.key), template: x.template }));
+    const out = p.calls.map((call, i) => ({ id: `call${i}`, label: call, template: `${call} {MYCALL}` }));
+    const tpl = activeSent(c);
+    if (tpl) out.push({ id: 'exchange', label: t('chip.exchange'), template: tpl });
+    return out;
+  }
+
+  /** Whether the active exchange uses {NR}: then the serial number is shown and counted. */
+  get serialUsed(): boolean {
+    return usesSerial(this.settings?.contest);
+  }
+
+  private async patchContest(patch: Partial<Settings['contest']>) {
+    if (!this.settings) return;
+    await this.patchSettings({ contest: { ...($state.snapshot(this.settings.contest) as Settings['contest']), ...($state.snapshot(patch) as Partial<Settings['contest']>) } });
+  }
+
+  async selectContestProfile(id: string) {
+    if (!this.settings) return;
+    await this.patchContest({ active: id, sent_index: 0 });
+    const p = activeProfile(this.settings.contest);
+    this.contestNote = p && p.note ? plain(p.note, (k) => t(k)) : null;
+    // The rules note should not take screen space for long during a contest.
+    if (this.contestNote) {
+      const shown = this.contestNote;
+      setTimeout(() => { if (this.contestNote === shown) this.contestNote = null; }, 12000);
+    }
+  }
+
+  async setContestSent(i: number) {
+    await this.patchContest({ sent_index: Math.max(0, Math.round(i)) });
+  }
+
+  /** Saves an own profile: new, or a change of an existing own profile. */
+  async saveContestProfile(p: Settings['contest']['profiles'][number]) {
+    if (!this.settings || isBuiltin(p.id)) return;
+    const list = [...this.settings.contest.profiles];
+    const i = list.findIndex((x) => x.id === p.id);
+    if (i >= 0) list[i] = p;
+    else list.push(p);
+    await this.patchContest({ profiles: list });
+  }
+
+  async deleteContestProfile(id: string) {
+    if (!this.settings || isBuiltin(id)) return;
+    const c = this.settings.contest;
+    await this.patchContest({
+      profiles: c.profiles.filter((x) => x.id !== id),
+      ...(c.active === id ? { active: '', sent_index: 0 } : {}),
+    });
+  }
+
+  /** Makes an own copy of any profile and returns its id. */
+  async copyContestProfile(id: string, name: string): Promise<string | null> {
+    if (!this.settings) return null;
+    const src = allProfiles(this.settings.contest).find((x) => x.id === id);
+    if (!src) return null;
+    const copy = copyContestProfileData(src, name, allProfiles(this.settings.contest), (k) => t(k));
+    await this.patchContest({ profiles: [...this.settings.contest.profiles, copy] });
+    return copy.id;
+  }
+
+  /** A new empty own profile. Returns its id. */
+  async newContestProfile(name: string): Promise<string | null> {
+    if (!this.settings) return null;
+    const id = newProfileId(allProfiles(this.settings.contest));
+    const p = { id, name, note: '', calls: ['CQ TEST'], sent: [{ label: t('contest.sent.default'), template: '{CALL} {RST} {NR}' }], recv: null, cut_numbers: false };
+    await this.patchContest({ profiles: [...this.settings.contest.profiles, p] });
+    return id;
+  }
+
+  async saveContestVars(vars: Settings['contest']['vars']) {
+    await this.patchContest({ vars });
+  }
+
+  /** Reads an export file and merges it. Returns how many profiles came in and how many items were skipped. */
+  async importContest(text: string, replaceSameName: boolean): Promise<{ added: number; skipped: number } | null> {
+    if (!this.settings) return null;
+    try {
+      const imp = parseImport(text);
+      await this.patchSettings({ contest: mergeImport($state.snapshot(this.settings.contest) as Settings['contest'], imp, replaceSameName) });
+      return { added: imp.profiles.length, skipped: imp.skipped };
+    } catch (e) {
+      this.error = t(e instanceof Error && e.message === 'not_json' ? 'contest.import.notjson' : 'contest.import.notexport');
+      return null;
+    }
   }
 
   /** True while the decoder judges that a clear signal is present. */

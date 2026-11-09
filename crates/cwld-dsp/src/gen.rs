@@ -86,7 +86,7 @@ pub struct Generated {
 }
 
 /// Key-down timeline as (down?, seconds) pairs.
-fn timeline(spec: &CwSpec, text: &str, rng: &mut Rng) -> Vec<(bool, f64)> {
+pub(crate) fn timeline(spec: &CwSpec, text: &str, rng: &mut Rng) -> Vec<(bool, f64)> {
     let unit = 1.2 / spec.wpm;
     let jit = |x: f64, rng: &mut Rng| (x * (1.0 + spec.jitter * rng.gauss())).max(x * 0.4);
     let mut out: Vec<(bool, f64)> = Vec::new();
@@ -113,7 +113,7 @@ fn timeline(spec: &CwSpec, text: &str, rng: &mut Rng) -> Vec<(bool, f64)> {
     out
 }
 
-fn clean_text(text: &str) -> String {
+pub(crate) fn clean_text(text: &str) -> String {
     let mut out = String::new();
     for w in text.to_ascii_uppercase().split_whitespace() {
         let word: String = w.chars().filter(|c| morse::pattern(*c).is_some()).collect();
@@ -128,7 +128,7 @@ fn clean_text(text: &str) -> String {
 }
 
 /// The key signal (0..1, with soft edges) for a timeline, `n` samples long.
-fn key_signal(tl: &[(bool, f64)], fs: f64, lead: f64, n: usize, rise_ms: f64) -> Vec<f32> {
+pub(crate) fn key_signal(tl: &[(bool, f64)], fs: f64, lead: f64, n: usize, rise_ms: f64) -> Vec<f32> {
     let mut key = vec![0f32; n];
     let mut t = lead;
     for (down, d) in tl {

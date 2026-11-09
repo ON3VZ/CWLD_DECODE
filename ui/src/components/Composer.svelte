@@ -1,7 +1,8 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
-  import { contestChips, defaultChips, pileupChips } from '../lib/demo';
+  import { defaultChips, pileupChips } from '../lib/demo';
+  import ContestEntry from './ContestEntry.svelte';
   import { expand } from '../lib/template';
 
   const canSend = $derived(app.canSend);
@@ -17,6 +18,7 @@
 </script>
 
 <div class="composer">
+  {#if !app.settings?.contest_mode}
   <div class="chips" role="group" aria-label="Chips">
     {#each defaultChips as c (c.id)}
       {@const missing = chipMissing(c.template)}
@@ -25,26 +27,25 @@
       </button>
     {/each}
   </div>
+  {/if}
 
   {#if app.settings?.contest_mode}
-    <div class="chips" role="group" aria-label={t('contest.chip')}>
-      {#each contestChips as c (c.id)}
-        <button class="btn chip" disabled={!canSend} title={expand(c.template, app.vars).text} onclick={() => app.sendChip(c.template)}>{t(c.key)}</button>
-      {/each}
-    </div>
+    <ContestEntry />
   {/if}
+  {#if !app.settings?.contest_mode}
   <div class="chips pile" role="group" aria-label={t('pileup.title')}>
-    <span class="muted label">{t('pileup.title')}</span>
-    {#each pileupChips as c (c.id)}
+    {#if !app.settings?.contest_mode}<span class="muted label">{t('pileup.title')}</span>{/if}
+    {#each app.settings?.contest_mode ? [] : pileupChips as c (c.id)}
       {@const missing = chipMissing(c.template)}
       <button class="btn chip" disabled={!canSend} title={expand(c.template, app.vars).text} onclick={() => app.sendChip(c.template)}>
         <kbd>{c.fkey}</kbd> {t(c.key)}{#if missing.length}<span class="dotwarn" title={t('composer.missing', { vars: missing.join(', ') })}></span>{/if}
       </button>
     {/each}
     <button class="btn chip contest" class:on={app.settings?.contest_mode} aria-pressed={app.settings?.contest_mode ?? false} title={t('contest.chip.help')} onclick={() => app.requestContest(!app.settings?.contest_mode)}>
-      {t('contest.chip')}{#if app.settings?.contest_mode} <span class="mono">{String(app.settings.contest_nr).padStart(3, '0')}</span>{/if}
+      {t('contest.chip')}{#if app.settings?.contest_mode && app.serialUsed}&nbsp;<span class="mono">{app.serialText}</span>{/if}
     </button>
   </div>
+  {/if}
 
   <form class="line" onsubmit={submit}>
     <input
@@ -58,6 +59,16 @@
     <button class="btn primary" type="submit" disabled={!canSend || !app.draft.trim()}>{t('composer.send')}</button>
     <button class="btn" type="button" onclick={() => (app.qOpen = !app.qOpen)} title={`${t('qlib.open.hint')} (Ctrl+Q)`} aria-label={t('qlib.open.hint')} aria-pressed={app.qOpen}>Q</button>
     <button class="btn danger" type="button" disabled={!busy && app.policy !== 'live'} onclick={() => app.stop()}>{t('composer.stop')} (Esc)</button>
+    {#if app.settings?.contest_mode}
+    <label class="wpm inline">
+      {t('composer.wpm')}
+      <input
+        type="range" min="5" max="60"
+        value={app.status.cw_wpm}
+        onchange={(e) => app.setSpeed(Number((e.currentTarget as HTMLInputElement).value))} />
+      <span class="mono">{app.status.cw_wpm} WPM</span>
+    </label>
+    {/if}
   </form>
 
   {#if app.queue.length}
@@ -75,6 +86,7 @@
   {/if}
 
   <div class="foot">
+    {#if !app.settings?.contest_mode}
     <label class="wpm">
       {t('composer.wpm')}
       <input
@@ -83,6 +95,7 @@
         onchange={(e) => app.setSpeed(Number((e.currentTarget as HTMLInputElement).value))} />
       <span class="mono">{app.status.cw_wpm} WPM</span>
     </label>
+    {/if}
     {#if busy}<span class="muted">{t('composer.sending')}...</span>{/if}
     {#if app.error}<span class="err" role="alert">{app.error}</span>{/if}
     {#if app.notice && !app.error}<span class="muted">{app.notice}</span>{/if}
@@ -102,6 +115,9 @@
   .line input { flex: 1; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 17px; }
   .foot { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 14px; }
   .wpm { display: flex; align-items: center; gap: 8px; }
+  .wpm.inline { font-size: 13px; white-space: nowrap; }
+  .wpm.inline input[type='range'] { width: 90px; }
+  .line .wpm input { flex: none; padding: 0; border: none; background: none; }
   .queue { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
   .block { background: var(--panel2); border: 1px dashed var(--line); border-radius: 6px; padding: 1px 8px; }
   .warn { display: flex; justify-content: space-between; gap: 8px; background: color-mix(in srgb, var(--warn) 20%, var(--panel)); border: 1px solid var(--warn); border-radius: 8px; padding: 6px 10px; font-size: 14px; }

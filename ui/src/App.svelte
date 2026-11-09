@@ -17,6 +17,12 @@
   import ConfirmLive from './components/ConfirmLive.svelte';
   import SettingsDialog from './components/SettingsDialog.svelte';
   import QCodePanel from './components/QCodePanel.svelte';
+  import LogPanel from './components/LogPanel.svelte';
+  import ActivationPanel from './components/ActivationPanel.svelte';
+  import PracticePanel from './components/PracticePanel.svelte';
+  import LogEdit from './components/LogEdit.svelte';
+  import ExportDialog from './components/ExportDialog.svelte';
+  import Wizard from './components/Wizard.svelte';
 
   onMount(() => {
     createApi().then((api) => app.init(api));
@@ -25,10 +31,13 @@
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') {
+      if (app.wizardOpen) return;
       if (app.confirmLive) app.confirmLive = false;
       else if (app.settingsOpen) app.settingsOpen = false;
       else if (app.closeAllAsk) app.closeAllAsk = 0;
       else if (app.contestAsk) app.contestAsk = false;
+      else if (app.editing) app.editing = null;
+      else if (app.exportOpen) app.exportOpen = false;
       else if (app.qOpen) app.qOpen = false;
       else app.stop();
       return;
@@ -38,17 +47,34 @@
       app.qOpen = !app.qOpen;
       return;
     }
-    if (e.key === 'F1' || e.key === 'F2' || e.key === 'F3' || e.key === 'F4') {
+    const contest = !!app.settings?.contest_mode;
+    if (contest && !app.settingsOpen && !app.confirmLive && /^F[1-8]$/.test(e.key) && !e.ctrlKey) {
+      e.preventDefault();
+      void app.pressContestKey(e.key);
+      return;
+    }
+    if (contest && e.ctrlKey && (e.key === 'r' || e.key === 'R')) {
+      e.preventDefault();
+      app.setRunMode(app.runMode === 'run' ? 'sp' : 'run');
+      return;
+    }
+    if (contest && e.ctrlKey && (e.key === 'w' || e.key === 'W')) {
+      e.preventDefault();
+      app.clearEntry();
+      return;
+    }
+    if (!contest && (e.key === 'F1' || e.key === 'F2' || e.key === 'F3' || e.key === 'F4')) {
       e.preventDefault();
       if (!app.settingsOpen && !app.confirmLive) void app.pressPileup(e.key);
       return;
     }
-    if (e.key === 'F6') {
+    // Strongest and AFC: F6 and F7, in contest mode Ctrl+F6 and Ctrl+F7 (the plain keys send messages there).
+    if (e.key === 'F6' && (!contest || e.ctrlKey)) {
       e.preventDefault();
       void app.goStrongest();
       return;
     }
-    if (e.key === 'F7') {
+    if (e.key === 'F7' && (!contest || e.ctrlKey)) {
       e.preventDefault();
       void app.setAfc(!(app.settings?.audio.afc ?? true));
       return;
@@ -82,11 +108,13 @@
         <Composer />
       </section>
       <aside class="side">
+        {#if app.policy === 'practice' || app.practiceScore}<PracticePanel />{:else if app.profile && !app.settings.contest_mode}<ActivationPanel />{/if}
         <QsoPanel />
         {#if app.settings.signals_panel}
           <SignalsPanel />
         {/if}
         {#if app.settings.audio_waterfall}<AudioPanel />{/if}
+        <LogPanel />
       </aside>
     </div>
     {#if app.settings.radio.kind === 'simulator'}
@@ -95,7 +123,10 @@
   </div>
   {#if app.confirmLive}<ConfirmLive />{/if}
   {#if app.settingsOpen}<SettingsDialog />{/if}
+  {#if app.wizardOpen}<Wizard />{/if}
   {#if app.qOpen}<QCodePanel />{/if}
+  {#if app.exportOpen}<ExportDialog />{/if}
+  {#if app.editing}<LogEdit />{/if}
   {#if app.closeAllAsk}
     <div class="scrim" role="presentation">
       <div class="ask" role="alertdialog" aria-modal="true" aria-labelledby="ca-title">
@@ -126,8 +157,8 @@
 
 <style>
   .shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-  .main { flex: 1; display: grid; grid-template-columns: 1fr 300px; gap: 12px; padding: 12px; min-height: 0; }
-  .center { display: flex; flex-direction: column; min-height: 0; gap: 10px; }
+  .main { flex: 1; display: grid; grid-template-columns: 1fr 300px; gap: 12px; padding: 12px; min-height: 0; overflow-y: auto; }
+  .center { display: flex; flex-direction: column; min-height: min-content; gap: 10px; }
   .side { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; }
   .demo { padding: 4px 16px 8px; font-size: 12px; }
   .scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; z-index: 30; }

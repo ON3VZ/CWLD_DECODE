@@ -92,19 +92,23 @@
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
   });
+  /** The chosen size: one setting outside contest mode and one in contest mode. */
+  const size = $derived((app.settings?.contest_mode ? app.settings?.scope_size_contest : app.settings?.scope_size) ?? 'medium');
 </script>
 
 <section class="scope" aria-label={t('scope.title')}>
   <div
     class="area"
+    class:small={size === 'small'}
+    class:large={size === 'large'}
     class:live={app.scopeLive}
     role="presentation"
     onmousemove={move}
     onmouseleave={() => (hoverHz = null)}
     onclick={click}
     title={app.scopeLive ? t('scope.click') : ''}>
-    <canvas class="spectrum" bind:this={spectrum} width="475" height="70"></canvas>
-    <canvas class="fall" bind:this={fall} width="475" height="140"></canvas>
+    <canvas class="spectrum" bind:this={spectrum} width="475" height="55"></canvas>
+    <canvas class="fall" bind:this={fall} width="475" height="110"></canvas>
     {#if app.scopeLive}
       {#if vfoX >= 0 && vfoX <= 1}
         <div class="vfo" style:left={`${vfoX * 100}%`}></div>
@@ -128,15 +132,23 @@
 
 <style>
   .scope { background: #05080b; border-bottom: 1px solid var(--line); }
-  .area { position: relative; height: 210px; overflow: hidden; }
+  .area { position: relative; height: 165px; overflow: hidden; }
+  .area.small { height: 90px; }
+  .area.small .spectrum { height: 32px; }
+  .area.small .fall { height: 58px; }
+  .area.small .tick { top: 20px; }
+  .area.large { height: 230px; }
+  .area.large .spectrum { height: 80px; }
+  .area.large .fall { height: 150px; }
+  .area.large .tick { top: 66px; }
   .area.live { cursor: crosshair; }
   canvas { display: block; width: 100%; image-rendering: pixelated; }
-  .spectrum { height: 70px; border-bottom: 1px solid rgba(120, 150, 180, 0.25); }
-  .fall { height: 140px; }
+  .spectrum { height: 55px; border-bottom: 1px solid rgba(120, 150, 180, 0.25); }
+  .fall { height: 110px; }
   .vfo { position: absolute; top: 0; bottom: 0; border-left: 2px solid rgba(255, 90, 90, 0.85); pointer-events: none; }
   .hover { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(255, 255, 255, 0.6); pointer-events: none; }
   .hoverlabel { position: absolute; top: 4px; font-size: 12px; color: #fff; text-shadow: 0 0 3px #000; pointer-events: none; }
-  .tick { position: absolute; top: 56px; font-size: 10px; color: rgba(190, 210, 230, 0.75); transform: translateX(-50%); pointer-events: none; text-shadow: 0 0 3px #000; }
+  .tick { position: absolute; top: 42px; font-size: 10px; color: rgba(190, 210, 230, 0.75); transform: translateX(-50%); pointer-events: none; text-shadow: 0 0 3px #000; }
   .off { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; padding: 0 16px; text-align: center; }
   .bar { display: flex; gap: 14px; align-items: center; padding: 3px 12px; font-size: 12px; border-top: 1px solid var(--line); }
   .bar span { flex: 1; }

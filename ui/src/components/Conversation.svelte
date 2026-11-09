@@ -11,6 +11,16 @@
   const SURE = 0.9;
 
   let box: HTMLDivElement;
+  /** The word the operator clicked and where the menu opens. */
+  let pick = $state<{ word: string; x: number; y: number } | null>(null);
+  const TARGETS = ['call', 'rst', 'nr', 'extra', 'name', 'qth'] as const;
+  function choose(target: (typeof TARGETS)[number]) {
+    if (pick) app.assignWord(pick.word, target);
+    pick = null;
+  }
+  function openMenu(e: MouseEvent, word: string) {
+    pick = { word, x: Math.min(e.clientX, window.innerWidth - 190), y: Math.min(e.clientY, window.innerHeight - 230) };
+  }
   $effect(() => {
     app.messages.length;
     app.tail;
@@ -78,18 +88,25 @@
           {m.from === 'rx' ? (m.call ?? '') : m.from === 'tx' ? t('conversation.you') : m.from === 'paddle' ? t('conversation.paddle') : t('conversation.practice')} · {m.time}
         </div>
         <div class="txt mono">
-          {#each runs(m) as r}{#if r.call}<button class="call" onclick={() => app.selectCall(r.text)}>{r.text}</button>{:else if r.unsure}<span class="unsure" title={t('conversation.unsure')}>{r.text}</span>{:else}{#each pieces(r.text) as p}{#if p.tip}<abbr class="known" title={p.tip}>{p.text}</abbr>{:else}{p.text}{/if}{/each}{/if}{/each}{#if i === app.messages.length - 1 && tail && !tailAlone}{@render tailChars()}{/if}
+          {#if m.from === 'rx' && app.hideRx}<span class="hidden" title={t('practice.hidden')}>{'· '.repeat(Math.min(24, Math.ceil(m.text.length / 2)))}</span>{:else}{#each runs(m) as r}{#if r.call}<button class="call" onclick={() => app.selectCall(r.text)}>{r.text}</button>{:else if r.unsure}<span class="unsure" title={t('conversation.unsure')}>{r.text}</span>{:else}{#each pieces(r.text) as p}{#if !p.text.trim()}{p.text}{:else if m.from === 'rx'}<button class="w" class:known={!!p.tip} title={p.tip ?? t('conversation.word.help')} onclick={(e) => openMenu(e, p.text)}>{p.text}</button>{:else if p.tip}<abbr class="known" title={p.tip}>{p.text}</abbr>{:else}{p.text}{/if}{/each}{/if}{/each}{#if i === app.messages.length - 1 && tail && !tailAlone}{@render tailChars()}{/if}{/if}
         </div>
       </div>
     </div>
   {/each}
-  {#if tailAlone && tail}
+  {#if tailAlone && tail && !(tail.from === 'rx' && app.hideRx)}
     <div class="row {tail.from}">
       <div class="bubble pending"><div class="txt mono">{@render tailChars()}</div></div>
     </div>
   {/if}
 </div>
-{#if used.length}
+{#if pick}
+  <div class="scrimmenu" role="presentation" onclick={() => (pick = null)}></div>
+  <div class="menu" role="menu" style="left:{pick.x}px; top:{pick.y}px">
+    <div class="mh mono">{pick.word}</div>
+    {#each TARGETS as tg}<button role="menuitem" onclick={() => choose(tg)}>{t(`conversation.as.${tg}`)}</button>{/each}
+  </div>
+{/if}
+{#if used.length && !app.settings?.contest_mode}
   <details class="used">
     <summary>{t('conv.used', { n: String(used.length) })}</summary>
     <ul>
@@ -102,14 +119,15 @@
 </div>
 
 <style>
-  .convwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+  .hidden { color: var(--muted); letter-spacing: 0.1em; }
+  .convwrap { flex: 1; min-height: 190px; display: flex; flex-direction: column; gap: 6px; }
   .known { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
   .used { font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; }
   .used summary { cursor: pointer; color: var(--muted); }
   .used ul { list-style: none; margin: 6px 0 2px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 12px; max-height: 120px; overflow: auto; }
   .used li { display: flex; gap: 6px; align-items: baseline; }
   .used .code { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; color: var(--accent); font-weight: 700; cursor: pointer; }
-  .conv { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px; min-height: 120px; }
+  .conv { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px; min-height: 170px; }
   .row { display: flex; }
   .row.tx, .row.practice, .row.paddle { justify-content: flex-end; }
   .bubble { max-width: 78%; padding: 8px 12px; border-radius: 14px; background: var(--rx); }
@@ -123,5 +141,12 @@
   .call { background: none; border: none; padding: 0; color: var(--call); font: inherit; font-weight: 700; text-decoration: underline dotted; }
   .call:hover { text-decoration: underline; }
   .unsure { opacity: 0.45; }
+  .w { background: none; border: none; padding: 0; margin: 0; color: inherit; font: inherit; cursor: pointer; border-radius: 3px; }
+  .w:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .scrimmenu { position: fixed; inset: 0; z-index: 40; }
+  .menu { position: fixed; z-index: 41; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; min-width: 170px; box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
+  .menu .mh { padding: 2px 8px 6px; color: var(--muted); }
+  .menu button { background: none; border: none; text-align: left; padding: 6px 8px; color: var(--text); border-radius: 6px; cursor: pointer; }
+  .menu button:hover { background: var(--panel2); }
   .tail { opacity: 0.4; font-style: italic; }
 </style>

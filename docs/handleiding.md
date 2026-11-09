@@ -109,3 +109,90 @@ Onder het audio-waterfall (rechts) staan:
 - Smal of Breed: Breed heeft dubbele bandbreedte, voor driftende of tjirpende signalen. De twee rode lijnen in het waterfall tonen het filter.
 - Sterkste (F6): eenmalig naar het sterkste getoetste signaal van de laatste seconden. AFC (F7): aan of uit.
 - Bij Instellingen, Decoder: traagste en snelste snelheid (5 tot 60 WPM) en een vaste snelheid voor bakens.
+
+## 16. Wedstrijdprofielen
+
+Een profiel zet in één keer alles klaar voor een wedstrijd: de oproepknoppen (bijvoorbeeld TEST UBA) en de uitwisseling die jij zendt.
+
+1. Klik onder de chips op **Contest** om contest mode aan te zetten. Er verschijnt een keuzelijst met het profiel.
+2. Kies een profiel, bijvoorbeeld UBA DX Contest CW. Er verschijnt een korte opmerking over de regels. Klik op het kruisje om hem te sluiten.
+3. Heeft het profiel meer dan één uitwisseling (bijvoorbeeld Vanuit België en Vanuit het buitenland), dan verschijnt er een tweede keuzelijst om er één te kiezen.
+4. Klik op de chip **Uitwisseling** om bijvoorbeeld `PA3ABC 5NN 001 WLD` te zenden. Het volgnummer staat ook op de knop Contest.
+
+Meegeleverd zijn: UBA DX Contest, UBA ON Contest, UBA Spring Contest, UBA Low Band Winter Contest, CQ WW DX, CQ WPX, ARRL International DX, IARU HF Championship, WAE DX en een leeg sjabloon. De regels zijn gecontroleerd op 7 november 2026. Controleer voor een wedstrijd altijd de actuele regels, vooral bij Spring en Winter, waar de bron ouder was.
+
+**Eigen variabelen.** Open Instellingen, rubriek Contest, en kijk onder Eigen variabelen. Daar staan `SEC` (WLD), `ZONE` (14), `ITU` (27) en `PWR` (20). Je kunt ze wijzigen en er eigen bijmaken, bijvoorbeeld `AGE`. Gebruik ze als `{SEC}` in elke knop en in het zendvak. Namen als CALL, MYCALL, NAME, QTH, RST en NR zijn van CWLD zelf en kunnen niet gebruikt worden.
+
+**Een eigen profiel maken.** Open Instellingen, rubriek Contest. Klik in de lijst op een profiel en daarna op **Kopiëren**, of klik op **Nieuw profiel**. Pas naam, oproepen, uitwisseling en het extra veld aan en klik op **Profiel opslaan**. Onder elke uitwisseling zie je hoe de tekst er straks uitziet. Een meegeleverd profiel kun je niet wijzigen.
+
+**Verkorte cijfers.** Vink die aan in een eigen profiel als de wedstrijd het toestaat. Het volgnummer 019 wordt dan T1N.
+
+**Het extra veld dat je ontvangt** (bijvoorbeeld de sectie van een Belgisch station) stel je hier al in. Het wordt pas gebruikt als het logboek er is.
+
+**Reservekopie.** Onderaan de rubriek staan Dit profiel exporteren, Al mijn profielen en variabelen exporteren en Importeren uit een bestand. Een export bevat je eigen profielen en variabelen, niet de meegeleverde. Bij importeren kies je of een profiel met dezelfde naam overschreven wordt of dat er een kopie bijkomt.
+
+**Let op bij CQ WW:** de regels rekenen het gebruik van een CW-decoder als hulpmiddel. Gebruik je CWLD, schrijf je dan in een klasse met hulp in.
+
+## 17. Contest mode en logboek (0.7.0)
+
+**Aanzetten.** Klik onder de chips op Contest, kies een profiel (zie hoofdstuk 16). Er verschijnt een invoerregel en daaronder acht toetsen F1 tot F8. De kleine grijze letter op elke toets is de sneltoets. Je kunt klikken of typen.
+
+**Een QSO in Run.** Run betekent dat jij CQ roept. Druk Enter (of F1): CQ. Een station antwoordt: typ de roepletters in Call en druk Enter (of F2): je uitwisseling gaat de lucht in. Typ wat het station terugzendt: rapport (staat al op 5NN), nummer en bij Belgische stations de sectie. Space springt naar het volgende veld. Druk Enter (of F3): TU, en het QSO wordt gelogd. Ontbreekt iets, dan zendt Enter AGN.
+
+**Een QSO in S&P.** S&P (search and pounce) betekent dat jij andere stations aanroept. Zet Ctrl+R op S&P. Typ de roepletters en druk Enter: jouw roepletters. Vul de uitwisseling in die je hoort en druk Enter: jouw uitwisseling gaat de lucht in en het QSO wordt gelogd.
+
+**Volgnummer.** Het nummer staat naast de invoerregel. Het gaat pas omhoog als je logt. Zend je het nummer twee keer omdat de ander AGN vraagt, dan blijft het hetzelfde. Verlaat je een station waaraan je een nummer zond zonder te loggen, dan zegt een waarschuwing welk nummer dat was.
+
+**Dupe.** Een rood DUPE betekent dat je dit station op deze band in deze wedstrijd al werkte. Je mag toch loggen.
+
+**Nummer testen zonder dat het telt.** Klik op Test (oranje). QSO's gaan nu naar een apart testlogboek met een eigen teller vanaf 001. Je echte nummer en logboek veranderen niet. Met Testlog wissen verwijder je ze weer. Test QSO's komen nooit in een export van het echte logboek.
+
+**Gegevens van het andere station.** Klik in de ontvangen tekst op een woord en kies waar het heen moet: roepletters, rapport, nummer, extra veld, naam of QTH. Na je uitwisseling stelt CWLD zelf voor wat het in het antwoord hoorde (grijs). Druk Tab in een leeg veld om het over te nemen.
+
+**Nieuwe wedstrijd.** Zet contest uit en weer aan. CWLD vraagt Doorgaan of Opnieuw. Opnieuw begint bij 001 en eerdere QSO's tellen niet meer als dupe.
+
+**Toetsen.** F1 tot F8 zenden. Enter doet het volgende logische ding. Ctrl+R wisselt Run en S&P. Ctrl+W maakt de invoerregel leeg. Esc stopt het zenden. Ctrl+F6 is Sterkste en Ctrl+F7 is AFC (buiten contest mode F6 en F7).
+
+**Logboek en export.** Onder de audio-scope staan de laatste 5 QSO's. Klik Verbeter om er een aan te passen, of × om hem te verwijderen. Klik Exporteren voor een ADIF-bestand: kies wat (het echte logboek, de lopende wedstrijd of het testlogboek), van en tot (UTC) en de band. Het bestand komt in de map Documenten, submap CWLD. In Log4OM importeer je het via het menu Bestand, ADIF importeren. Het veld CONTEST_ID moet je eerst controleren in de officiële ADIF-lijst.
+
+**Gewone QSO's.** Zonder contest mode staat in het QSO-paneel een knop Loggen, met een veld voor het ontvangen rapport.
+
+## 18. Stationsprofielen en activaties (0.8.0)
+
+**Profiel kiezen.** Bovenaan, naast de frequentie, staat een keuzelijst met je profielen (Thuis en Portable). Tijdens een activatie is hij vergrendeld, zodat je niet per ongeluk wisselt. Profielen bewerk je via Instellingen, Station: naam, achtervoegsel (bijvoorbeeld /P), grid, vermogen, radio, antenne en opmerking.
+
+**Een activatie starten.** Klik in het paneel Activatie op Nieuwe activatie. Vul de WWFF/ONFF-referentie in (bijvoorbeeld ONFF-0599, mag leeg), het grid (zes tekens, verplicht als je portable bent) en het vermogen. Klik Activatie starten. Elk QSO krijgt nu referentie, grid en vermogen mee.
+
+**Tijdens de activatie.** Het paneel toont het grid in grote letters, het aantal QSO's en unieke roepletters. Gaat de activatie over middernacht UTC, dan staat er een waarschuwing. Het doel van 44 QSO's staat als "na te kijken" tot het bevestigd is. Voor park naar park vul je in het QSO-paneel Hun referentie in.
+
+**Exporteren.** Logpaneel, Exporteren. Kies Huidige activatie, Alleen QSO's die nog niet geëxporteerd zijn, Alle QSO's, een contest of het testlog. Klik eerst Controleren. Fouten blokkeren de export, waarschuwingen niet. Controleer het grid in grote letters. Het bestand krijgt voor WWFF een naam zoals `ON3VZ-P @ ONFF-0599 20261103.adi` (de schuine streep wordt een streepje).
+
+**Hoogte van de bandscoop.** Instellingen, Weergave: klein, midden of groot, apart voor gewoon gebruik en voor contestmodus.
+
+## 19. Oefenen tegen gesimuleerde stations (0.9.0)
+
+**Wat het is.** In OEFENEN zendt CWLD nooit. Start je een oefening, dan luistert de decoder naar een oefenband met gesimuleerde stations in plaats van naar de radio. Je hoort die stations via de computer (koptelefoon of luidsprekers). Draai de AF-knop van de radio dicht, anders hoor je de band erdoorheen.
+
+**Starten.** Klik bovenaan rechts op OEFENEN. Rechts verschijnt het paneel Oefenen. Kies de oefening:
+- QSO: een station roept CQ. Wacht tot je de CQ hoort en antwoord met de chips of door te typen. Het station geeft rapport, naam en QTH. Antwoord en log het QSO.
+- QSO: jij roept CQ. Zend CQ (chip of typen). Een station roept je aan. Zend zijn roepletters met je rapport, hij antwoordt met zijn gegevens.
+- Contest (Run). Kies een wedstrijdprofiel in het paneel. Na Starten staat de contestregel klaar in testmodus. Druk F1 of Enter voor CQ en werk de aanroepers af met F2, F3 en Enter zoals in een echte wedstrijd.
+
+Stel snelheid (van en tot), sterkte, bandruis, fading, het aantal aanroepers en de duur in. Klik Oefening starten.
+
+**Wat de stations doen.** Ze reageren op wat je zendt. AGN of ? laat herhalen. NR? geeft het nummer opnieuw. Een deel van een roepletters met een vraagteken (bijvoorbeeld PA3?) laat de passende stations opnieuw roepen. Een verkeerde roepletters wordt verbeterd. Wie te lang moet wachten, roept opnieuw en vertrekt na een tijd.
+
+**Hulp van de decoder.** Vink Hulp van de decoder uit om op het gehoor te oefenen. De gedecodeerde tekst wordt dan verborgen (puntjes) en niets wordt voor je ingevuld.
+
+**Score.** Klik Stoppen en score tonen (of wacht tot de tijd om is). Je ziet het aantal juiste QSO's, verkeerde roepletters met de echte roepletters ernaast, verkeerde uitwisselingen, afgewerkte maar niet gelogde stations en je rate. De QSO's staan in het testlog en tellen nooit mee in het echte logboek.
+
+**Morse leren.** De link Morse leren in het paneel opent de oefen-app voor letters en gehoortraining.
+
+## 20. Begeleide eerste start (0.10.0)
+
+Bij de eerste start opent een venster met vier stappen. Je kunt het altijd overslaan en later opnieuw openen via Instellingen, Updates en info, Begeleide start. Het zendt nooit iets.
+
+1. **Radio zoeken.** Kies het type radio. CWLD kiest zelf de poort als er maar één op jouw radio lijkt (bij de IC-7300 MK II de CI-V-poort). Vindt het niets, controleer dan kabel, radio aan en driver, en kijk in Apparaatbeheer: rechtsklik op de Start-knop, kies Apparaatbeheer, open Poorten (COM en LPT). Klik op Test de verbinding.
+2. **Radio controleren.** Zet in de radio CI-V Transceive aan: MENU, SET, Connectors, CI-V. Draai aan de afstemknop: volgt de frequentie in het venster, dan staat het goed. CWLD kan deze instelling niet uit de radio lezen. Bij de QMX hoort hier niets, wel in stap 3 de zijtoon.
+3. **Geluid kiezen.** Kies de ingang van de radio (USB Audio CODEC), klik op Begin te luisteren en kijk naar de niveaubalk. Blijft die leeg: controleer de microfoon-privacy van Windows en zet geluidsverbeteringen uit. QMX: zet in het QMX-menu Audio, Sidetone volume hoog en Sidetone abs/rel op Relative.
+4. **Station.** Roepletters, naam, QTH en locator. De stille test toont de CQ die CWLD zou zenden en hoe lang die duurt, zonder iets te zenden.

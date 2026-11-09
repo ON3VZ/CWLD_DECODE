@@ -253,6 +253,160 @@ pub struct Settings {
     pub contest_nr: u32,
     /// Words and abbreviations the operator added to the code library.
     pub user_words: Vec<UserWord>,
+    /// Contest profiles of the operator, the active profile and own variables.
+    pub contest: ContestSettings,
+    /// Stations the operator uses (home, portable). The first call of `station` is the base call.
+    pub profiles: Vec<StationProfile>,
+    /// Id of the station profile in use. Never changed silently.
+    pub profile: String,
+    /// Height of the band scope outside contest mode and in contest mode.
+    pub scope_size: ScopeSize,
+    pub scope_size_contest: ScopeSize,
+    /// The last choices in the practice panel.
+    pub practice: PracticeSettings,
+}
+
+/// Choices of the practice simulator. Only used by the interface; kept in range there.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PracticeSettings {
+    /// "they_cq", "you_cq" or "contest".
+    pub exercise: String,
+    pub wpm_min: u8,
+    pub wpm_max: u8,
+    /// "weak", "medium" or "strong".
+    pub strength: String,
+    pub noise: bool,
+    pub qsb: bool,
+    /// Most stations that call at once in the contest exercise.
+    pub pileup: u8,
+    /// Length of the contest exercise in minutes, 0 = until you stop.
+    pub minutes: u16,
+    /// Show the decoded text (off: train your ear).
+    pub decoder_help: bool,
+    /// Loudness on the computer's output, 0 to 1.
+    pub volume: f32,
+}
+
+impl Default for PracticeSettings {
+    fn default() -> Self {
+        PracticeSettings { exercise: "they_cq".into(), wpm_min: 18, wpm_max: 26, strength: "medium".into(), noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5 }
+    }
+}
+
+/// Height of the band scope on the main screen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ScopeSize {
+    Small,
+    #[default]
+    Medium,
+    Large,
+}
+
+/// A station the operator transmits from. Callsign on the air = base call + `suffix`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct StationProfile {
+    pub id: String,
+    pub name: String,
+    /// Added to the base call: empty at home, `/P` portable.
+    pub suffix: String,
+    /// Maidenhead locator. Empty: the home locator of the station, or the one of the activation.
+    pub grid: String,
+    /// Output power in watts as written in the log, for example `5`.
+    pub power: String,
+    pub rig: String,
+    pub antenna: String,
+    /// Written in the COMMENT field of every QSO, for example `5W QRP`.
+    pub comment: String,
+}
+
+impl StationProfile {
+    /// The callsign on the air for a base call.
+    pub fn on_air(&self, base: &str) -> String {
+        format!("{}{}", base.trim().to_uppercase(), self.suffix.trim().to_uppercase())
+    }
+}
+
+/// The two profiles a new installation starts with.
+pub fn default_profiles() -> Vec<StationProfile> {
+    vec![
+        StationProfile { id: "home".into(), name: "Home".into(), ..Default::default() },
+        StationProfile { id: "portable".into(), name: "Portable".into(), suffix: "/P".into(), ..Default::default() },
+    ]
+}
+
+/// An own variable for message templates, for example `SEC` = `WLD`. Used as `{SEC}`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ContestVar {
+    pub name: String,
+    pub value: String,
+}
+
+/// One way to send the exchange, for example from Belgium or from abroad.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SentTemplate {
+    pub label: String,
+    pub template: String,
+}
+
+/// The one extra field that is received from the other station (logged from the logbook on).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RecvField {
+    /// Short name, for example `SEC`.
+    pub name: String,
+    pub label: String,
+    /// `text`, `number` or `choice`.
+    pub kind: String,
+    pub choices: Vec<String>,
+    /// The field applies only to stations whose call starts with one of these. Empty: always.
+    pub only_prefixes: Vec<String>,
+}
+
+/// A contest profile of the operator (the built-in ones live in the interface).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ContestProfile {
+    pub id: String,
+    pub name: String,
+    pub note: String,
+    pub calls: Vec<String>,
+    pub sent: Vec<SentTemplate>,
+    pub recv: Option<RecvField>,
+    /// Send the serial number as cut numbers (0 as T, 9 as N).
+    pub cut_numbers: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ContestSettings {
+    /// Id of the active profile, a built-in one or one of `profiles`. Empty: none.
+    pub active: String,
+    /// Which of the sent templates of the active profile is used.
+    pub sent_index: usize,
+    pub profiles: Vec<ContestProfile>,
+    pub vars: Vec<ContestVar>,
+    /// Which run of the contest this is. A new contest raises it, so dupes and the serial
+    /// number start again. Starts at 1.
+    pub session: u32,
+}
+
+impl Default for ContestSettings {
+    fn default() -> Self {
+        let v = |n: &str, x: &str| ContestVar { name: n.into(), value: x.into() };
+        ContestSettings {
+            active: String::new(),
+            sent_index: 0,
+            session: 1,
+            profiles: Vec::new(),
+            // Belgium: CQ zone 14, ITU zone 27. The section and power are the operator's own.
+            vars: vec![v("SEC", "WLD"), v("ZONE", "14"), v("ITU", "27"), v("PWR", "20")],
+        }
+    }
 }
 
 /// An own abbreviation with its meaning, shown in tooltips and in the code library.
@@ -306,6 +460,12 @@ impl Default for Settings {
             contest_mode: false,
             contest_nr: 1,
             user_words: Vec::new(),
+            contest: ContestSettings::default(),
+            profiles: default_profiles(),
+            profile: "home".into(),
+            scope_size: ScopeSize::Medium,
+            scope_size_contest: ScopeSize::Small,
+            practice: PracticeSettings::default(),
         }
     }
 }
@@ -479,5 +639,46 @@ mod tests {
         assert_eq!(Settings::default().new_tab_seconds, 5);
         let s: Settings = serde_json::from_str("{}").unwrap();
         assert_eq!(s.new_tab_seconds, NEW_TAB_SECONDS_DEFAULT);
+    }
+    #[test]
+    fn station_profiles_and_scope_sizes_have_defaults_and_an_old_file_still_loads() {
+        let s: Settings = serde_json::from_str(r#"{"contest_mode":true}"#).unwrap();
+        assert_eq!(s.profiles.len(), 2);
+        assert_eq!(s.profile, "home");
+        assert_eq!(s.scope_size, ScopeSize::Medium);
+        assert_eq!(s.scope_size_contest, ScopeSize::Small);
+        assert_eq!(s.profiles[1].on_air("on3vz"), "ON3VZ/P");
+        assert_eq!(s.profiles[0].on_air("ON3VZ"), "ON3VZ");
+    }
+
+    #[test]
+    fn contest_defaults_have_own_variables_and_an_old_file_still_loads() {
+        let s: Settings = serde_json::from_str(r#"{"contest_mode":true,"contest_nr":7}"#).unwrap();
+        assert_eq!(s.contest_nr, 7);
+        assert!(s.contest.active.is_empty());
+        let get = |n: &str| s.contest.vars.iter().find(|v| v.name == n).map(|v| v.value.clone());
+        assert_eq!(get("SEC").as_deref(), Some("WLD"));
+        assert_eq!(get("ZONE").as_deref(), Some("14"));
+        assert_eq!(get("ITU").as_deref(), Some("27"));
+        assert_eq!(get("PWR").as_deref(), Some("20"));
+    }
+
+    #[test]
+    fn contest_profiles_survive_a_round_trip() {
+        let mut s = Settings::default();
+        s.contest.active = "mine".into();
+        s.contest.sent_index = 1;
+        s.contest.profiles.push(ContestProfile {
+            id: "mine".into(),
+            name: "Club".into(),
+            note: "n".into(),
+            calls: vec!["TEST CLUB".into()],
+            sent: vec![SentTemplate { label: "a".into(), template: "{CALL} {RST} {NR}".into() }],
+            recv: Some(RecvField { name: "AGE".into(), label: "Age".into(), kind: "number".into(), choices: vec![], only_prefixes: vec!["ON".into()] }),
+            cut_numbers: true,
+        });
+        let text = serde_json::to_string(&s).unwrap();
+        let back: Settings = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.contest, s.contest);
     }
 }

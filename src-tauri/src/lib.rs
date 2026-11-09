@@ -1,6 +1,6 @@
 //! Thin Tauri shell around `cwld-core`. All rules live in the core, so they are tested there.
 
-use cwld_core::{AppCore, AudioStatus, CoreError, CoreEvent, InputDevice, SendOutcome, Snapshot};
+use cwld_core::{Activation, AppCore, AudioStatus, CoreError, CoreEvent, InputDevice, LogFilter, Qso, SendOutcome, Snapshot};
 use cwld_radio::PortInfo;
 use cwld_types::{RadioSettings, Settings, TxPolicy};
 use serde::Serialize;
@@ -93,6 +93,31 @@ fn start_audio(core: Core) -> Result<AudioStatus, Failure> {
 }
 
 #[tauri::command]
+fn practice_start(core: Core, noise: bool, volume: f32, seed: u64) -> Result<AudioStatus, Failure> {
+    Ok(core.practice_start(noise, volume, seed, true)?)
+}
+
+#[tauri::command]
+fn practice_stop(core: Core) {
+    core.practice_stop();
+}
+
+#[tauri::command]
+fn practice_key(core: Core, signal: cwld_core::practice::PracticeSignal) -> Result<u64, Failure> {
+    Ok(core.practice_key(&signal)?)
+}
+
+#[tauri::command]
+fn practice_clear(core: Core) {
+    core.practice_clear();
+}
+
+#[tauri::command]
+fn practice_volume(core: Core, volume: f32) {
+    core.practice_volume(volume);
+}
+
+#[tauri::command]
 fn stop_audio(core: Core) -> AudioStatus {
     core.stop_audio()
 }
@@ -151,6 +176,71 @@ fn start_recording(core: Core) -> Result<String, Failure> {
 #[tauri::command]
 fn stop_recording(core: Core) {
     core.stop_recording()
+}
+
+#[tauri::command]
+fn log_add(core: Core, qso: Qso) -> Result<Qso, Failure> {
+    Ok(core.log_add(qso)?)
+}
+
+#[tauri::command]
+fn log_list(core: Core, filter: LogFilter) -> Result<Vec<Qso>, Failure> {
+    Ok(core.log_list(&filter)?)
+}
+
+#[tauri::command]
+fn log_update(core: Core, qso: Qso) -> Result<(), Failure> {
+    Ok(core.log_update(&qso)?)
+}
+
+#[tauri::command]
+fn log_delete(core: Core, id: i64) -> Result<(), Failure> {
+    Ok(core.log_delete(id)?)
+}
+
+#[tauri::command]
+fn log_clear_test(core: Core) -> Result<u64, Failure> {
+    Ok(core.log_clear_test()?)
+}
+
+#[tauri::command]
+fn log_next_test_serial(core: Core) -> Result<u32, Failure> {
+    Ok(core.log_next_test_serial()?)
+}
+
+#[tauri::command]
+fn log_dupe(core: Core, call: String, contest: String, session: u32, test: bool) -> Result<cwld_core::DupeInfo, Failure> {
+    Ok(core.log_dupe(&call, &contest, session, test)?)
+}
+
+#[tauri::command]
+fn log_check(core: Core, filter: LogFilter) -> Result<Vec<cwld_core::CheckIssue>, Failure> {
+    Ok(core.log_check(&filter)?)
+}
+
+#[tauri::command]
+fn activation_start(core: Core, activation: Activation) -> Result<Activation, Failure> {
+    Ok(core.activation_start(activation)?)
+}
+
+#[tauri::command]
+fn activation_end(core: Core) -> Result<(), Failure> {
+    Ok(core.activation_end()?)
+}
+
+#[tauri::command]
+fn activation_current(core: Core) -> Result<Option<Activation>, Failure> {
+    Ok(core.activation_current()?)
+}
+
+#[tauri::command]
+fn activation_stats(core: Core, id: i64) -> Result<cwld_core::ActivationStats, Failure> {
+    Ok(core.activation_stats(id)?)
+}
+
+#[tauri::command]
+fn log_export(core: Core, app: AppHandle, filter: LogFilter, contest_id: String) -> Result<cwld_core::ExportResult, Failure> {
+    Ok(core.log_export(&filter, &contest_id, &app.package_info().version.to_string())?)
 }
 
 /// Before an update is installed: let go of the radio port and the sound card so that the
@@ -237,6 +327,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
+            practice_start,
+            practice_stop,
+            practice_key,
+            practice_clear,
+            practice_volume,
             set_policy,
             send_text,
             stop_tx,
@@ -259,7 +354,20 @@ pub fn run() {
             set_auto_tone,
             start_recording,
             stop_recording,
-            prepare_update
+            prepare_update,
+            log_add,
+            log_list,
+            log_update,
+            log_delete,
+            log_clear_test,
+            log_next_test_serial,
+            log_dupe,
+            log_export,
+            log_check,
+            activation_start,
+            activation_end,
+            activation_current,
+            activation_stats
         ])
         .build(tauri::generate_context!())
         .expect("error while building CWLD")
