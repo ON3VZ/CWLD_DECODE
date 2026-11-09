@@ -24,6 +24,7 @@
   </div>
   <label>{t('qso.name')}<input bind:value={app.qso.name} /></label>
   <label>{t('qso.qth')}<input bind:value={app.qso.qth} /></label>
+  {#if app.lookupNote}<small class="muted lookup-note">{t('lookup.from', { text: app.lookupNote.text })}</small>{/if}
   <div class="pair">
     <label>{t('qso.rst')}<input class="mono" bind:value={app.qso.rst} /></label>
     {#if !app.settings?.contest_mode}<label>{t('contest.rcvd.rst')}<input class="mono" bind:value={app.entry.rst} /></label>{/if}

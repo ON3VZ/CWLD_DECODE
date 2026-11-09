@@ -19,6 +19,7 @@
   import QCodePanel from './components/QCodePanel.svelte';
   import LogPanel from './components/LogPanel.svelte';
   import PracticePanel from './components/PracticePanel.svelte';
+  import PaddleTrainer from './components/PaddleTrainer.svelte';
   import LogEdit from './components/LogEdit.svelte';
   import ExportDialog from './components/ExportDialog.svelte';
   import Wizard from './components/Wizard.svelte';
@@ -103,8 +104,12 @@
     <SessionTabs />
     <div class="main" class:with-signals={app.settings.signals_panel}>
       <section class="center" aria-label={t('conversation.title')}>
-        <Conversation />
-        <Composer />
+        {#if app.paddleEx}
+          <PaddleTrainer />
+        {:else}
+          <Conversation />
+          <Composer />
+        {/if}
       </section>
       <aside class="side">
         {#if app.policy === 'practice' || app.practiceScore}<PracticePanel />{/if}
@@ -169,6 +174,7 @@
   .views { display: flex; gap: 14px; padding: 3px 12px; border-bottom: 1px solid var(--line); }
   .views .link { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }
   @media (max-width: 800px) {
-    .main { grid-template-columns: 1fr; overflow: auto; }
+    .main { grid-template-columns: 1fr; grid-auto-rows: min-content; align-content: start; overflow: auto; }
+    .center, .side { min-height: min-content; flex-shrink: 0; overflow: visible; }
   }
 </style>

@@ -20,6 +20,7 @@ pub struct SimRig {
     rng: u64,
     swr: f32,
     scope: bool,
+    audio: crate::AudioControls,
     ticks: u64,
 }
 
@@ -42,6 +43,7 @@ impl SimRig {
             rng: 0x2545_F491_4F6C_DD1D,
             swr: 1.1,
             scope: false,
+            audio: crate::AudioControls { af_level: Some(128), break_in: Some(1) },
             ticks: 0,
         }
     }
@@ -163,8 +165,14 @@ impl Rig for SimRig {
             }
             RadioCommand::Raw(_) => {}
             RadioCommand::SetScope(on) => self.scope = *on,
+            RadioCommand::SetAfLevel(v) => self.audio.af_level = Some((*v).min(255)),
+            RadioCommand::SetBreakIn(v) => self.audio.break_in = Some((*v).min(2)),
         }
         Ok(())
+    }
+
+    fn audio_controls(&self) -> crate::AudioControls {
+        self.audio
     }
 
     fn poll(&mut self) -> Vec<RigEvent> {

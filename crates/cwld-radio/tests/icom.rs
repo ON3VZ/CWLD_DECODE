@@ -28,13 +28,47 @@ fn cw_blocks(frames: &[civ::Frame]) -> Vec<String> {
 }
 
 #[test]
-fn poll_asks_for_the_five_status_values() {
+fn poll_asks_for_the_status_values() {
     let (mut r, h, _c) = rig(false);
     r.poll();
     let frames = written_frames(&h);
     let bodies: Vec<Vec<u8>> = frames.iter().map(|f| f.body.clone()).collect();
-    assert_eq!(bodies, vec![vec![0x03], vec![0x04], vec![0x1C, 0x00], vec![0x14, 0x0C], vec![0x15, 0x02]]);
+    assert_eq!(bodies, vec![vec![0x03], vec![0x04], vec![0x1C, 0x00], vec![0x14, 0x0C], vec![0x15, 0x02], vec![0x14, 0x01], vec![0x16, 0x47]]);
     assert!(frames.iter().all(|f| f.to == RADIO && f.from == CONTROLLER));
+}
+
+#[test]
+fn af_level_and_break_in_are_read_and_set() {
+    let (mut r, h, _c) = rig(false);
+    h.feed(&from_radio(&[0x14, 0x01, 0x01, 0x28])); // AF level 128
+    h.feed(&from_radio(&[0x16, 0x47, 0x02])); // full break-in
+    r.poll();
+    assert_eq!(r.audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(2) });
+    let _ = written_frames(&h);
+    // In practice mode (no transmitting allowed) both may be changed: neither keys the radio.
+    let mut g = GuardedRig::new(r, PolicyHandle::new(TxPolicy::Practice));
+    g.execute(&RadioCommand::SetAfLevel(0)).unwrap();
+    g.execute(&RadioCommand::SetBreakIn(0)).unwrap();
+    let bodies: Vec<Vec<u8>> = written_frames(&h).into_iter().map(|f| f.body).collect();
+    assert_eq!(bodies, vec![vec![0x14, 0x01, 0x00, 0x00], vec![0x16, 0x47, 0x00]]);
+    assert_eq!(g.audio_controls(), cwld_radio::AudioControls { af_level: Some(0), break_in: Some(0) });
+    assert!(g.execute(&RadioCommand::SetBreakIn(3)).is_err());
+}
+
+#[test]
+fn a_radio_that_refuses_the_reads_does_not_cancel_a_cw_block() {
+    let (r, h, c) = rig(false);
+    let mut g = GuardedRig::new(r, PolicyHandle::new(TxPolicy::Live));
+    g.poll(); // the reads go out, among them AF level and break-in
+    g.execute(&RadioCommand::SendCw("TEST".into())).unwrap();
+    // The radio refuses both reads (NG, NG), then accepts the block (OK).
+    h.feed(&from_radio(&[civ::NG]));
+    h.feed(&from_radio(&[civ::NG]));
+    h.feed(&from_radio(&[civ::OK]));
+    c.advance(10);
+    g.poll();
+    let blocks = cw_blocks(&written_frames(&h));
+    assert_eq!(blocks.iter().filter(|b| b.contains("TEST")).count(), 1, "{blocks:?}");
 }
 
 #[test]
@@ -153,15 +187,26 @@ fn stop_sends_ff_and_empties_the_queue() {
 fn radio_refusing_a_block_without_pipeline_is_retried_then_given_up() {
     let (mut r, h, clock) = rig(false);
     r.execute(&RadioCommand::SendCw("CQ".into())).unwrap();
-    let mut total = cw_blocks(&written_frames(&h)).len();
+    let mut total = 0;
     let mut warned = false;
     for _ in 0..6 {
-        h.feed(&from_radio(&[civ::NG]));
+        // The radio answers everything in order: NG for every CW block, data for the reads
+        // that expect an answer in place of an acknowledgement.
+        let frames = written_frames(&h);
+        total += cw_blocks(&frames).len();
+        for f in &frames {
+            match f.body.as_slice() {
+                [0x17, ..] => h.feed(&from_radio(&[civ::NG])),
+                [0x14, 0x01] => h.feed(&from_radio(&[0x14, 0x01, 0x01, 0x28])),
+                [0x16, 0x47] => h.feed(&from_radio(&[0x16, 0x47, 0x01])),
+                _ => {}
+            }
+        }
         clock.advance(1_000);
         let ev = r.poll();
         warned |= ev.contains(&RigEvent::Warning("civ_rejected".into()));
-        total += cw_blocks(&written_frames(&h)).len();
     }
+    total += cw_blocks(&written_frames(&h)).len();
     assert!(warned);
     assert!((2..=4).contains(&total), "{total}");
 }

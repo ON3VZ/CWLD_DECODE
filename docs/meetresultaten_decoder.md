@@ -120,3 +120,35 @@ Wat de opnames leerden:
 - Resultaat op de ruisopname: 0 tekens (voorheen een stroom onzin op 956 en op 700 Hz). Echte opnames: F8UFT en OK5O nog leesbaar.
 - Tabel (CER, 4 berichten per cel, `cwld_bench --quick`, oud tegenover nieuw): +30 tot +3 dB onveranderd. 0 dB: 12 WPM 2,4 naar 0,0, andere snelheden gelijk. -3 dB: 17,6/51,0/55,0/72,2 naar 18,8/52,0/50,8/71,1. -6 dB: 96,5/117,3/93,3/84,4 naar 52,9/91,8/92,5/100,0 (minder verzonnen tekst). Moeilijke gevallen: tweede station 60 Hz verder 0,0 naar 1,9, traag 8 WPM bij 0 dB 1,9 naar 3,8, carrier 120 Hz 1,9 naar 4,7. Dat zijn verschillen van een enkel teken bij 4 berichten per cel, dus binnen de meetonzekerheid, maar niet bewezen gelijk. Een run met 12 berichten per cel volgt bij de volgende meting.
 - Nog niet gemeten: bandruis met sterke pieken (atmosferische klikken), kamerruis in de microfoon, en een zwak signaal dat net begint na lange ruis (de start wordt 3 s bewaard, daarna weggegooid).
+
+## Spraak en SSB (0.12.0): geen tekst meer uit een telefoniesignaal
+
+- Gebruiker: staat de radio op SSB of op een verkeerde frequentie, dan probeert de decoder toch te lezen en komt er onzin uit.
+- Testsignaal: synthetische SSB-spraak (`cwld-dsp`, `generate_voice`): stemhebbende bron met een toonhoogte die tussen 90 en 220 Hz glijdt, harmonischen gevormd door twee bewegende formanten, lettergrepen van 80 tot 300 ms, pauzes, wat ruis voor stemloze klanken, doorlaat 300 tot 2700 Hz. Geen echte spraak; een opname van een echt SSB-station is nog nodig.
+- Kenmerk: bij CW wordt alleen de eigen toonhoogte luider. Bij spraak gaan de toonhoogte van de decoder en de rest van de doorlaatband (300 tot 2700 Hz, zonder 200 Hz aan elke kant) samen op en neer. Om de 32 ms worden beide niveaus gemeten (Blackman-venster, klikken boven 10 keer de mediaan uitgeblankt), en over 4 s de correlatie berekend, samen met het niveauverschil op de luidste momenten.
+- Meting van het kenmerk (correlatie, 4 opnames per geval):
+
+| Bron | Mediaan | Hoogste |
+|---|---|---|
+| Spraak +30 dB | 0,84 | |
+| Spraak +10 dB | 0,54 tot 0,57 | |
+| Spraak +3 dB | 0,43 tot 0,45 | |
+| Spraak 0 dB | 0,31 tot 0,33 | |
+| CW +20, +3, -3 dB, QSB, tweede station, draaggolf, klikken, 12 en 35 WPM | -0,02 tot 0,03 | 0,41 |
+| Klikken 15 per s op +46 dB en 40 per s op +40 dB | 0,11 tot 0,13 | 0,40 |
+| Zuivere toon zonder ruis (zijtoon) | 0,99 | (maar het niveauverschil is -86 dB, dus geen spraak) |
+
+- Beslissing: spraak als de correlatie minstens 0,45 is en de rest van de band op de luidste momenten hoogstens 22 dB onder de toonhoogte zit. Na spraak start het decoderen pas weer na 6 heldere metingen (ongeveer 1,5 s). Geen enkel CW-geval werd ooit als spraak gezien.
+- Resultaat, tekens per minuut uit spraak (5 opnames van 60 s, gemiddeld, juist afgestemd en 150 Hz ernaast):
+
+| SNR | Voor | Na |
+|---|---|---|
+| +30 dB | 43 / 36 | 0 / 0 |
+| +20 dB | 54 / 50 | 0 / 0,4 |
+| +10 dB | 46 / 44 | 4,0 / 5,2 |
+| +3 dB | 43 / 42 | 14 / 9 |
+
+- CW-testbank (`cwld_bench`, 12 berichten per cel) met en zonder deze poort: **identiek tot op het cijfer**, ook alle moeilijke gevallen. Een eerste versie zonder klikblanker sneed de twee gevallen met sterke klikken af (100 procent fouten); de blanker loste dat op.
+- Daarnaast een harde regel: staat de radio op USB, LSB, AM, FM of RTTY, dan toont CWLD geen tekst en meldt dat boven het gesprek. Bij OEFENEN niet, want dan komt het geluid van de oefenband.
+- Te zwakke CW gaf al geen tekst (bij -10 dB en lager 0 tekens, bij -6 dB gemiddeld 1,4 tekens per bericht met de standaarddrempel).
+- Nog te doen: een opname van een echt SSB-station en van CW met een sterk SSB-station ernaast. Is de spraak zelf op de toonhoogte van de decoder, dan wacht de decoder ook voor een CW-signaal in die spraak; dat is de bewuste keuze.

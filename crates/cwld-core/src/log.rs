@@ -75,7 +75,13 @@ impl AppCore {
         fill(&mut q.my_antenna, profile.antenna.clone());
         fill(&mut q.comment, profile.comment.clone());
         drop(s);
-        Ok(lb.add(&q)?)
+        let stored = lb.add(&q)?;
+        drop(lb);
+        // A failing send never blocks logging; the interface can resend the last QSO from Settings.
+        if !stored.test {
+            self.link_after_add(&stored);
+        }
+        Ok(stored)
     }
 
     /// Opens an activation with the checks the design asks for. An open one is closed first.

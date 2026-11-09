@@ -80,6 +80,9 @@
 {/snippet}
 
 <div class="convwrap">
+{#if app.decodeHold}
+  <div class="hold muted" role="status" title={t(`hold.${app.decodeHold.hold}.help`)}>{t(`hold.${app.decodeHold.hold}`, { mode: app.decodeHold.mode })}</div>
+{/if}
 <div class="conv" bind:this={box}>
   {#each app.messages as m, i (m.id)}
     <div class="row {m.from}">
@@ -119,6 +122,7 @@
 </div>
 
 <style>
+  .hold { font-size: 13px; border: 1px dashed var(--line); border-radius: 10px; padding: 4px 10px; background: var(--panel); }
   .hidden { color: var(--muted); letter-spacing: 0.1em; }
   .convwrap { flex: 1; min-height: 190px; display: flex; flex-direction: column; gap: 6px; }
   .known { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }

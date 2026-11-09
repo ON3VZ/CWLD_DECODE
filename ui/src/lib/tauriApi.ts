@@ -1,4 +1,4 @@
-import type { Activation, ActivationStats, Api, AudioStatus, CheckIssue, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, InputDevice, PortInfo, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
+import type { Activation, ActivationStats, Api, AudioStatus, CheckIssue, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -65,12 +65,19 @@ export async function createTauriApi(): Promise<Api> {
     logNextTestSerial: () => invoke<number>('log_next_test_serial'),
     logDupe: (call: string, contest: string, session: number, test: boolean) => invoke<DupeInfo>('log_dupe', { call, contest, session, test }),
     logExport: (filter: LogFilter, contestId: string) => invoke<ExportResult>('log_export', { filter, contestId }),
+    linkResendLast: () => invoke<LinkReport>('link_resend_last'),
+    lookupStatus: () => invoke<LookupStatus>('lookup_status'),
+    lookupSetPassword: (password) => invoke<void>('lookup_set_password', { password }),
+    lookupClearPassword: () => invoke<void>('lookup_clear_password'),
+    lookupTest: () => invoke<{ subscriber: boolean }>('lookup_test'),
+    lookupCall: (call) => invoke<LookupInfo | null>('lookup_call', { call }),
     logCheck: (filter: LogFilter) => invoke<CheckIssue[]>('log_check', { filter }),
     practiceStart: (noise: boolean, volume: number, seed: number) => invoke<AudioStatus>('practice_start', { noise, volume, seed }),
     practiceStop: () => invoke<void>('practice_stop'),
     practiceKey: (signal: PracticeSignal) => invoke<number>('practice_key', { signal }),
     practiceClear: () => invoke<void>('practice_clear'),
     practiceVolume: (volume: number) => invoke<void>('practice_volume', { volume }),
+    keyingCapture: (on: boolean) => invoke<void>('keying_capture', { on }),
     activationStart: (activation: Activation) => invoke<Activation>('activation_start', { activation }),
     activationEnd: () => invoke<void>('activation_end'),
     activationCurrent: () => invoke<Activation | null>('activation_current'),

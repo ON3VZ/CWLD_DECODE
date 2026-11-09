@@ -23,5 +23,6 @@ tauri-plugin-process = "2"
 cwld-core = { path = "../crates/cwld-core", features = ["device"] }
 cwld-types = { path = "../crates/cwld-types" }
 cwld-radio = { path = "../crates/cwld-radio" }
+cwld-lookup = { path = "../crates/cwld-lookup" }
 serde.workspace = true
 serde_json.workspace = true

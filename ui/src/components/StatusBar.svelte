@@ -7,6 +7,12 @@
   const mhz = $derived((app.status.frequency_hz / 1_000_000).toFixed(6));
   const sUnits = $derived(Math.min(9, Math.round((app.status.s_meter / 100) * 9 * 1.0)));
   let editing = $state(false);
+  // A UTC clock, because logbooks and contests run on UTC.
+  let utc = $state(new Date().toISOString().slice(11, 19));
+  $effect(() => {
+    const id = setInterval(() => (utc = new Date().toISOString().slice(11, 19)), 1000);
+    return () => clearInterval(id);
+  });
   /** A real radio is set up, it does not answer now, and CWLD tries again by itself. */
   const searching = $derived(!app.status.connected && !!app.settings && app.settings.radio.kind !== 'simulator' && app.settings.radio.auto_connect && !!app.settings.radio.port);
   /** The radio type is still Simulator: nothing real is connected, whatever the status says. */
@@ -60,6 +66,7 @@
       <span class="chip swr" class:bad={app.swr > (app.settings?.swr.limit ?? 1.5)}>{t('swr.chip', { swr: app.swr.toFixed(1) })}</span>
     {/if}
   </div>
+  <div class="utc mono" title={t('status.utc.help')}>{utc}<span class="muted"> UTC</span></div>
   <div class="conn" class:off={!app.status.connected} class:search={searching} class:sim={simulated} title={simulated ? t('status.simulator.help') : searching ? t('status.searching.help') : ''}>
     <span class="dot"></span>
     {simulated ? t('status.simulator') : app.status.connected ? t('status.connected') : searching ? t('status.searching') : t('status.disconnected')}
@@ -88,7 +95,8 @@
   .chip.rec.on { background: #b3141a; color: #fff; border-color: #b3141a; font-weight: 700; }
   .chip.warn { cursor: pointer; border-color: #d98e04; color: #d98e04; }
   .chip.tx { background: var(--live); color: #fff; border-color: var(--live); font-weight: 700; }
-  .conn { display: flex; align-items: center; gap: 6px; font-size: 14px; margin-left: auto; }
+  .utc { margin-left: auto; font-size: 15px; white-space: nowrap; }
+  .conn { display: flex; align-items: center; gap: 6px; font-size: 14px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--listen); }
   .conn.off .dot { background: var(--muted); }
   .conn.sim .dot { background: var(--warn); }

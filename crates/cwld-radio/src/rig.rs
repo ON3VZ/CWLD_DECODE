@@ -53,6 +53,19 @@ pub trait Rig: Send {
     fn simulate_swr(&mut self, _swr: f32) {}
     /// Test helper: the operator turns the knob. Only the simulator does anything.
     fn simulate_knob(&mut self, _hz: u64) {}
+    /// The speaker volume and break-in as last read from the radio, when the driver can read them.
+    fn audio_controls(&self) -> AudioControls {
+        AudioControls::default()
+    }
+}
+
+/// Settings of the radio that practice mode changes and puts back afterwards.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AudioControls {
+    /// AF level 0 to 255.
+    pub af_level: Option<u16>,
+    /// 0 off, 1 semi, 2 full.
+    pub break_in: Option<u8>,
 }
 
 impl Rig for Box<dyn Rig> {
@@ -79,5 +92,8 @@ impl Rig for Box<dyn Rig> {
     }
     fn simulate_knob(&mut self, hz: u64) {
         (**self).simulate_knob(hz)
+    }
+    fn audio_controls(&self) -> AudioControls {
+        (**self).audio_controls()
     }
 }

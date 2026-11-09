@@ -77,6 +77,11 @@ pub enum RadioCommand {
     Raw(Vec<u8>),
     /// Switches the output of the radio's band scope to the app on or off. Receive only.
     SetScope(bool),
+    /// Volume of the radio's own speaker and headphones, 0 to 255 (Icom AF level).
+    SetAfLevel(u16),
+    /// Break-in: 0 off, 1 semi, 2 full. Off means the paddle only makes the sidetone. Setting it
+    /// does not key the radio by itself.
+    SetBreakIn(u8),
 }
 
 /// Safety class of a command. Outside `TxPolicy::Live` only the first three are allowed.
@@ -107,6 +112,8 @@ impl RadioCommand {
             RadioCommand::KeyDown(_) => CommandClass::Transmit,
             RadioCommand::Raw(_) => CommandClass::Transmit,
             RadioCommand::SetScope(_) => CommandClass::Config,
+            RadioCommand::SetAfLevel(_) => CommandClass::Config,
+            RadioCommand::SetBreakIn(_) => CommandClass::Config,
         }
     }
 
@@ -123,6 +130,8 @@ impl RadioCommand {
             RadioCommand::KeyDown(true),
             RadioCommand::Raw(vec![0xFE, 0xFE]),
             RadioCommand::SetScope(true),
+            RadioCommand::SetAfLevel(0),
+            RadioCommand::SetBreakIn(0),
         ]
     }
 
@@ -138,6 +147,8 @@ impl RadioCommand {
             RadioCommand::KeyDown(_) => "key_down",
             RadioCommand::Raw(_) => "raw",
             RadioCommand::SetScope(_) => "set_scope",
+            RadioCommand::SetAfLevel(_) => "set_af_level",
+            RadioCommand::SetBreakIn(_) => "set_break_in",
         }
     }
 }
@@ -160,6 +171,8 @@ mod tests {
             ("key_down", Transmit),
             ("raw", Transmit),
             ("set_scope", Config),
+            ("set_af_level", Config),
+            ("set_break_in", Config),
         ];
         let examples = RadioCommand::examples();
         assert_eq!(examples.len(), expected.len());

@@ -9,6 +9,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+      - name: System libraries for the credential store
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
       - run: cargo test --workspace --exclude cwld
   ui:
     runs-on: ubuntu-24.04

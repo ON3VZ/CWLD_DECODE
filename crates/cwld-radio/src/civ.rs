@@ -29,6 +29,10 @@ pub mod cmd {
     pub const SEND_CW: u8 = 0x17;
     pub const TX_STATUS: [u8; 2] = [0x1C, 0x00];
     pub const SWR_METER: [u8; 2] = [0x15, 0x12];
+    /// AF level (speaker volume), 0000 to 0255. Same as the IC-7300; to confirm on the MK II **[TEST]**.
+    pub const AF_LEVEL: [u8; 2] = [0x14, 0x01];
+    /// Break-in: 00 off, 01 semi, 02 full. Same as the IC-7300; to confirm on the MK II **[TEST]**.
+    pub const BREAK_IN: [u8; 2] = [0x16, 0x47];
 }
 
 /// Builds one frame: `FE FE to from body FD`.

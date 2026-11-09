@@ -264,6 +264,48 @@ pub struct Settings {
     pub scope_size_contest: ScopeSize,
     /// The last choices in the practice panel.
     pub practice: PracticeSettings,
+    /// Sending logged QSOs to other programs over UDP (Log4OM, N1MM format).
+    pub link: LinkSettings,
+    /// Callsign lookup (QRZ.com). The password is never part of the settings: it is kept by the OS.
+    pub lookup: LookupSettings,
+}
+
+/// QRZ.com XML lookup. Off by default; the password lives in the operating system's credential store.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LookupSettings {
+    pub qrz_enabled: bool,
+    /// The QRZ.com login name (normally the operator's callsign).
+    pub qrz_user: String,
+}
+
+/// Where logged QSOs are sent over UDP. Everything is off by default: a logger only gets QSOs when the operator asks for it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LinkSettings {
+    /// Send every real QSO as one ADIF record in one datagram (Log4OM, service type ADIF_MESSAGE).
+    pub adif_enabled: bool,
+    pub adif_host: String,
+    pub adif_port: u16,
+    /// Send N1MM Logger+ style XML messages (contactinfo, contactreplace, contactdelete).
+    pub n1mm_enabled: bool,
+    /// Destinations as `host:port`, separated by spaces. N1MM's own default port is 12060.
+    pub n1mm_targets: String,
+}
+
+pub const LINK_ADIF_PORT_DEFAULT: u16 = 2333;
+pub const LINK_N1MM_TARGET_DEFAULT: &str = "127.0.0.1:12060";
+
+impl Default for LinkSettings {
+    fn default() -> Self {
+        LinkSettings {
+            adif_enabled: false,
+            adif_host: "127.0.0.1".into(),
+            adif_port: LINK_ADIF_PORT_DEFAULT,
+            n1mm_enabled: false,
+            n1mm_targets: LINK_N1MM_TARGET_DEFAULT.into(),
+        }
+    }
 }
 
 /// Choices of the practice simulator. Only used by the interface; kept in range there.
@@ -286,11 +328,47 @@ pub struct PracticeSettings {
     pub decoder_help: bool,
     /// Loudness on the computer's output, 0 to 1.
     pub volume: f32,
+    /// In practice mode: the radio's speaker is turned down and break-in switched off, and both
+    /// are put back when practice mode ends. The paddle then only makes the sidetone.
+    pub quiet_radio: bool,
+    /// Results of the paddle exercises.
+    pub paddle: PaddleProgress,
+}
+
+/// What the paddle trainer remembers between sessions. Kept by the interface.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PaddleProgress {
+    /// The last exercise chosen: "chars", "weak", "words", "calls" or "phrases".
+    pub exercise: String,
+    pub stats: Vec<CharStat>,
+    pub sessions: Vec<PaddleSession>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CharStat {
+    pub ch: String,
+    pub tries: u32,
+    pub errors: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PaddleSession {
+    /// Seconds since 1970, UTC.
+    pub ts: i64,
+    pub exercise: String,
+    /// 0 to 100.
+    pub score: u8,
+    pub wpm: f32,
+    /// Share of characters keyed right, 0 to 1.
+    pub accuracy: f32,
 }
 
 impl Default for PracticeSettings {
     fn default() -> Self {
-        PracticeSettings { exercise: "they_cq".into(), wpm_min: 18, wpm_max: 26, strength: "medium".into(), noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5 }
+        PracticeSettings { exercise: "they_cq".into(), wpm_min: 18, wpm_max: 26, strength: "medium".into(), noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5, quiet_radio: true, paddle: PaddleProgress::default() }
     }
 }
 
@@ -466,6 +544,8 @@ impl Default for Settings {
             scope_size: ScopeSize::Medium,
             scope_size_contest: ScopeSize::Small,
             practice: PracticeSettings::default(),
+            link: LinkSettings::default(),
+            lookup: LookupSettings::default(),
         }
     }
 }

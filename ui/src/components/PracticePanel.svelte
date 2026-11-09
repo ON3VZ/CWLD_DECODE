@@ -3,6 +3,7 @@
   import { t } from '../lib/i18n.svelte';
   import { allProfiles, plain } from '../lib/contest';
   import type { PracticeSettings } from '../lib/types';
+  import { PADDLE_EXERCISES, weakest, type PaddleExercise } from '../lib/paddle';
 
   /** Kristof's own app for learning morse by ear (letters, Koch method). */
   const LEARN_URL = 'https://on3vz.github.io/CWLD/';
@@ -20,6 +21,17 @@
     app.setPracticeCfg({ [k]: v } as Partial<PracticeSettings>);
   }
   const num = (e: Event) => Number((e.currentTarget as HTMLInputElement).value);
+
+  const prog = $derived(cfg?.paddle);
+  let paddleEx = $state<PaddleExercise>('chars');
+  $effect(() => {
+    const saved = prog?.exercise as PaddleExercise | undefined;
+    if (saved && PADDLE_EXERCISES.includes(saved)) paddleEx = saved;
+  });
+  const recent = $derived((prog?.sessions ?? []).slice(-5).reverse());
+  const weak = $derived(weakest(prog?.stats ?? []));
+  const day = (ts: number) => new Date(ts * 1000).toISOString().slice(5, 16).replace('T', ' ');
+  let confirmReset = $state(false);
 </script>
 
 <section class="card" aria-label={t('practice.title')}>
@@ -79,7 +91,43 @@
     <p class="muted small">{t('practice.af')}</p>
     <button class="btn primary" disabled={!app.settings} onclick={() => app.startExercise()}>{t('practice.start')}</button>
   {/if}
+  {#if cfg}
+    <label class="check" title={t('practice.quiet.help')}><input type="checkbox" checked={cfg.quiet_radio} onchange={(e) => set('quiet_radio', (e.currentTarget as HTMLInputElement).checked)} /> {t('practice.quiet')}</label>
+    {#if app.radioQuiet}<small class="muted">{t('paddle.quiet')}</small>{/if}
+  {/if}
 </section>
+
+{#if cfg && !run && app.policy === 'practice'}
+  <section class="card" aria-label={t('paddle.title')}>
+    <div class="head"><h2>{t('paddle.title')}</h2></div>
+    <p class="muted small">{t('paddle.intro')}</p>
+    <label>{t('practice.exercise')}
+      <select bind:value={paddleEx}>
+        {#each PADDLE_EXERCISES as k (k)}<option value={k}>{t(`paddle.ex.${k}`)}</option>{/each}
+      </select>
+    </label>
+    {#if paddleEx === 'weak' && weak.length < 2}<small class="muted">{t('paddle.weak.none')}</small>{/if}
+    {#if app.paddleEx}
+      <button class="btn" onclick={() => app.paddleStop()}>{t('paddle.stop')}</button>
+    {:else}
+      <button class="btn primary" onclick={() => app.paddleStart(paddleEx)}>{t('paddle.start')}</button>
+    {/if}
+    {#if weak.length}
+      <div class="small"><span class="muted">{t('paddle.weak')}</span> {#each weak as w (w.ch)}<span class="chip mono" title={t('paddle.weak.rate', { errors: String(w.errors), tries: String(w.tries) })}>{w.ch}</span>{/each}</div>
+    {/if}
+    {#if recent.length}
+      <table class="small">
+        <thead><tr><th>{t('paddle.when')}</th><th>{t('paddle.score')}</th><th>{t('paddle.wpm')}</th></tr></thead>
+        <tbody>{#each recent as s (s.ts)}<tr><td class="mono">{day(s.ts)}</td><td class="mono">{s.score}</td><td class="mono">{Math.round(s.wpm)}</td></tr>{/each}</tbody>
+      </table>
+      {#if confirmReset}
+        <div class="row"><button class="btn" onclick={() => { app.paddleReset(); confirmReset = false; }}>{t('paddle.reset.yes')}</button><button class="link" onclick={() => (confirmReset = false)}>{t('paddle.reset.no')}</button></div>
+      {:else}
+        <button class="link small" onclick={() => (confirmReset = true)}>{t('paddle.reset')}</button>
+      {/if}
+    {/if}
+  </section>
+{/if}
 
 {#if app.practiceScore}
   {@const s = app.practiceScore}
@@ -116,6 +164,10 @@
 {/if}
 
 <style>
+  .chip { display: inline-block; background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin: 2px 2px 0 0; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 2px 6px 2px 0; border-bottom: 1px solid var(--line); }
+  .row { display: flex; gap: 8px; align-items: center; }
   .card { background: var(--panel); border: 1px solid #8b6cf0; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
   .head { display: flex; align-items: baseline; gap: 8px; }
   h2 { margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); flex: 1; }

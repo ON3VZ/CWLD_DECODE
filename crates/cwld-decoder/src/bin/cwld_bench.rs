@@ -17,6 +17,9 @@ fn main() {
         if std::env::var("CWLD_NOGATE").is_ok() {
             p.cw_gate = false;
         }
+        if std::env::var("CWLD_NOVOICE").is_ok() {
+            p.voice_gate = false;
+        }
         if plain {
             p.noise_blanker = false;
             p.auto_notch = false;

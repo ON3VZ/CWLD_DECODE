@@ -9,7 +9,7 @@ mod adif;
 mod band;
 mod check;
 
-pub use adif::{adif_text, wwff_file_name, AdifOptions};
+pub use adif::{adif_record, adif_text, wwff_file_name, AdifOptions};
 pub use adif::date_time as adif_date_time;
 pub use band::band_of;
 pub use check::{check_export, valid_grid, valid_wwff_ref, CheckIssue, Severity};

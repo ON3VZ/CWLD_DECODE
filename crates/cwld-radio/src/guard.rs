@@ -96,6 +96,10 @@ impl<R: Rig> Rig for GuardedRig<R> {
         self.inner.simulate_swr(swr);
     }
 
+    fn audio_controls(&self) -> crate::AudioControls {
+        self.inner.audio_controls()
+    }
+
     fn simulate_knob(&mut self, hz: u64) {
         self.inner.simulate_knob(hz);
     }

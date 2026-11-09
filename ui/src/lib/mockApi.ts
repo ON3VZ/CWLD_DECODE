@@ -1,4 +1,4 @@
-import type { Activation, ActivationStats, Api, AudioStatus, CheckIssue, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, CoreFailure, InputDevice, PortInfo, SwrAlert, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TentativeChar, Tuning, TxPolicy } from './types';
+import type { Activation, ActivationStats, Api, AudioStatus, CheckIssue, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, CoreFailure, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, SwrAlert, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TentativeChar, Tuning, TxPolicy } from './types';
 import { durationSeconds, playSidetone } from './morse';
 import { adifText, bandOf } from './adif';
 import { checkExport, validGrid, validWwffRef } from './logcheck';
@@ -49,7 +49,9 @@ export function defaultSettings(): Settings {
     profile: 'home',
     scope_size: 'medium',
     scope_size_contest: 'small',
-    practice: { exercise: 'they_cq', wpm_min: 18, wpm_max: 26, strength: 'medium', noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5 },
+    lookup: { qrz_enabled: false, qrz_user: '' },
+    link: { adif_enabled: false, adif_host: '127.0.0.1', adif_port: 2333, n1mm_enabled: false, n1mm_targets: '127.0.0.1:12060' },
+    practice: { exercise: 'they_cq', wpm_min: 18, wpm_max: 26, strength: 'medium', noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5, quiet_radio: true, paddle: { exercise: 'chars', stats: [], sessions: [] } },
     contest: { active: '', sent_index: 0, session: 1, profiles: [], vars: [{ name: 'SEC', value: 'WLD' }, { name: 'ZONE', value: '14' }, { name: 'ITU', value: '27' }, { name: 'PWR', value: '20' }] },
   };
 }
@@ -147,6 +149,43 @@ export class MockApi implements Api {
     if ((await this.logCheck(f)).some((i) => i.severity === 'error')) fail('export_check_failed');
     if (f.test !== true) for (const q of this.qsos) if (list.some((x) => x.id === q.id) && !q.test && !q.exported_to.includes('adif')) q.exported_to = q.exported_to ? `${q.exported_to} adif` : 'adif';
     return { path: '(browser)', count: list.length, text: adifText(list, contestId) };
+  }
+  /** Lookup in the browser demo and in tests: a fake QRZ with one known station. */
+  lookupPassword = '';
+  lookupCalls: string[] = [];
+  lookupAnswers: Record<string, LookupInfo> = {
+    ON4ZZ: { call: 'ON4ZZ', first_name: 'Jan', last_name: 'Peeters', qth: 'Gent', country: 'Belgium', grid: 'JO10', limited: false },
+  };
+  async lookupStatus(): Promise<LookupStatus> {
+    const l = this.settings.lookup;
+    return { enabled: l.qrz_enabled, user: l.qrz_user, has_password: this.lookupPassword !== '' };
+  }
+  async lookupSetPassword(password: string): Promise<void> {
+    if (!this.settings.lookup.qrz_user.trim()) fail('lookup_no_user');
+    if (!password) fail('lookup_no_password');
+    this.lookupPassword = password;
+  }
+  async lookupClearPassword(): Promise<void> {
+    this.lookupPassword = '';
+  }
+  async lookupTest(): Promise<{ subscriber: boolean }> {
+    if (!this.lookupPassword) fail('lookup_no_password');
+    return { subscriber: true };
+  }
+  async lookupCall(call: string): Promise<LookupInfo | null> {
+    if (!this.settings.lookup.qrz_enabled) return null;
+    this.lookupCalls.push(call);
+    if (!this.lookupPassword) fail('lookup_no_password');
+    return this.lookupAnswers[call.toUpperCase()] ?? null;
+  }
+  /** Calls of linkResendLast, for tests. */
+  linkResends = 0;
+  async linkResendLast(): Promise<LinkReport> {
+    const last = this.qsos.filter((q) => !q.deleted && !q.test).sort((a, b) => b.ts - a.ts)[0];
+    if (!last) fail('link_no_qso');
+    this.linkResends++;
+    const l = this.settings.link;
+    return { sent: (l.adif_enabled ? 1 : 0) + (l.n1mm_enabled ? l.n1mm_targets.split(/\s+/).filter(Boolean).length : 0), errors: [] };
   }
   async logCheck(f: LogFilter): Promise<CheckIssue[]> {
     return checkExport(await this.logList({ ...f, limit: 0 }), this.acts, this.nowSec());
@@ -470,6 +509,11 @@ export class MockApi implements Api {
   }
 
   async practiceVolume(_v: number) {}
+  /** The paddle trainer asked for key times. */
+  keying = false;
+  async keyingCapture(on: boolean) {
+    this.keying = on;
+  }
 
   /** Delivers waiting events at once (tests do not want to wait for the 500 ms tick). */
   flush() {

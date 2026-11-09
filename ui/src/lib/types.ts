@@ -133,6 +133,45 @@ export interface Settings {
   scope_size: ScopeSize;
   scope_size_contest: ScopeSize;
   practice: PracticeSettings;
+  link: LinkSettings;
+  lookup: LookupSettings;
+}
+
+/** Sending logged QSOs over UDP to other programs. All off by default. */
+export interface LinkSettings {
+  adif_enabled: boolean;
+  adif_host: string;
+  adif_port: number;
+  n1mm_enabled: boolean;
+  /** `host:port` entries separated by spaces. */
+  n1mm_targets: string;
+}
+
+export interface LookupSettings {
+  qrz_enabled: boolean;
+  /** QRZ.com login name. The password is never part of the settings: the operating system keeps it. */
+  qrz_user: string;
+}
+
+export interface LookupStatus {
+  enabled: boolean;
+  user: string;
+  has_password: boolean;
+}
+
+export interface LookupInfo {
+  call: string;
+  first_name: string;
+  last_name: string;
+  qth: string;
+  country: string;
+  grid: string;
+  limited: boolean;
+}
+
+export interface LinkReport {
+  sent: number;
+  errors: string[];
 }
 
 export type ScopeSize = 'small' | 'medium' | 'large';
@@ -149,6 +188,23 @@ export interface PracticeSettings {
   minutes: number;
   decoder_help: boolean;
   volume: number;
+  /** Practice mode turns the radio's speaker down and break-in off, and puts both back after. */
+  quiet_radio: boolean;
+  paddle: PaddleProgress;
+}
+
+export interface PaddleProgress {
+  exercise: string;
+  stats: { ch: string; tries: number; errors: number }[];
+  sessions: PaddleSession[];
+}
+
+export interface PaddleSession {
+  ts: number;
+  exercise: string;
+  score: number;
+  wpm: number;
+  accuracy: number;
 }
 
 /** One transmission of a simulated station on the practice band. */
@@ -284,7 +340,12 @@ export type CoreEvent =
   | { type: 'audio'; status: AudioStatus }
   | { type: 'swr_alert'; alert: SwrAlert }
   | { type: 'swr_cleared' }
-  | { type: 'practice_done'; ids: number[] };
+  | { type: 'practice_done'; ids: number[] }
+  /** Why the decoder shows nothing (`null`: it decodes again). `mode` is the radio mode, for example USB. */
+  | { type: 'decode_hold'; hold: 'mode' | 'voice' | null; mode: string }
+  /** Key down and up times in ms for the paddle trainer. */
+  | { type: 'keying'; runs: [boolean, number][] }
+  | { type: 'radio_quiet'; quiet: boolean };
 
 export type SendOutcome = { kind: 'sent' } | { kind: 'simulated'; seconds: number };
 
@@ -439,6 +500,13 @@ export interface Api {
   logDupe(call: string, contest: string, session: number, test: boolean): Promise<DupeInfo>;
   /** Writes an ADIF file in the CWLD folder. `contestId` is the ADIF CONTEST_ID. */
   logExport(filter: LogFilter, contestId: string): Promise<ExportResult>;
+  /** Sends the newest real QSO again to the enabled UDP links (a connection test). */
+  linkResendLast(): Promise<LinkReport>;
+  lookupStatus(): Promise<LookupStatus>;
+  lookupSetPassword(password: string): Promise<void>;
+  lookupClearPassword(): Promise<void>;
+  lookupTest(): Promise<{ subscriber: boolean }>;
+  lookupCall(call: string): Promise<LookupInfo | null>;
   /** What an export of these QSOs would contain and what is wrong with it. */
   logCheck(filter: LogFilter): Promise<CheckIssue[]>;
   /** Starts the practice band in place of the radio audio (practice mode only). */
@@ -448,6 +516,8 @@ export interface Api {
   practiceKey(signal: PracticeSignal): Promise<number>;
   practiceClear(): Promise<void>;
   practiceVolume(volume: number): Promise<void>;
+  /** The paddle trainer wants the key times of the incoming audio (`keying` events), or not. */
+  keyingCapture(on: boolean): Promise<void>;
   activationStart(a: Activation): Promise<Activation>;
   activationEnd(): Promise<void>;
   activationCurrent(): Promise<Activation | null>;

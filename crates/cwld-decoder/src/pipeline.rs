@@ -41,12 +41,16 @@ pub struct PipelineConfig {
     pub junk_strength: f32,
     /// Only decode while the envelope looks like keyed CW (see `gate`).
     pub cw_gate: bool,
+    /// Do not decode while the audio looks like speech or another wide signal (see `voice`).
+    pub voice_gate: bool,
+    /// Keep the key down and up times (for the paddle trainer), see `take_keying`.
+    pub keying: bool,
     pub decoder: DecoderConfig,
 }
 
 impl PipelineConfig {
     pub fn new(sample_rate: u32, tone_hz: f64) -> Self {
-        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, cw_gate: true, decoder: DecoderConfig::default() }
+        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, cw_gate: true, voice_gate: true, keying: false, decoder: DecoderConfig::default() }
     }
 }
 
@@ -75,6 +79,48 @@ pub struct Pipeline {
     cw_open: bool,
     noise_evals: u32,
     last_eval: u64,
+    voice: crate::voice::VoiceDetector,
+    /// Speech (or another wide signal) is heard: nothing is decoded until it has been clear a while.
+    voice_heard: bool,
+    voice_clear_evals: u32,
+    last_voice_eval: u64,
+    keying: KeyingRecorder,
+}
+
+/// Key down and key up runs in frames, with blips of one frame folded into the run around them.
+#[derive(Default)]
+struct KeyingRecorder {
+    cur: bool,
+    len: u32,
+    runs: Vec<(bool, u32)>,
+}
+
+/// Runs shorter than this many frames (10 ms) are taken as noise on the edge of an element.
+const KEYING_MIN_FRAMES: u32 = 2;
+
+impl KeyingRecorder {
+    fn push(&mut self, down: bool) {
+        if down == self.cur {
+            self.len += 1;
+            return;
+        }
+        if self.len < KEYING_MIN_FRAMES {
+            if let Some(&(prev, plen)) = self.runs.last() {
+                if prev == down {
+                    // The short run was a blip: the run before it simply goes on.
+                    self.runs.pop();
+                    self.cur = down;
+                    self.len += plen + 1;
+                    return;
+                }
+            }
+        }
+        if self.len > 0 {
+            self.runs.push((self.cur, self.len));
+        }
+        self.cur = down;
+        self.len = 1;
+    }
 }
 
 impl Pipeline {
@@ -88,12 +134,43 @@ impl Pipeline {
         let mut words = WordCorrector::new(cfg.language_model);
         words.junk_strength = cfg.junk_strength;
         let cfg_gate = cfg.cw_gate;
-        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0 }
+        let cfg_rate = cfg.sample_rate;
+        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0, voice: crate::voice::VoiceDetector::new(cfg_rate), voice_heard: false, voice_clear_evals: 0, last_voice_eval: 0, keying: KeyingRecorder::default() }
     }
 
     /// Keyed CW is in the envelope (not just noise at this pitch).
     pub fn cw_present(&self) -> bool {
         self.cw_open
+    }
+
+    /// Speech or another wide signal is heard (an SSB station, or the radio is not on CW).
+    pub fn voice_heard(&self) -> bool {
+        self.voice_heard
+    }
+
+    /// Starts or stops keeping the key times.
+    pub fn set_keying(&mut self, on: bool) {
+        self.cfg.keying = on;
+        self.keying = KeyingRecorder::default();
+    }
+
+    /// The finished key runs since the last call, in milliseconds: (key down, length). The run
+    /// under way stays, except a key-up longer than two seconds, which is handed out so a
+    /// pause after the last character is seen.
+    pub fn take_keying(&mut self) -> Vec<(bool, f32)> {
+        let ms = 1000.0 / FRAME_RATE as f32;
+        if !self.keying.cur && self.keying.len as f64 > 2.0 * FRAME_RATE && !self.keying.runs.is_empty() {
+            let len = std::mem::take(&mut self.keying.len);
+            self.keying.runs.push((false, len));
+        }
+        // The last finished run may still be extended by a blip fold: keep it back.
+        let keep = usize::from(self.keying.len < KEYING_MIN_FRAMES && !self.keying.runs.is_empty());
+        let n = self.keying.runs.len() - keep;
+        self.keying.runs.drain(..n).map(|(d, l)| (d, l as f32 * ms)).collect()
+    }
+
+    pub fn voice_stats(&self) -> crate::voice::VoiceStats {
+        self.voice.stats
     }
 
     pub fn gate_stats(&self) -> crate::gate::GateStats {
@@ -225,6 +302,28 @@ impl Pipeline {
     }
 
     fn process(&mut self, samples: &[f32]) {
+        if self.cfg.voice_gate {
+            self.voice.push(samples, self.front.tone_hz());
+            if self.voice.evals != self.last_voice_eval {
+                self.last_voice_eval = self.voice.evals;
+                let v = self.voice.stats;
+                if v.is_voice() {
+                    if !self.voice_heard {
+                        // What the decoder held so far was speech: drop it.
+                        self.pending.clear();
+                        self.dec = Decoder::new(self.cfg.decoder.clone());
+                        self.words.discard();
+                    }
+                    self.voice_heard = true;
+                    self.voice_clear_evals = 0;
+                } else if v.is_clear() {
+                    self.voice_clear_evals += 1;
+                    if self.voice_clear_evals >= crate::voice::REOPEN_AFTER {
+                        self.voice_heard = false;
+                    }
+                }
+            }
+        }
         let frames = self.front.push(samples);
         if self.front.take_notch_changed() && !self.pending.is_empty() {
             // Kept frames were measured with the carrier still in: they are worthless, but
@@ -232,6 +331,11 @@ impl Pipeline {
             let n = self.pending.len();
             self.pending.clear();
             self.dec.push_llr(&vec![0.0; n]);
+        }
+        if self.cfg.keying {
+            for f in &frames {
+                self.keying.push(f.llr > 0.0);
+            }
         }
         let envs: Vec<f32> = frames.iter().map(|f| f.env).collect();
         self.gate.push(&envs, self.front.bandwidth_hz());
@@ -249,7 +353,7 @@ impl Pipeline {
             }
         }
         let sep = self.front.levels().map(|l| l.separation).unwrap_or(0.0);
-        let usable = self.cw_open && self.front.signal_present() && sep >= self.cfg.min_separation;
+        let usable = self.cw_open && !self.voice_heard && self.front.signal_present() && sep >= self.cfg.min_separation;
         self.hold_frames = self.hold_frames.saturating_sub(frames.len());
         self.last_usable = usable;
         if usable {

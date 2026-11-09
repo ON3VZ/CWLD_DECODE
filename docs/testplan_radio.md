@@ -243,3 +243,69 @@ Geen radio nodig.
 2. Audio-paneel: staat Afstellen dicht? Klik erop: komen Zwak, Midden, Sterk, Smal, Breed, Sterkste en AFC en de gain-schuif tevoorschijn? Sluit CWLD en start opnieuw: onthoudt hij je keuze? Werken F6 en F7 ook als het dicht staat?
 3. Activatie: de groene knop Activatie staat rechts naast Alles sluiten. Start een activatie (ONFF-0599 en een grid): toont de knop de referentie en het aantal QSO's? Log een QSO: gaat de teller omhoog? Klik op de knop: grid in grote letters, Activatie beëindigen werkt, Sluiten werkt.
 4. Meld of de groene kleur van de knop past, of dat je een andere tint wilt.
+
+## A37. UTC overal (0.10.3)
+
+1. Vergelijk de UTC-klok in de statusbalk met een UTC-klok (bijvoorbeeld time.is/UTC). Verwacht: gelijk op de seconde na. In Belgie is dat in de winter een uur, in de zomer twee uur achter op je pc-klok.
+2. Log een QSO en kijk naar de tijd in het logpaneel en naar de tijd boven berichten in het gesprek. Verwacht: beide UTC.
+3. Exporteer en open het ADIF-bestand in Kladblok: TIME_ON moet de UTC-tijd van het QSO zijn.
+
+## A38. Noodstop en foutteken (0.10.4)
+
+Doe dit op een dummy load of met laag vermogen, in LIVE.
+
+1. Zend een lange tekst (bijvoorbeeld CQ CQ CQ DE ON3VZ ON3VZ K). Druk een keer op Esc. Verwacht: het zenden stopt meteen, de wachtrij is leeg, de melding zegt dat een tweede Esc ook QRX QRX zendt.
+2. Zend opnieuw en druk twee keer snel op Esc. Verwacht: stop en daarna QRX QRX in CW, ook in het gesprek.
+3. Zend opnieuw, druk Esc, wacht drie seconden en druk nog eens. Verwacht: niets wordt gezonden.
+4. Druk Esc zonder dat er iets gezonden wordt, twee keer. Verwacht: niets wordt gezonden.
+5. Zend en klik op Stop + QRX. Verwacht: hetzelfde als stap 2.
+6. Typ een tekst in het zendvak, klik op Fout. Verwacht: acht puntjes (luister mee), de tekst in het zendvak blijft staan. Meld of de radio de acht puntjes goed geeft (^HH) of dat er een pauze of een ander teken te horen is.
+7. Meld of de radio direct na de stop de QRX goed zendt, of dat de eerste letter wegvalt.
+
+## A39. Logkoppeling Log4OM (0.11.0)
+
+1. Stel Log4OM in zoals in sectie 23 van de handleiding (UDP INBOUND, poort 2333, ADIF_MESSAGE) en zet de koppeling in CWLD aan.
+2. Log een echt QSO in CWLD. Verwacht: het staat meteen in Log4OM, met call, datum en tijd (UTC), band, frequentie, RST en eigen roepletters. Meld welke velden ontbreken of verkeerd staan.
+3. Klik op Laatste QSO opnieuw sturen. Verwacht: Log4OM meldt een dubbel QSO of negeert het, zonder crash.
+4. Log een testQSO (testlogboek). Verwacht: er komt niets in Log4OM.
+5. Zet de koppeling uit en log nog een QSO. Verwacht: er komt niets in Log4OM.
+6. Meld of Log4OM het bericht pas na een druk op een knop verwerkt, en of de poort 2333 bij jou al door een ander programma gebruikt werd.
+7. Optioneel, N1MM-formaat: stuur naar een luisterend programma en meld of het contactinfo-bericht begrepen wordt.
+
+## A40. Radio stil in OEFENEN (0.12.0)
+
+1. Verbind de IC-7300 MK II, LUISTEREN, AF-knop op een normaal niveau, BK-IN aan (semi).
+2. Klik OEFENEN. Verwacht binnen een seconde: de luidspreker gaat dicht, BK-IN gaat uit op het scherm van de radio, en rechts staat "Radio stil".
+3. Sein met de paddle. Verwacht: de radio zendt niet (geen TX-lampje), je hoort (of hoort niet) de zijtoon in de radio. Noteer welke.
+4. Draai de AF-knop open tijdens OEFENEN. Verwacht: CWLD laat hem zo.
+5. Klik LUISTEREN. Verwacht: AF terug op het oude niveau (of wat het was voor OEFENEN), BK-IN terug aan.
+6. Meld of de radio de commando's weigerde (dan doet CWLD niets en verschijnt "Radio stil" niet).
+
+## A41. Paddle oefenen (0.12.0)
+
+1. OEFENEN, audio-ingang van de radio actief, klik "Start paddle oefenen" met Tekengroepen.
+2. Sein de groepen. Verwacht: tekst onder "Gehoord", na twee seconden stilte de beoordeling.
+3. Sein met opzet een te korte pauze tussen tekens. Verwacht: de tip "De tekens lopen in elkaar".
+4. Meld de gemeten WPM tegenover de keyer-snelheid van de radio.
+5. Blijft "Nog geen zijtoon gehoord" staan: doe de stappen in handleiding sectie 24 en meld wat werkte.
+
+## A42. Decoder pauzeert bij SSB en spraak (0.12.0)
+
+1. LUISTEREN, radio op CW op een CW-signaal: tekst komt zoals altijd.
+2. Zet de radio op USB. Verwacht: geen tekst meer, melding "Decoder gepauzeerd: de radio staat op USB".
+3. Zet terug op CW. Verwacht: de melding verdwijnt en het decoderen start weer.
+4. Radio op CW, draai naar een SSB-station (bijvoorbeeld 7,150 MHz). Verwacht: "Spraak of een breed signaal" en geen of bijna geen letters.
+5. Meld een geval waarbij een echt CW-signaal ten onrechte als spraak gezien werd (frequentie en tijd, liefst met een opname via OPNAME).
+
+## A43. QRZ.com opzoeken (0.13.0)
+
+1. Instellingen, Logkoppeling, QRZ.com opzoeken: aanvinken, gebruikersnaam en wachtwoord invullen, "Opslaan en testen". Verwacht: "Inloggen werkt" (met of zonder abonnement-melding).
+2. Sluit CWLD en open het opnieuw. Verwacht: het wachtwoordveld toont "Opgeslagen" en een test zonder opnieuw typen werkt.
+3. Open Windows Referentiebeheer (Start, typ "Referentiebeheer", Windowsreferenties). Verwacht: een item "CWLD QRZ.com" met je gebruikersnaam. Het wachtwoord staat niet in settings.json (open dat bestand in kladblok en zoek).
+4. Typ in het QSO-paneel een bekende roepletterreeks. Verwacht: na een korte pauze verschijnen Naam en QTH, met een regel "Van QRZ.com".
+5. Typ zelf een andere naam in, wis de roepletters en typ ze weer. Verwacht: je eigen naam blijft staan.
+6. Typ een niet bestaande roepletterreeks. Verwacht: geen invulling, geen foutmelding.
+7. Trek de netwerkkabel eruit. Verwacht: één melding dat QRZ.com niet bereikbaar is, loggen werkt gewoon.
+8. Probeer een verkeerd wachtwoord. Verwacht: "QRZ.com weigerde de aanmelding".
+9. Meld ook: welke velden een gratis account teruggeeft (naam en plaats ja of nee).
+

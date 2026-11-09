@@ -7,13 +7,14 @@
 
   const original = $state.snapshot(app.settings) as Settings;
   let draft = $state<Settings>(structuredClone(original));
+  let qrzPassword = $state('');
   let callsText = $state(original.station.calls.join(', '));
   let problem = $state<string | null>(null);
   let addressText = $state(original.radio.civ_address.toString(16).toUpperCase().padStart(2, '0'));
   let showAdvanced = $state(false);
-  type Section = 'station' | 'radio' | 'audio' | 'decoder' | 'send' | 'view' | 'contest' | 'updates';
+  type Section = 'station' | 'radio' | 'audio' | 'decoder' | 'send' | 'view' | 'contest' | 'log' | 'updates';
   let section = $state<Section>('station');
-  const sections: Section[] = ['station', 'radio', 'audio', 'decoder', 'send', 'view', 'contest', 'updates'];
+  const sections: Section[] = ['station', 'radio', 'audio', 'decoder', 'send', 'view', 'contest', 'log', 'updates'];
 
   /** A slider or switch of the decoder acts at once, and the draft keeps the same values. */
   function tune() {
@@ -29,6 +30,7 @@
   $effect(() => {
     app.refreshPorts();
     app.refreshInputs();
+    app.lookupRefresh();
   });
   let wavPath = $state('');
   // Input level as a bar: -60 dBFS empty, 0 dBFS full.
@@ -403,6 +405,48 @@
           </label>
           <small class="muted">{t('contest.later')}</small>
           {#if app.settings}<ContestProfiles />{/if}
+        {/if}
+
+        {#if section === 'log'}
+          <h3>{t('link.title')}</h3>
+          <p class="muted">{t('link.intro')}</p>
+          <h3>{t('link.adif.title')}</h3>
+          <label class="check"><input type="checkbox" bind:checked={draft.link.adif_enabled} /> {t('link.adif.on')}</label>
+          <small class="muted">{t('link.adif.help')}</small>
+          <div class="row">
+            <label>{t('link.host')} <input type="text" bind:value={draft.link.adif_host} disabled={!draft.link.adif_enabled} /></label>
+            <label>{t('link.port')} <input type="number" min="1" max="65535" bind:value={draft.link.adif_port} disabled={!draft.link.adif_enabled} /></label>
+          </div>
+          <h3>{t('link.n1mm.title')}</h3>
+          <label class="check"><input type="checkbox" bind:checked={draft.link.n1mm_enabled} /> {t('link.n1mm.on')}</label>
+          <small class="muted">{t('link.n1mm.help')}</small>
+          <label>{t('link.n1mm.targets')} <input type="text" bind:value={draft.link.n1mm_targets} disabled={!draft.link.n1mm_enabled} /></label>
+          <small class="muted">{t('link.warning')}</small>
+          <div class="row">
+            <button class="btn" type="button" disabled={!draft.link.adif_enabled && !draft.link.n1mm_enabled} onclick={() => app.linkResend(draft)}>{t('link.resend')}</button>
+          </div>
+          <small class="muted">{t('link.resend.help')}</small>
+          {#if app.linkResult}
+            <p role="status">{app.linkResult.errors.length ? t('link.result.err', { n: app.linkResult.errors.length, list: app.linkResult.errors.join('; ') }) : t('link.result.ok', { n: app.linkResult.sent })}</p>
+          {/if}
+
+          <h3>{t('lookup.title')}</h3>
+          <p class="muted">{t('lookup.intro')}</p>
+          <label class="check"><input type="checkbox" bind:checked={draft.lookup.qrz_enabled} /> {t('lookup.on')}</label>
+          <label>{t('lookup.user')} <input type="text" autocomplete="off" bind:value={draft.lookup.qrz_user} disabled={!draft.lookup.qrz_enabled} /></label>
+          <label>{t('lookup.password')}
+            <input type="password" autocomplete="new-password" placeholder={app.lookupState?.has_password ? t('lookup.password.stored') : ''} bind:value={qrzPassword} disabled={!draft.lookup.qrz_enabled} />
+          </label>
+          <small class="muted">{t('lookup.password.help')}</small>
+          <div class="row">
+            <button class="btn" type="button" disabled={!draft.lookup.qrz_enabled || !draft.lookup.qrz_user.trim() || (!qrzPassword && !app.lookupState?.has_password)} onclick={async () => { await app.lookupTestNow(draft, qrzPassword); qrzPassword = ''; }}>{t('lookup.test')}</button>
+            <button class="btn" type="button" disabled={!app.lookupState?.has_password} onclick={() => app.lookupForget()}>{t('lookup.forget')}</button>
+          </div>
+          {#if app.lookupState?.test === 'busy'}<p role="status">{t('lookup.busy')}</p>{/if}
+          {#if app.lookupState?.test === 'ok'}<p role="status">{t('lookup.ok')}</p>{/if}
+          {#if app.lookupState?.test === 'ok_limited'}<p role="status">{t('lookup.ok_limited')}</p>{/if}
+          {#if app.lookupState?.test === 'fail'}<p role="alert" class="warn">{app.lookupState.error}</p>{/if}
+          <small class="muted">{t('lookup.privacy')}</small>
         {/if}
 
         {#if section === 'updates'}

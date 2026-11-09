@@ -239,6 +239,50 @@ fn activation_stats(core: Core, id: i64) -> Result<cwld_core::ActivationStats, F
 }
 
 #[tauri::command]
+fn keying_capture(core: Core, on: bool) {
+    core.set_keying(on)
+}
+
+#[tauri::command]
+fn lookup_status(core: Core) -> cwld_core::LookupStatus {
+    core.lookup_status()
+}
+
+#[tauri::command]
+fn lookup_set_password(core: Core, password: String) -> Result<(), Failure> {
+    Ok(core.lookup_set_password(&password)?)
+}
+
+#[tauri::command]
+fn lookup_clear_password(core: Core) -> Result<(), Failure> {
+    Ok(core.lookup_clear_password()?)
+}
+
+/// The two network commands wait for QRZ.com, so they run off the interface thread.
+#[tauri::command]
+async fn lookup_test(core: Core<'_>) -> Result<cwld_core::LookupTest, Failure> {
+    let c = core.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || c.lookup_test())
+        .await
+        .map_err(|_| Failure { code: "lookup_network", message: "lookup task failed".into() })?
+        .map_err(Failure::from)
+}
+
+#[tauri::command]
+async fn lookup_call(core: Core<'_>, call: String) -> Result<Option<cwld_lookup::Info>, Failure> {
+    let c = core.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || c.lookup_call(&call))
+        .await
+        .map_err(|_| Failure { code: "lookup_network", message: "lookup task failed".into() })?
+        .map_err(Failure::from)
+}
+
+#[tauri::command]
+fn link_resend_last(core: Core) -> Result<cwld_core::LinkReport, Failure> {
+    Ok(core.link_resend_last()?)
+}
+
+#[tauri::command]
 fn log_export(core: Core, app: AppHandle, filter: LogFilter, contest_id: String) -> Result<cwld_core::ExportResult, Failure> {
     Ok(core.log_export(&filter, &contest_id, &app.package_info().version.to_string())?)
 }
@@ -363,6 +407,13 @@ pub fn run() {
             log_next_test_serial,
             log_dupe,
             log_export,
+            link_resend_last,
+            lookup_status,
+            lookup_set_password,
+            lookup_clear_password,
+            lookup_test,
+            lookup_call,
+            keying_capture,
             log_check,
             activation_start,
             activation_end,

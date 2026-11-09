@@ -1,3 +1,38 @@
+## 0.13.0 (QRZ.com lookup)
+
+- New in Settings, Logging link: QRZ.com lookup. With a QRZ.com account CWLD fetches the first name and the town of the station in the QSO panel and fills the Name and QTH fields. Only empty fields are filled; what you typed is never replaced. A small line under the fields shows what QRZ.com said (name, town and country, locator). Off by default.
+- The password is kept encrypted by the operating system (Windows Credential Manager, Secret Service on Linux), never in the settings file, the log or the interface. "Save and test" logs in once and tells you whether the account has the XML subscription. "Remove stored password" deletes it.
+- Only the callsign you are working is sent, over HTTPS, after you stopped typing for a moment. Answers are cached for a day (unknown calls for ten minutes). A failed lookup shows one quiet warning; logging and sending go on as before. Calls like ON3VZ/P fall back to the base call.
+- Fixed: on a narrow window the paddle practice card no longer overlaps the panels below it.
+
+## 0.12.0 (paddle practice, quiet radio, no text from SSB)
+
+- Paddle practice: in PRACTICE, key with the paddle on the radio while nothing is transmitted. CWLD reads your sidetone from the USB audio and shows what it heard. Exercises: character groups, your weak characters, words and abbreviations, callsigns and QSO phrases. You get a score, the share of right characters, your speed, and your spacing (gaps inside characters, between characters and between words; with a straight key also the dash length and how even your elements are), with tips. CWLD remembers per character how often it went wrong, and the weak characters come back more often. The last results are shown with UTC time.
+- Radio quiet while practising (on by default): entering PRACTICE turns the speaker of the IC-7300 MK II down (AF level 0) and switches break-in off, so you only hear CWLD and the paddle only makes the sidetone. Both are put back when you leave PRACTICE, change radio or close CWLD. A volume you turn up yourself during practice is left alone. To confirm on the MK II: the CI-V commands for AF level and break-in (test A40), and that the sidetone reaches the USB audio (test I10 and A41).
+- No more text from SSB: when the radio is on USB, LSB, AM, FM or RTTY, the decoder shows nothing and says so above the conversation. On CW, a new check sees speech (an SSB station on the frequency) and the decoder waits until it stops. On the test bench, synthetic speech gave 36 to 54 characters a minute before and 0 to 5 now at good signal levels; the CW results stayed exactly the same.
+- Internal: the radio reads of AF level and break-in are answered with data or refused; a refusal is never taken for a refused CW block.
+
+## 0.11.0 (logging link: Log4OM and N1MM format)
+
+- New section in Settings: Logging link. Every real QSO you log can be sent over UDP to Log4OM as one ADIF record per message (service type ADIF_MESSAGE, default port 2333). Off by default. The handbook (section 23) has the click by click steps for Log4OM.
+- Optional second link in the format of the N1MM Logger+ broadcasts (contactinfo), with one or more destinations as address:port (default 127.0.0.1:12060). N1MM itself cannot receive QSOs over UDP, so this is meant for programs that listen to such broadcasts, not for logging into N1MM.
+- Test QSOs are never sent. A failing send never blocks logging. The button "Send last QSO again" repeats your newest real QSO as a connection test; no fake QSO is ever made.
+- To confirm on a real Log4OM: that it takes one raw ADIF record per UDP message (test A39).
+
+## 0.10.4 (emergency stop with QRX, error signal)
+
+- Esc and the Stop button work as before: sending stops at once and the queue is cleared. If something was being sent, a message says that a second Esc within two seconds also sends QRX QRX.
+- Emergency stop: press Esc twice quickly (or click the new Stop + QRX button). The keyer and the queue are stopped and QRX QRX is sent, so the other station waits while you sort out your mistake. A second Esc only counts when the first one stopped a transmission, so an Esc on a quiet radio never sends anything.
+- New Error button: stops what is being sent and sends the error signal (eight dots), so you can carry on with the correct word. The text in your send box is kept.
+- Nothing is sent in LISTEN mode. In PRACTICE the QRX and the error signal are only simulated.
+- To confirm on the radio: that the IC-7300 MK II accepts new text right after a stop (the QRX), and the prosign HH as `^HH` through CI-V.
+
+## 0.10.3 (everything in UTC)
+
+- All times CWLD shows are UTC now. The time above each message in the conversation and the start time of a tab used the clock of your computer, which is local time. They now use UTC, like the logbook, the ADIF file and the export window already did.
+- A UTC clock with seconds in the status bar, next to the radio status.
+- Checked: a QSO is stored as a moment in time (seconds since 1970), and the ADIF file writes QSO_DATE and TIME_ON from that in UTC, whatever the time zone or summer time setting of the computer.
+
 ## 0.10.2 (more room on the screen)
 
 - QSO panel: the line "No station selected. Click a callsign in the conversation." is gone from the screen. It is now a tooltip on the callsign field while that field is empty. RST and RST rcvd sit next to each other on one line.

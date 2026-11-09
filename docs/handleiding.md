@@ -202,3 +202,116 @@ Bij de eerste start opent een venster met vier stappen. Je kunt het altijd overs
 - De activatie zit niet meer in het rechterpaneel maar als groene knop rechts in de tabbalk. Zonder activatie heet ze Activatie en opent ze het formulier. Tijdens een activatie toont ze referentie en aantal QSO's. Klik erop voor grid, tellers, doel en Activatie beëindigen.
 - In het audiopaneel staan de decoderknoppen achter de schakelaar Afstellen. De sneltoetsen F6 (Sterkste) en F7 (AFC) werken ook als de knoppen verborgen zijn.
 - Het QSO-paneel toont de uitleg bij een leeg roepletterveld als tooltip.
+
+## 22. Stop, noodstop en foutteken (0.10.4)
+
+- **Esc of de knop Stop:** het zenden stopt meteen en de wachtrij wordt gewist.
+- **Noodstop:** twee keer snel Esc (binnen twee seconden) of de knop Stop + QRX. CWLD stopt en zendt QRX QRX, zodat het andere station wacht terwijl jij je fout oplost. De tweede Esc telt alleen als de eerste een zending stopte, dus op een stille radio zendt Esc nooit iets.
+- **Fout:** de knop Fout stopt wat verzonden wordt en zendt het foutteken (acht puntjes). Daarna zend je het juiste woord. De tekst in je zendvak blijft staan.
+- In LUISTEREN wordt nooit iets gezonden. In OEFENEN worden QRX en het foutteken alleen gesimuleerd.
+
+## 23. Logkoppeling met Log4OM en N1MM (0.11.0)
+
+CWLD kan elk QSO dat je logt via UDP doorgeven aan een logboekprogramma. Alles staat standaard uit. Test-QSO's worden nooit verstuurd. Een mislukte verzending houdt het loggen in CWLD niet tegen.
+
+### Log4OM instellen (ADIF)
+
+Eerst in Log4OM, dan in CWLD. De Log4OM-stappen zijn gebaseerd op een beschrijving van een ander programma (VarAC) en op de Log4OM-handleiding; de menunamen kunnen in jouw versie licht verschillen.
+
+1. Klik in Log4OM op het tandwiel Settings (instellingen) en kies Program Configuration.
+2. Open Software integration, dan Connections, dan UDP.
+3. Zoek het deel UDP INBOUND. Vul bij poort 2333 in en geef de verbinding een naam, bijvoorbeeld CWLD.
+4. Kies bij Service Type de waarde **ADIF_MESSAGE**.
+5. Klik op de plusknop (+) om de verbinding toe te voegen en zet een vinkje bij de verbinding (de V).
+6. Klik op Save and Apply.
+7. Ga in CWLD naar Instellingen, Logkoppeling, zet "Elk gelogd QSO naar Log4OM sturen" aan, laat het adres op 127.0.0.1 en de poort op 2333 staan, en klik Opslaan.
+8. Log een echt QSO in CWLD. Het moet in Log4OM verschijnen. Of klik op Laatste QSO opnieuw sturen: Log4OM meldt dan dat het al bestaat, dat is normaal.
+
+Let op:
+
+- **Eén lezer per poort.** Maar één programma kan op een UDP-poort luisteren. Gebruikt WSJT-X of een ander programma poort 2333 al, kies dan een andere poort in beide programma's.
+- **Maak geen JT-verbinding aan** voor CWLD, alleen ADIF_MESSAGE. Anders komt het QSO twee keer aan.
+- **Eén logweg tegelijk.** Gebruik niet tegelijk de koppeling en een ADIF-import van hetzelfde QSO.
+- **Draait Log4OM op een andere pc?** Vul dan bij Adres het IP-adres van die pc in (open op die pc een opdrachtprompt en typ ipconfig).
+- **[TEST]** Dat Log4OM één ruw ADIF-record per bericht verwerkt, is uit de handleiding en een derde bron afgeleid maar nog niet op jouw pc bevestigd. Zie test A39.
+
+### N1MM-formaat
+
+N1MM Logger+ kan **geen QSO's via UDP ontvangen**. Het zendt alleen zelf berichten uit (contactinfo, contactreplace, contactdelete, RadioInfo) en ontvangt via UDP alleen spectrumgegevens en een frequentiecommando. CWLD kan dus niet in N1MM loggen via deze weg.
+
+De N1MM-koppeling in CWLD zendt wel hetzelfde berichtformaat (contactinfo) uit voor programma's die naar zulke uitzendingen luisteren, bijvoorbeeld een scorebord of een tracker. Zet "QSO's ook uitzenden als N1MM Logger+-berichten" aan en vul bij Bestemmingen één of meer adressen in als adres:poort, gescheiden door een spatie (standaard 127.0.0.1:12060, de standaardpoort van N1MM).
+
+Bronnen: [Log4OM, Working with JT](https://www.log4om.com/l4ong/usermanual/Working_with_JT.pdf), [VarAC en logboekprogramma's](https://www.varac-hamradio.com/post/integrating-varac-with-your-qso-logging-application), [N1MM, externe UDP-uitzendingen](https://n1mmwp.hamdocs.com/appendices/external-udp-broadcasts/).
+
+## 24. Paddle oefenen en een stille radio (0.12.0)
+
+In OEFENEN kun je met de paddle op de radio seinen, zonder dat er iets gezonden wordt. CWLD hoort je zijtoon, leest wat je seint en meet je spatiëring.
+
+### Radio stil tijdens het oefenen
+
+Staat "Radio stil tijdens het oefenen" aan (in het oefenpaneel rechts, standaard aan), dan doet CWLD bij de overstap naar OEFENEN twee dingen op de IC-7300 MK II:
+
+- De luidspreker gaat dicht (AF-niveau op 0). Je hoort alleen nog CWLD in je koptelefoon of luidsprekers van de pc.
+- Break-in gaat uit. De paddle maakt dan alleen de zijtoon, de radio zendt niet.
+
+Ga je naar LUISTEREN of LIVE, of sluit je CWLD, dan zet CWLD beide terug zoals ze waren. Draai je tijdens het oefenen zelf aan de AF-knop, dan laat CWLD dat zo. Valt de pc of CWLD onverwacht uit, dan blijft de radio stil: draai dan de AF-knop open en zet Break-in weer aan met de knop BK-IN op de radio.
+
+**[TEST]** De commando's zijn die van de IC-7300 (AF-niveau `14 01`, break-in `16 47`). Dat ze op de MK II gelijk zijn, is nog niet bevestigd (test A40). Bij de QMX doet CWLD dit niet.
+
+### Hoort CWLD je zijtoon?
+
+De zijtoon moet op de USB-audio van de radio staan, anders hoort CWLD niets. Dat is test I10 uit het testplan, nog niet bevestigd. Zo kijk je het na:
+
+1. Zet CWLD in OEFENEN en start het luisteren met de audio-ingang van de radio (Instellingen, Audio, kies "USB Audio CODEC", klik Toepassen).
+2. Klik rechts op "Start paddle oefenen" en sein een paar tekens.
+3. Verschijnt er tekst onder "Gehoord", dan werkt het. Blijft de melding "Nog geen zijtoon gehoord" staan:
+   - Zet op de radio het zijtoonniveau hoger: druk op MENU, kies KEYER, dan EDIT/SET, dan CW-KEY SET, en zet "Side Tone Level" op ongeveer 70 procent.
+   - Zet de Monitor-functie van de radio aan (zie de Basic-handleiding van de radio bij Monitor) en probeer opnieuw.
+   - Lukt het nog niet, meld het dan. Dan bouwen we de terugvalweg (CWLD maakt zelf de toon).
+
+### Een oefening
+
+1. Kies de oefening: tekengroepen, je zwakke tekens, woorden en afkortingen, roepletters of QSO-zinnen.
+2. Klik "Start paddle oefenen". In het midden verschijnt de tekst in grote letters.
+3. Sein de tekst. Wat CWLD hoort, staat eronder.
+4. Ben je klaar en stop je twee seconden, dan beoordeelt CWLD vanzelf. Je kunt ook op "Klaar" klikken.
+5. Je ziet welke tekens fout waren (rood, met wat CWLD in de plaats hoorde), je score, het aantal juiste tekens, je snelheid en je spatiëring met tips. Klik "Volgende" of "Opnieuw".
+
+### Wat de score meet
+
+- **Juist**: het aandeel tekens dat goed overkwam. Een pauze midden in een teken telt als fout, want een keyer knipt dan het teken in twee (A wordt E T).
+- **Spatiëring**: de pauze in een teken (ideaal 1 punt), tussen tekens (3 punten) en tussen woorden (7 punten), en bij een seinsleutel ook de streeplengte (3 punten) en hoe gelijk je punten en strepen zijn.
+- Met de keyer van de radio zijn punten en strepen altijd perfect. Dan is alleen je spatiëring van jou, en CWLD zegt dat ook.
+- De score van een oefening is voor 70 procent het aantal juiste tekens en voor 30 procent de spatiëring.
+
+CWLD onthoudt per teken hoe vaak het goed en fout ging. De oefening "Mijn zwakke tekens" vraagt de tekens die het vaakst fout gingen, en in de andere oefeningen komen ze ook vaker terug. Rechts staan je laatste vijf resultaten (tijd in UTC). "Mijn resultaten vergeten" wist ze.
+
+## 25. Geen tekst bij SSB of spraak (0.12.0)
+
+- Staat de radio op USB, LSB, AM, FM of RTTY, dan toont CWLD geen gedecodeerde tekst. Boven het gesprek staat dan "Decoder gepauzeerd: de radio staat op USB". Zet de radio op CW en het decoderen start weer, met een schone lei.
+- Ook op CW kijkt CWLD of het geluid op spraak lijkt (een SSB-station op de verkeerde plaats). Dan staat er "Spraak of een breed signaal, geen CW-toon: de decoder wacht". Zodra de spraak stopt, start het decoderen na ongeveer anderhalve seconde vanzelf.
+- In OEFENEN geldt de modusregel niet, want dan komt het geluid van de oefenband.
+- Gemeten op de testbank: uit synthetische spraak kwamen voorheen 36 tot 54 tekens per minuut, nu 0 tot 5 bij een sterk of matig signaal. De CW-resultaten bleven gelijk. Details in docs/meetresultaten_decoder.md.
+
+## 26. Naam en QTH opzoeken met QRZ.com (0.13.0)
+
+Heb je een QRZ.com account, dan kan CWLD de voornaam en woonplaats van het station in het QSO-paneel opzoeken en invullen.
+
+### Instellen
+
+1. Klik op het tandwiel, en kies links "Logkoppeling".
+2. Scrol naar "QRZ.com opzoeken" en vink "QRZ.com gebruiken om roepletters op te zoeken" aan.
+3. Vul je QRZ.com gebruikersnaam en wachtwoord in en klik "Opslaan en testen".
+4. Staat er "Inloggen werkt", dan is het klaar. Heb je het XML-abonnement (XML Logbook Data) niet, dan zegt CWLD dat QRZ.com de naam en plaats mogelijk weglaat.
+
+### Wat gebeurt er
+
+- Zodra een roepletterreeks in het paneel staat en je even niet meer typt, vraagt CWLD die ene roepletterreeks aan QRZ.com via HTTPS.
+- Is "Naam" of "QTH" leeg, dan vult CWLD ze in. Stond er al iets, ook al typte je het zelf, dan blijft dat staan. Onder de velden staat wat QRZ.com antwoordde.
+- Antwoorden worden een dag onthouden, zodat QRZ.com niet onnodig bevraagd wordt.
+- Is QRZ.com onbereikbaar of klopt het wachtwoord niet, dan komt er één rustige melding en gaat loggen gewoon door.
+
+### Waar blijft je wachtwoord
+
+Het wachtwoord staat versleuteld in Windows Referentiebeheer, voor je eigen Windows-account. Het staat nooit in het instellingenbestand, in het logboek of op het scherm. Wil je het wissen, klik dan "Opgeslagen wachtwoord wissen". Op Linux gebruikt CWLD de Secret Service (bijvoorbeeld GNOME Keyring of KWallet); is die er niet, dan meldt CWLD dat het wachtwoord niet bewaard kan worden.
+

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app, SETTLE_MS } from './app.svelte';
-import { MockApi } from './mockApi';
+import { MockApi, defaultSettings } from './mockApi';
 
 async function fresh(calls: string[] = ['ON3VZ'], extra: Record<string, string> = {}) {
   const api = new MockApi({ station: { calls, name: 'KRISTOF', qth: 'HOBOKEN', locator: 'JO20EE', ...extra } });
@@ -759,6 +759,14 @@ describe('decoder tuning and presets', () => {
     expect(app.bandwidthHz).toBe(25);
   });
 
+  it('a decoder hold is shown and cleared', () => {
+    const on = (e: unknown[]) => (app as unknown as { onEvents(e: unknown[]): void }).onEvents(e);
+    on([{ type: 'decode_hold', hold: 'mode', mode: 'USB' }]);
+    expect(app.decodeHold).toEqual({ hold: 'mode', mode: 'USB' });
+    on([{ type: 'decode_hold', hold: null, mode: 'CW' }]);
+    expect(app.decodeHold).toBeNull();
+  });
+
   it('own words are added, replaced and removed', async () => {
     await app.addUserWord('tnx2u', 'Thanks to you');
     expect(app.settings!.user_words).toEqual([{ code: 'TNX2U', meaning: 'Thanks to you' }]);
@@ -1146,5 +1154,215 @@ describe('guided first start', () => {
     Object.defineProperty(done, 'demo', { value: false });
     await app.init(done);
     expect(app.wizardOpen).toBe(false);
+  });
+});
+
+describe('UTC times', () => {
+  it('shows conversation times in UTC, not local time', async () => {
+    const { utcHHMM } = await import('./app.svelte');
+    expect(utcHHMM(Date.UTC(2026, 10, 9, 23, 59, 30))).toBe('23:59');
+    expect(utcHHMM(Date.UTC(2026, 0, 1, 0, 5, 0))).toBe('00:05');
+  });
+});
+
+describe('stop and emergency stop', () => {
+  async function live() {
+    const api = await fresh();
+    await app.requestPolicy('live');
+    await app.confirmLiveSwitch();
+    return api;
+  }
+
+  it('one Esc stops and sends nothing more', async () => {
+    const api = await live();
+    await app.send('CQ CQ DE ON3VZ K');
+    app.status.transmitting = true; // the radio reports it while it keys
+    const before = api.transmitCommands;
+    await app.stop();
+    expect(api.transmitCommands).toBe(before);
+    expect(app.notice).toMatch(/QRX/);
+  });
+
+  it('a second Esc within two seconds stops again and sends QRX QRX', async () => {
+    const api = await live();
+    await app.send('CQ CQ DE ON3VZ K');
+    app.status.transmitting = true; // the radio reports it while it keys
+    const before = api.transmitCommands;
+    await app.stop();
+    await app.stop();
+    expect(api.transmitCommands).toBe(before + 1);
+    expect(app.cur.messages[app.cur.messages.length - 1]?.text).toBe('QRX QRX');
+  });
+
+  it('a second Esc after two seconds sends nothing', async () => {
+    vi.useFakeTimers();
+    try {
+      const api = await live();
+      await app.send('CQ CQ DE ON3VZ K');
+    app.status.transmitting = true; // the radio reports it while it keys
+      const before = api.transmitCommands;
+      await app.stop();
+      vi.setSystemTime(Date.now() + 2500);
+      await app.stop();
+      expect(api.transmitCommands).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('Esc when nothing was being sent never sends QRX', async () => {
+    const api = await live();
+    const before = api.transmitCommands;
+    await app.stop();
+    await app.stop();
+    expect(api.transmitCommands).toBe(before);
+  });
+
+  it('never transmits in listen mode', async () => {
+    const api = await fresh();
+    await app.stopAndQrx();
+    await app.sendError();
+    expect(api.transmitCommands).toBe(0);
+  });
+
+  it('the Stop + QRX button sends QRX QRX and keeps the draft', async () => {
+    const api = await live();
+    app.draft = 'TNX FER CALL';
+    await app.stopAndQrx();
+    expect(api.transmitCommands).toBe(1);
+    expect(app.draft).toBe('TNX FER CALL');
+  });
+
+  it('the error button sends the error prosign', async () => {
+    const api = await live();
+    await app.send('DL1ABC DE ON3VZ');
+    const before = api.transmitCommands;
+    await app.sendError();
+    expect(api.transmitCommands).toBe(before + 1);
+    expect(app.cur.messages[app.cur.messages.length - 1]?.text).toBe('<HH>');
+  });
+});
+
+describe('logging link', () => {
+  it('settings default to off and a resend without a real QSO is refused', async () => {
+    const api = new MockApi();
+    expect(defaultSettings().link.adif_enabled).toBe(false);
+    await expect(api.linkResendLast()).rejects.toBeTruthy();
+  });
+});
+
+describe('paddle trainer', () => {
+  const on = (e: unknown[]) => (app as unknown as { onEvents(e: unknown[]): void }).onEvents(e);
+  /** Key runs at 20 WPM for a text, as the core would hand them out. */
+  const runs = (text: string): [boolean, number][] => {
+    const P: Record<string, string> = { K: '-.-', M: '--', R: '.-.', S: '...', U: '..-', A: '.-', P: '.--.', T: '-', L: '.-..', O: '---', W: '.--', I: '..', N: '-.', J: '.---', E: '.', F: '..-.', '0': '-----', Y: '-.--', V: '...-', G: '--.', '5': '.....', '/': '-..-.', Q: '--.-', '9': '----.', Z: '--..', H: '....', '3': '...--', '8': '---..', B: '-...', '?': '..--..', '4': '....-', '2': '..---', '7': '--...', C: '-.-.', '1': '.----', D: '-..', '6': '-....', X: '-..-' };
+    const out: [boolean, number][] = [];
+    text.split(' ').forEach((w, wi) => {
+      if (wi) out.push([false, 420]);
+      [...w].forEach((c, ci) => {
+        if (ci) out.push([false, 180]);
+        [...P[c]].forEach((e, ei) => {
+          if (ei) out.push([false, 60]);
+          out.push([true, e === '.' ? 60 : 180]);
+        });
+      });
+    });
+    return out;
+  };
+
+  it('needs practice mode, scores a keyed text and remembers the result', async () => {
+    const api = await fresh();
+    await app.paddleStart('chars');
+    expect(app.paddleEx).toBeNull();
+    await app.requestPolicy('practice');
+    await app.paddleStart('chars');
+    expect(api.keying).toBe(true);
+    const target = app.paddleEx!.target;
+    on([{ type: 'keying', runs: runs(target) }]);
+    expect(app.paddleEx!.heard).toBe(true);
+    on([{ type: 'decode', source: 'rx', text: target, conf: [], tentative: [], wpm: 20 }]);
+    // The decoded text does not end up in the conversation.
+    expect(app.messages.some((m) => m.text.includes(target.slice(0, 5)))).toBe(false);
+    on([{ type: 'keying', runs: [[false, 2500]] }]);
+    await vi.waitFor(() => expect(app.paddleEx!.result).not.toBeNull());
+    const r = app.paddleEx!.result!;
+    expect(r.accuracy).toBe(1);
+    expect(r.timing.wpm).toBeCloseTo(20, 0);
+    expect(r.score).toBeGreaterThan(90);
+    await vi.waitFor(() => expect(app.settings!.practice.paddle.sessions.length).toBe(1));
+    expect(app.settings!.practice.paddle.stats.reduce((a, s) => a + s.tries, 0)).toBe(target.replaceAll(' ', '').length);
+    app.paddleNext();
+    expect(app.paddleEx!.result).toBeNull();
+    await app.requestPolicy('listen_only');
+    expect(app.paddleEx).toBeNull();
+    expect(api.keying).toBe(false);
+  });
+
+  it('shows when practice mode quieted the radio', () => {
+    on([{ type: 'radio_quiet', quiet: true }]);
+    expect(app.radioQuiet).toBe(true);
+    on([{ type: 'radio_quiet', quiet: false }]);
+    expect(app.radioQuiet).toBe(false);
+  });
+});
+
+describe('QRZ.com lookup', () => {
+  async function withLookup(enabled = true) {
+    const api = new MockApi({ station: { calls: ['ON3VZ'], name: 'KRISTOF', qth: 'HOBOKEN', locator: 'JO20EE' }, lookup: { qrz_enabled: enabled, qrz_user: 'ON3VZ' } });
+    api.lookupPassword = 'geheim';
+    await app.init(api);
+    return api;
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('settings default to off and carry no password', () => {
+    const d = defaultSettings();
+    expect(d.lookup).toEqual({ qrz_enabled: false, qrz_user: '' });
+    expect(JSON.stringify(d)).not.toMatch(/password/i);
+  });
+
+  it('fills empty name and QTH from the answer after the call stops changing', async () => {
+    const api = await withLookup();
+    app.selectCall('ON4ZZ');
+    app.qso = { ...app.qso, name: '', qth: '' };
+    await vi.advanceTimersByTimeAsync(800);
+    expect(api.lookupCalls).toContain('ON4ZZ');
+    expect(app.qso.name).toBe('Jan');
+    expect(app.qso.qth).toBe('Gent');
+    expect(app.lookupNote?.text).toContain('Gent');
+  });
+
+  it('never replaces what the operator typed', async () => {
+    await withLookup();
+    app.selectCall('ON4ZZ');
+    app.qso = { ...app.qso, name: 'JEF', qth: '' };
+    await vi.advanceTimersByTimeAsync(800);
+    expect(app.qso.name).toBe('JEF');
+    expect(app.qso.qth).toBe('Gent');
+  });
+
+  it('asks nothing while switched off and waits while typing', async () => {
+    const off = await withLookup(false);
+    app.selectCall('ON4ZZ');
+    await vi.advanceTimersByTimeAsync(800);
+    expect(off.lookupCalls).toEqual([]);
+    const on = await withLookup(true);
+    app.selectCall('ON4');
+    app.selectCall('ON4Z');
+    app.selectCall('ON4ZZ');
+    await vi.advanceTimersByTimeAsync(800);
+    expect(on.lookupCalls).toEqual(['ON4ZZ']);
+  });
+
+  it('a failed lookup warns once and does not touch the fields', async () => {
+    const api = await withLookup();
+    api.lookupPassword = '';
+    app.selectCall('ON4ZZ');
+    app.qso = { ...app.qso, name: '', qth: '' };
+    await vi.advanceTimersByTimeAsync(800);
+    expect(app.qso.name).toBe('');
+    expect(app.warning).toBeTruthy();
   });
 });

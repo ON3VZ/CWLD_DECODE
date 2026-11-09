@@ -7,9 +7,14 @@ import { bandOf } from './adif';
 import { emptyLogQso } from './types';
 import { contestKeys, enterAction, entryComplete, nextSerial, suggestFrom, type RunMode, type Suggestion } from './contestlog';
 import { heardIn } from './qso';
+import { looksLikeCall } from './callsign';
+
+/** Pause after the last change of the call before QRZ.com is asked. */
+export const LOOKUP_DELAY_MS = 700;
 import { PracticeSim, type Score, type SimTx } from './sim';
 import type { PracticeSettings } from './types';
 import { durationSeconds, playSidetone } from './morse';
+import { accuracy, analyseTiming, markTarget, nextTarget, rng, sessionScore, updateStats, type Marked, type PaddleExercise, type Run, type Timing } from './paddle';
 
 export interface Qso {
   call: string;
@@ -51,7 +56,11 @@ export const SETTLE_MS = 5000;
 export const MAX_SESSIONS = 40;
 const STORE_KEY = 'cwld.sessions.v1';
 
-const clockNow = () => new Date().toTimeString().slice(0, 5);
+/** Times in conversations and the log are UTC, like in a logbook. */
+export const utcHHMM = (ms: number = Date.now()) => new Date(ms).toISOString().slice(11, 16);
+/** A second Esc counts as the emergency stop for this long after a stopped transmission. */
+export const ESC_QRX_MS = 2000;
+const clockNow = () => utcHHMM();
 
 export interface WaterfallRow {
   bins: number[];
@@ -95,6 +104,8 @@ class AppState {
   audioPeak = $state(0);
   /** The decoder filter bandwidth in Hz, for the lines in the audio waterfall. */
   bandwidthHz = $state<number | null>(null);
+  /** Why the decoder shows nothing now: the radio is on a phone mode, or speech is heard. */
+  decodeHold = $state<{ hold: 'mode' | 'voice'; mode: string } | null>(null);
   /** More than 0: "close all" waits for a yes because this many conversations hold an unlogged QSO. */
   closeAllAsk = $state(0);
   /** The operator switches contest mode on while an earlier number is stored: continue or restart? */
@@ -383,6 +394,7 @@ class AppState {
 
   async init(api: Api) {
     this.api = api;
+    this.escArmedUntil = 0;
     const snap = await api.getSnapshot();
     this.apply(snap.settings);
     this.policy = snap.policy;
@@ -456,7 +468,20 @@ class AppState {
         continue;
       }
       if (ev.type === 'decode') {
+        // During a paddle exercise the decoded text is the answer, not part of a conversation.
+        if (this.paddleEx) {
+          if (!this.paddleEx.result) this.paddleHeard(ev.text);
+          continue;
+        }
         this.decoded(ev.source, ev.text, ev.conf, ev.tentative);
+        continue;
+      }
+      if (ev.type === 'keying') {
+        if (this.paddleEx && !this.paddleEx.result) this.paddleKeyed(ev.runs);
+        continue;
+      }
+      if (ev.type === 'radio_quiet') {
+        this.radioQuiet = ev.quiet;
         continue;
       }
       if (ev.type === 'waterfall') {
@@ -468,6 +493,10 @@ class AppState {
       if (ev.type === 'audio_level') {
         this.audioLevel = ev.dbfs;
         this.audioPeak = ev.peak ?? 0;
+        continue;
+      }
+      if (ev.type === 'decode_hold') {
+        this.decodeHold = ev.hold ? { hold: ev.hold, mode: ev.mode } : null;
         continue;
       }
       if (ev.type === 'bandwidth') {
@@ -510,7 +539,7 @@ class AppState {
         case 'queue': this.queue = e.value; break;
         case 'swr': this.swr = e.value; break;
         case 'warning': this.warning = e.value; break;
-        case 'paddle_text': this.paddle(e.value); break;
+        case 'paddle_text': if (this.paddleEx) { if (!this.paddleEx.result) this.paddleHeard(e.value); } else this.paddle(e.value); break;
         case 'scope': this.scopeSweep(e.value); break;
       }
     }
@@ -536,7 +565,7 @@ class AppState {
         const clean = text.replace(/^\s+/, '');
         if (clean) {
           const cut = text.length - clean.length;
-          live.messages.push({ id: this.nextId++, from: source, text: clean, conf: conf.slice(cut), time: new Date(now).toTimeString().slice(0, 5) });
+          live.messages.push({ id: this.nextId++, from: source, text: clean, conf: conf.slice(cut), time: utcHHMM(now) });
           target = live.messages[live.messages.length - 1];
         }
       }
@@ -690,6 +719,7 @@ class AppState {
     try {
       this.cancelPractice();
       if (p !== 'practice' && this.practiceRun) await this.stopExercise();
+      if (p !== 'practice' && this.paddleEx) await this.paddleStop();
       await this.api.setPolicy(p, confirmed);
       this.policy = p;
       if (this.settings) this.settings.last_policy = p;
@@ -818,10 +848,66 @@ class AppState {
     this.practiceBusy = false;
   }
 
+  /** Until when a second Esc counts as the emergency stop (stop and QRX QRX). 0: not armed. */
+  private escArmedUntil = 0;
+  /** Esc, and the Stop button. Stops at once. A second Esc within two seconds, after a transmission was stopped, also sends QRX QRX. */
   async stop() {
+    const now = Date.now();
+    if (now < this.escArmedUntil) {
+      await this.stopAndQrx();
+      return;
+    }
+    const wasSending = this.status.transmitting || this.practiceBusy || this.queue.length > 0;
     this.cancelPractice();
     try {
       await this.api.stopTx();
+    } catch (e) {
+      this.fail(e);
+      return;
+    }
+    if (wasSending && this.policy !== 'listen_only') {
+      this.escArmedUntil = now + ESC_QRX_MS;
+      this.notice = t('composer.stopped.qrx');
+    }
+  }
+
+  /** Emergency stop: stops the keyer and the queue, then sends QRX QRX so the other station waits. Only when sending is possible. */
+  async stopAndQrx() {
+    this.escArmedUntil = 0;
+    this.cancelPractice();
+    try {
+      await this.api.stopTx();
+    } catch (e) {
+      this.fail(e);
+      return;
+    }
+    if (this.canSend) await this.sendQuiet('QRX QRX');
+  }
+
+  /** Stops what is being sent and sends the error prosign (eight dots), so a wrong word can be corrected. */
+  async sendError() {
+    this.escArmedUntil = 0;
+    if (this.status.transmitting || this.queue.length > 0 || this.practiceBusy) {
+      this.cancelPractice();
+      try {
+        await this.api.stopTx();
+      } catch (e) {
+        this.fail(e);
+        return;
+      }
+    }
+    if (this.canSend) await this.sendQuiet('<HH>');
+  }
+
+  /** Sends a short fixed text and shows it in the conversation. The draft in the send box stays as it is. */
+  private async sendQuiet(text: string) {
+    this.error = null;
+    this.viewId = this.cur.id;
+    try {
+      const out = await this.api.sendText(text);
+      const time = clockNow();
+      if (out.kind === 'sent') this.ingest('tx', text, time);
+      else this.ingest('practice', text, time);
     } catch (e) {
       this.fail(e);
     }
@@ -851,6 +937,19 @@ class AppState {
       await this.api.saveSettings($state.snapshot(s) as Settings);
       this.apply(s);
       this.notice = t('settings.saved');
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** Result of the last "send last QSO again" test, shown in Settings. */
+  linkResult = $state<{ sent: number; errors: string[] } | null>(null);
+  /** Saves the settings, then sends the newest real QSO again to the enabled UDP links. */
+  async linkResend(s: Settings) {
+    this.linkResult = null;
+    await this.saveSettings(s);
+    try {
+      this.linkResult = await this.api.linkResendLast();
     } catch (e) {
       this.fail(e);
     }
@@ -1117,6 +1216,109 @@ class AppState {
     return !!this.practiceRun && !this.settings?.practice.decoder_help;
   }
 
+  // ---- Paddle trainer ----
+
+  /** Practice mode turned the radio's speaker down and break-in off. */
+  radioQuiet = $state(false);
+  /** The paddle exercise under way: what to key, what was heard, the key times, and the result. */
+  paddleEx = $state<{
+    exercise: PaddleExercise;
+    target: string;
+    got: string;
+    runs: Run[];
+    /** Key times are coming in: the sidetone reaches CWLD. */
+    heard: boolean;
+    result: { marks: Marked[]; timing: Timing; accuracy: number; score: number } | null;
+  } | null>(null);
+  private paddleRng = rng(Date.now() % 1e9);
+
+  private paddleTargetFor(ex: PaddleExercise): string {
+    const s = this.settings;
+    return nextTarget(ex, { myCall: this.myCall, name: s?.station.name.split(/\s+/)[0] ?? '', qth: s?.station.qth ?? '', stats: s?.practice.paddle?.stats ?? [] }, this.paddleRng);
+  }
+
+  /** Starts a paddle exercise. Needs practice mode and the radio's audio (not the practice band). */
+  async paddleStart(ex: PaddleExercise) {
+    if (this.policy !== 'practice') {
+      this.error = t('error.practice_mode_needed');
+      return;
+    }
+    if (this.practiceRun) await this.stopExercise();
+    this.error = null;
+    try {
+      await this.api.keyingCapture(true);
+    } catch (e) {
+      this.fail(e);
+      return;
+    }
+    if (this.settings) {
+      const p = $state.snapshot(this.settings.practice) as PracticeSettings;
+      if (p.paddle?.exercise !== ex) await this.patchSettings({ practice: { ...p, paddle: { ...(p.paddle ?? { stats: [], sessions: [] }), exercise: ex } } });
+    }
+    this.paddleEx = { exercise: ex, target: this.paddleTargetFor(ex), got: '', runs: [], heard: false, result: null };
+  }
+
+  /** The next text of the same exercise. */
+  paddleNext() {
+    if (!this.paddleEx) return;
+    this.paddleEx = { ...this.paddleEx, target: this.paddleTargetFor(this.paddleEx.exercise), got: '', runs: [], heard: false, result: null };
+  }
+
+  /** Clears what was heard so far, same text: start this one again. */
+  paddleRetry() {
+    if (!this.paddleEx) return;
+    this.paddleEx = { ...this.paddleEx, got: '', runs: [], heard: false, result: null };
+  }
+
+  async paddleStop() {
+    this.paddleEx = null;
+    try {
+      await this.api.keyingCapture(false);
+    } catch {
+      /* the audio may already be gone */
+    }
+  }
+
+  private paddleHeard(text: string) {
+    if (!this.paddleEx) return;
+    this.paddleEx.got += text;
+  }
+
+  private paddleKeyed(runs: [boolean, number][]) {
+    const p = this.paddleEx;
+    if (!p) return;
+    p.runs.push(...runs);
+    if (runs.some((r) => r[0])) p.heard = true;
+    // Done by itself: everything asked has come out and the key has been up for two seconds.
+    const want = p.target.replace(/\s+/g, '').length;
+    const have = p.got.replace(/\s+/g, '').length;
+    const last = runs[runs.length - 1];
+    if (have >= want && last && !last[0] && last[1] >= 2000) void this.paddleFinish();
+  }
+
+  /** Scores the exercise and keeps the result. */
+  async paddleFinish() {
+    const p = this.paddleEx;
+    if (!p || p.result) return;
+    const marks = markTarget(p.target, p.got);
+    const timing = analyseTiming(p.runs, (p.target.match(/ /g) ?? []).length);
+    const acc = accuracy(marks);
+    const score = sessionScore(acc, timing);
+    p.result = { marks, timing, accuracy: acc, score };
+    if (!this.settings || !p.got.trim()) return;
+    const cfg = $state.snapshot(this.settings.practice) as PracticeSettings;
+    const prog = cfg.paddle ?? { exercise: p.exercise, stats: [], sessions: [] };
+    const session = { ts: Math.floor(Date.now() / 1000), exercise: p.exercise, score, wpm: Math.round((timing.wpm ?? 0) * 10) / 10, accuracy: Math.round(acc * 1000) / 1000 };
+    await this.patchSettings({ practice: { ...cfg, paddle: { exercise: p.exercise, stats: updateStats(prog.stats, marks), sessions: [...prog.sessions, session].slice(-200) } } });
+  }
+
+  /** Forgets all paddle results. */
+  async paddleReset() {
+    if (!this.settings) return;
+    const cfg = $state.snapshot(this.settings.practice) as PracticeSettings;
+    await this.patchSettings({ practice: { ...cfg, paddle: { exercise: cfg.paddle?.exercise ?? 'chars', stats: [], sessions: [] } } });
+  }
+
   async setPracticeCfg(patch: Partial<PracticeSettings>) {
     if (!this.settings) return;
     await this.patchSettings({ practice: { ...($state.snapshot(this.settings.practice) as PracticeSettings), ...patch } });
@@ -1350,6 +1552,89 @@ class AppState {
       this.suggestion = {};
     }
     void this.refreshDupe();
+    this.scheduleLookup(call);
+  }
+
+  /** Name, QTH and country that QRZ.com gave for the call in the panel, shown under the fields. */
+  lookupNote = $state<{ call: string; text: string } | null>(null);
+  private lookupTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Waits until the call stops changing (typing), then asks QRZ.com once. */
+  private scheduleLookup(call: string) {
+    if (this.lookupTimer) clearTimeout(this.lookupTimer);
+    this.lookupTimer = null;
+    if (this.lookupNote && this.lookupNote.call !== call) this.lookupNote = null;
+    const l = this.settings?.lookup;
+    if (!l?.qrz_enabled || !l.qrz_user.trim() || !looksLikeCall(call)) return;
+    this.lookupTimer = setTimeout(() => void this.lookupNow(call), LOOKUP_DELAY_MS);
+  }
+
+  /**
+   * Looks the call up and fills the Name and QTH fields, but only when they are empty and the same call
+   * is still in the panel. What the operator typed is never replaced.
+   */
+  async lookupNow(call: string) {
+    try {
+      const info = await this.api.lookupCall(call);
+      if (!info || this.qso.call.trim().toUpperCase() !== call) return;
+      const next = { ...this.qso };
+      if (!next.name && info.first_name) next.name = info.first_name;
+      if (!next.qth && info.qth) next.qth = info.qth;
+      this.qso = next;
+      const place = [info.qth, info.country].filter(Boolean).join(', ');
+      this.lookupNote = { call, text: [info.first_name, place, info.grid].filter(Boolean).join(' · ') };
+    } catch (e) {
+      this.lookupError(e);
+    }
+  }
+
+  /** A failed lookup is shown once as a quiet warning; logging and sending go on as before. */
+  private lookupError(e: unknown) {
+    const code = (e as { code?: string })?.code ?? 'lookup_network';
+    this.warning = t(`error.${code}`);
+  }
+
+  lookupState = $state<{ has_password: boolean; test: 'idle' | 'busy' | 'ok' | 'ok_limited' | 'fail'; error: string } | null>(null);
+
+  async lookupRefresh() {
+    try {
+      const st = await this.api.lookupStatus();
+      this.lookupState = { has_password: st.has_password, test: this.lookupState?.test ?? 'idle', error: this.lookupState?.error ?? '' };
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** Stores the password (the operating system encrypts it) after saving the user name. */
+  async lookupSave(s: Settings, password: string) {
+    await this.saveSettings(s);
+    try {
+      if (password) await this.api.lookupSetPassword(password);
+      this.lookupState = { has_password: (await this.api.lookupStatus()).has_password, test: 'idle', error: '' };
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async lookupForget() {
+    try {
+      await this.api.lookupClearPassword();
+      this.lookupState = { has_password: false, test: 'idle', error: '' };
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async lookupTestNow(s: Settings, password: string) {
+    await this.lookupSave(s, password);
+    this.lookupState = { ...(this.lookupState ?? { has_password: false, error: '' }), test: 'busy', error: '' };
+    try {
+      const r = await this.api.lookupTest();
+      this.lookupState = { has_password: true, test: r.subscriber ? 'ok' : 'ok_limited', error: '' };
+    } catch (e) {
+      const code = (e as { code?: string })?.code ?? 'lookup_network';
+      this.lookupState = { has_password: this.lookupState?.has_password ?? false, test: 'fail', error: t(`error.${code}`) };
+    }
   }
 
   async refreshDupe() {

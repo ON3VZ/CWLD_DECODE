@@ -25,6 +25,10 @@ enum Ack {
     Block,
     /// The acknowledgement of anything else we set.
     Other,
+    /// A read of the AF level or break-in. The radio answers with data, or with NG when it does
+    /// not know the command; either way it takes the place of an acknowledgement, so an NG for
+    /// a read is never taken for a refused CW block.
+    Read,
 }
 
 pub struct IcomRig<T: Transport> {
@@ -47,6 +51,7 @@ pub struct IcomRig<T: Transport> {
     scope: ScopeAssembler,
     /// The newest complete scope sweep. Only the newest is passed on, at most one per poll.
     scope_latest: Option<ScopeSweep>,
+    audio: crate::AudioControls,
 }
 
 impl<T: Transport> IcomRig<T> {
@@ -79,6 +84,7 @@ impl<T: Transport> IcomRig<T> {
             started,
             scope: ScopeAssembler::default(),
             scope_latest: None,
+            audio: crate::AudioControls::default(),
         }
     }
 
@@ -189,6 +195,18 @@ impl<T: Transport> IcomRig<T> {
                     self.events.push(RigEvent::Swr(civ::swr_from_raw(raw)));
                 }
             }
+            // AF level, 0000 to 0255 in BCD **[TEST]** on the MK II.
+            0x14 if b.len() >= 4 && b[1] == 0x01 => {
+                self.answered_read();
+                if let Some(raw) = civ::from_bcd2(&b[2..]) {
+                    self.audio.af_level = Some(raw.min(255));
+                }
+            }
+            // Break-in: 00 off, 01 semi, 02 full **[TEST]** on the MK II.
+            0x16 if b.len() >= 3 && b[1] == 0x47 => {
+                self.answered_read();
+                self.audio.break_in = Some(b[2].min(2));
+            }
             0x1C if b.len() >= 3 && b[1] == 0x00 => {
                 let tx = b[2] != 0;
                 if tx != self.status.transmitting {
@@ -215,6 +233,13 @@ impl<T: Transport> IcomRig<T> {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Data came for one of our reads: it no longer waits for an answer.
+    fn answered_read(&mut self) {
+        if let Some(i) = self.acks.iter().position(|a| *a == Ack::Read) {
+            self.acks.remove(i);
         }
     }
 
@@ -257,6 +282,14 @@ impl<T: Transport> Rig for IcomRig<T> {
             RadioCommand::ReadStatus => {
                 for body in [&[cmd::READ_FREQ][..], &[cmd::READ_MODE][..], &cmd::TX_STATUS[..], &cmd::KEYER_SPEED[..], &cmd::S_METER[..]] {
                     self.send(body)?;
+                }
+                // At most one pair of these reads under way, so a radio that does not answer them
+                // never fills the list of expected answers.
+                if !self.acks.contains(&Ack::Read) {
+                    for body in [&cmd::AF_LEVEL[..], &cmd::BREAK_IN[..]] {
+                        self.send(body)?;
+                        self.acks.push_back(Ack::Read);
+                    }
                 }
                 Ok(())
             }
@@ -309,6 +342,20 @@ impl<T: Transport> Rig for IcomRig<T> {
                 }
                 self.send_set(&civ_scope::scope_output(*on))
             }
+            RadioCommand::SetAfLevel(v) => {
+                let raw = civ::bcd2((*v).min(255));
+                self.send_set(&[cmd::AF_LEVEL[0], cmd::AF_LEVEL[1], raw[0], raw[1]])?;
+                self.audio.af_level = Some((*v).min(255));
+                Ok(())
+            }
+            RadioCommand::SetBreakIn(v) => {
+                if *v > 2 {
+                    return Err(RigError::InvalidArgument("break_in".into()));
+                }
+                self.send_set(&[cmd::BREAK_IN[0], cmd::BREAK_IN[1], *v])?;
+                self.audio.break_in = Some(*v);
+                Ok(())
+            }
         }
     }
 
@@ -358,5 +405,9 @@ impl<T: Transport> Rig for IcomRig<T> {
 
     fn status(&self) -> RadioStatus {
         self.status.clone()
+    }
+
+    fn audio_controls(&self) -> crate::AudioControls {
+        self.audio
     }
 }

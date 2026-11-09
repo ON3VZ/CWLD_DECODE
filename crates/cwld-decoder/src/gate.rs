@@ -146,3 +146,70 @@ mod tests {
         assert!(!narrow.contains("CQ CQ DE ON3VZ ON3VZ K"), "narrow: {narrow:?}");
     }
 }
+
+#[cfg(test)]
+mod measure {
+    use crate::bench::decode_samples;
+    use crate::PipelineConfig;
+    use cwld_dsp::{generate, generate_voice, CwSpec, VoiceSpec};
+
+    fn cfg(fs: u32) -> PipelineConfig {
+        let mut c = PipelineConfig::new(fs, 700.0);
+        c.auto_tone = true;
+        c.min_separation = 3.5;
+        c
+    }
+
+    /// Prints how much text comes out of speech, noise and very weak CW. Run with --ignored --nocapture.
+    #[test]
+    #[ignore]
+    fn print_false_text() {
+        for snr in [30.0, 20.0, 10.0, 3.0] {
+            for shift in [0.0, 150.0] {
+                let mut tot = 0;
+                for seed in 1..=5u64 {
+                    let v = generate_voice(&VoiceSpec { seconds: 60.0, snr_db: Some(snr), shift_hz: shift, seed, ..Default::default() });
+                    let t = decode_samples(&v, cfg(8000));
+                    tot += t.replace(' ', "").len();
+                    if seed == 1 { println!("voice snr {snr} shift {shift}: {t:?}"); }
+                }
+                println!("VOICE snr {snr:>4} shift {shift:>4}: {:.1} chars/min", tot as f64 / 5.0);
+            }
+        }
+        for snr in [-6.0, -10.0, -14.0, -18.0] {
+            let mut cer = 0.0;
+            let mut out = 0;
+            for seed in 1..=5u64 {
+                let txt = "CQ CQ DE DL1ABC DL1ABC K UR 599 TNX 73";
+                let g = generate(&CwSpec { text: txt.into(), wpm: 20.0, snr_db: Some(snr), lead_s: 2.0, trail_s: 2.0, seed, ..Default::default() });
+                let t = decode_samples(&g.samples, cfg(g.sample_rate));
+                cer += crate::bench::levenshtein(txt, &t) as f64 / txt.len() as f64;
+                out += t.replace(' ', "").len();
+                if seed == 1 { println!("cw {snr}: {t:?}"); }
+            }
+            println!("CW snr {snr:>5}: CER {:.2}, chars out {:.1}", cer / 5.0, out as f64 / 5.0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod voice_gate {
+    use crate::bench::decode_samples;
+    use crate::PipelineConfig;
+    use cwld_dsp::{generate_voice, VoiceSpec};
+
+    #[test]
+    fn speech_gives_almost_no_text_and_says_so() {
+        let v = generate_voice(&VoiceSpec { seconds: 30.0, snr_db: Some(20.0), seed: 3, ..Default::default() });
+        let mut c = PipelineConfig::new(8000, 700.0);
+        c.auto_tone = true;
+        let text = decode_samples(&v, c.clone());
+        assert!(text.replace(' ', "").len() <= 3, "{text:?}");
+        c.voice_gate = false;
+        let without = decode_samples(&v, c);
+        assert!(without.replace(' ', "").len() > 10, "the test signal must fool the decoder without the gate: {without:?}");
+        let mut p = crate::Pipeline::new(PipelineConfig::new(8000, 700.0));
+        p.push(&v);
+        assert!(p.voice_heard());
+    }
+}

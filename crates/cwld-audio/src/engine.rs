@@ -91,7 +91,8 @@ pub enum EngineEvent {
     Level { dbfs: f32, peak: f32 },
     /// Mean confidence of the last characters, the signal to noise ratio in the filter, and the
     /// filter bandwidth in Hz.
-    Stats { confidence: Option<f32>, snr_db: Option<f32>, bandwidth_hz: f32 },
+    /// `voice`: the audio looks like speech or another wide signal, so nothing is decoded.
+    Stats { confidence: Option<f32>, snr_db: Option<f32>, bandwidth_hz: f32, voice: bool },
     Tone { hz: f64 },
     /// Sent after a `reset`: everything decoded before this event belongs to the time before
     /// the reset.
@@ -101,6 +102,8 @@ pub enum EngineEvent {
     Overrun { samples: u64 },
     /// Practice band transmissions that ended.
     PracticeDone { ids: Vec<u64> },
+    /// Key down and up times in milliseconds, while the paddle trainer asks for them.
+    Keying { runs: Vec<(bool, f32)> },
     /// The source ended (file) or failed (`reason`).
     Stopped { reason: Option<String> },
 }
@@ -117,6 +120,7 @@ enum Command {
     AddWords(Vec<String>),
     Tuning(Tuning),
     Volume(f32),
+    Keying(bool),
     Stop,
 }
 
@@ -207,6 +211,11 @@ impl Engine {
 
     pub fn add_words(&self, words: Vec<String>) {
         let _ = self.cmd.send(Command::AddWords(words));
+    }
+
+    /// Hands out the key down and up times (`EngineEvent::Keying`) or stops doing so.
+    pub fn set_keying(&self, on: bool) {
+        let _ = self.cmd.send(Command::Keying(on));
     }
 }
 
@@ -351,6 +360,12 @@ impl Worker {
         }
         self.pipe.push(&lo);
         self.scratch = lo;
+        if self.pcfg.keying {
+            let runs = self.pipe.take_keying();
+            if !runs.is_empty() {
+                self.send(EngineEvent::Keying { runs });
+            }
+        }
         // The decoder moved to another signal by itself, or followed a drifting one.
         let hz = self.pipe.tone_hz();
         if (hz - self.reported_tone).abs() >= 5.0 {
@@ -394,7 +409,7 @@ impl Worker {
             self.conf_window.clear();
         }
         let present = self.pipe.cw_present();
-        self.send(EngineEvent::Stats { confidence: if present { cwld_types::mean_confidence(&self.conf_window) } else { None }, snr_db: if present { self.pipe.snr_db() } else { None }, bandwidth_hz: self.pipe.bandwidth_hz() as f32 });
+        self.send(EngineEvent::Stats { confidence: if present { cwld_types::mean_confidence(&self.conf_window) } else { None }, snr_db: if present { self.pipe.snr_db() } else { None }, bandwidth_hz: self.pipe.bandwidth_hz() as f32, voice: self.pipe.voice_heard() });
     }
 
     fn stop_recording(&mut self) {
@@ -475,6 +490,10 @@ impl Worker {
             }
             Command::Tuning(t) => self.apply_tuning(&t),
             Command::Volume(_) => {}
+            Command::Keying(on) => {
+                self.pcfg.keying = on;
+                self.pipe.set_keying(on);
+            }
             Command::Stop => return false,
         }
         true

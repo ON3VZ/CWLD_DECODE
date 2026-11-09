@@ -66,67 +66,73 @@ pub fn adif_text(qsos: &[Qso], o: &AdifOptions) -> String {
     let mut sorted: Vec<&Qso> = qsos.iter().collect();
     sorted.sort_by_key(|q| (q.ts, q.id));
     for q in sorted {
-        let mut l = String::new();
-        let (d, t) = date_time(q.ts);
-        field(&mut l, "CALL", &q.call);
-        field(&mut l, "QSO_DATE", &d);
-        field(&mut l, "TIME_ON", &t);
-        field(&mut l, "BAND", &q.band);
-        if q.freq_hz > 0 {
-            field(&mut l, "FREQ", &format!("{:.6}", q.freq_hz as f64 / 1e6));
-        }
-        field(&mut l, "MODE", if q.mode.is_empty() { "CW" } else { &q.mode });
-        field(&mut l, "RST_SENT", &q.rst_sent);
-        field(&mut l, "RST_RCVD", &q.rst_rcvd);
-        if q.nr_sent > 0 {
-            field(&mut l, "STX", &q.nr_sent.to_string());
-        }
-        field(&mut l, "STX_STRING", &q.extra_sent);
-        if !q.nr_rcvd.is_empty() && q.nr_rcvd.chars().all(|c| c.is_ascii_digit()) {
-            // The serial number as a plain integer: 007 becomes 7.
-            let n: u64 = q.nr_rcvd.parse().unwrap_or(0);
-            field(&mut l, "SRX", &n.to_string());
-        }
-        field(&mut l, "SRX_STRING", &q.extra_rcvd);
-        if !q.contest.is_empty() {
-            field(&mut l, "CONTEST_ID", &o.contest_id);
-        }
-        let station = if q.station_call.is_empty() { &q.my_call } else { &q.station_call };
-        let operator = if q.operator.is_empty() { &q.my_call } else { &q.operator };
-        field(&mut l, "STATION_CALLSIGN", station);
-        field(&mut l, "OPERATOR", operator);
-        field(&mut l, "MY_GRIDSQUARE", &q.my_grid.to_uppercase());
-        field(&mut l, "TX_PWR", &q.tx_pwr);
-        field(&mut l, "MY_RIG", &q.my_rig);
-        field(&mut l, "MY_ANTENNA", &q.my_antenna);
-        field(&mut l, "NAME", &q.name);
-        field(&mut l, "QTH", &q.qth);
-        field(&mut l, "COMMENT", &q.comment);
-        // Own references. WWFF asks for MY_SIG and MY_SIG_INFO; the ADIF field MY_WWFF_REF is written too.
-        if !q.my_wwff.is_empty() {
-            field(&mut l, "MY_SIG", "WWFF");
-            field(&mut l, "MY_SIG_INFO", &q.my_wwff);
-            field(&mut l, "MY_WWFF_REF", &q.my_wwff);
-        }
-        field(&mut l, "MY_POTA_REF", &q.my_pota);
-        field(&mut l, "MY_SOTA_REF", &q.my_sota);
-        // Park to park: the reference of the other station, with its own field per program.
-        if !q.their_ref.is_empty() {
-            match q.their_prog.as_str() {
-                "WWFF" => {
-                    field(&mut l, "SIG", "WWFF");
-                    field(&mut l, "SIG_INFO", &q.their_ref);
-                    field(&mut l, "WWFF_REF", &q.their_ref);
-                }
-                "POTA" => field(&mut l, "POTA_REF", &q.their_ref),
-                "SOTA" => field(&mut l, "SOTA_REF", &q.their_ref),
-                _ => {}
-            }
-        }
-        l.push_str("<EOR>\n");
-        out.push_str(&l);
+        out.push_str(&adif_record(q, o));
     }
     out
+}
+
+/// One QSO as a single ADIF record ending in `<EOR>` and a newline, without a header.
+/// This is what goes in one UDP datagram to a logger.
+pub fn adif_record(q: &Qso, o: &AdifOptions) -> String {
+    let mut l = String::new();
+    let (d, t) = date_time(q.ts);
+    field(&mut l, "CALL", &q.call);
+    field(&mut l, "QSO_DATE", &d);
+    field(&mut l, "TIME_ON", &t);
+    field(&mut l, "BAND", &q.band);
+    if q.freq_hz > 0 {
+        field(&mut l, "FREQ", &format!("{:.6}", q.freq_hz as f64 / 1e6));
+    }
+    field(&mut l, "MODE", if q.mode.is_empty() { "CW" } else { &q.mode });
+    field(&mut l, "RST_SENT", &q.rst_sent);
+    field(&mut l, "RST_RCVD", &q.rst_rcvd);
+    if q.nr_sent > 0 {
+        field(&mut l, "STX", &q.nr_sent.to_string());
+    }
+    field(&mut l, "STX_STRING", &q.extra_sent);
+    if !q.nr_rcvd.is_empty() && q.nr_rcvd.chars().all(|c| c.is_ascii_digit()) {
+        // The serial number as a plain integer: 007 becomes 7.
+        let n: u64 = q.nr_rcvd.parse().unwrap_or(0);
+        field(&mut l, "SRX", &n.to_string());
+    }
+    field(&mut l, "SRX_STRING", &q.extra_rcvd);
+    if !q.contest.is_empty() {
+        field(&mut l, "CONTEST_ID", &o.contest_id);
+    }
+    let station = if q.station_call.is_empty() { &q.my_call } else { &q.station_call };
+    let operator = if q.operator.is_empty() { &q.my_call } else { &q.operator };
+    field(&mut l, "STATION_CALLSIGN", station);
+    field(&mut l, "OPERATOR", operator);
+    field(&mut l, "MY_GRIDSQUARE", &q.my_grid.to_uppercase());
+    field(&mut l, "TX_PWR", &q.tx_pwr);
+    field(&mut l, "MY_RIG", &q.my_rig);
+    field(&mut l, "MY_ANTENNA", &q.my_antenna);
+    field(&mut l, "NAME", &q.name);
+    field(&mut l, "QTH", &q.qth);
+    field(&mut l, "COMMENT", &q.comment);
+    // Own references. WWFF asks for MY_SIG and MY_SIG_INFO; the ADIF field MY_WWFF_REF is written too.
+    if !q.my_wwff.is_empty() {
+        field(&mut l, "MY_SIG", "WWFF");
+        field(&mut l, "MY_SIG_INFO", &q.my_wwff);
+        field(&mut l, "MY_WWFF_REF", &q.my_wwff);
+    }
+    field(&mut l, "MY_POTA_REF", &q.my_pota);
+    field(&mut l, "MY_SOTA_REF", &q.my_sota);
+    // Park to park: the reference of the other station, with its own field per program.
+    if !q.their_ref.is_empty() {
+        match q.their_prog.as_str() {
+            "WWFF" => {
+                field(&mut l, "SIG", "WWFF");
+                field(&mut l, "SIG_INFO", &q.their_ref);
+                field(&mut l, "WWFF_REF", &q.their_ref);
+            }
+            "POTA" => field(&mut l, "POTA_REF", &q.their_ref),
+            "SOTA" => field(&mut l, "SOTA_REF", &q.their_ref),
+            _ => {}
+        }
+    }
+    l.push_str("<EOR>\n");
+    l
 }
 
 #[cfg(test)]

@@ -2,14 +2,18 @@
 //! (mode switching, the transmit path, validation) are testable without a window.
 
 pub mod audio;
+mod link;
+mod lookup;
 mod log;
 pub mod practice;
 
 pub use cwld_log::{LogFilter, Qso};
+pub use link::{LinkReport, n1mm_message, parse_targets};
+pub use lookup::{LookupStatus, LookupTest};
 pub use log::{ActivationStats, DupeInfo, ExportResult};
 pub use cwld_log::{Activation, CheckIssue, Severity};
 
-pub use audio::{AudioStatus, DecodeSource};
+pub use audio::{mode_holds_decoder, AudioStatus, DecodeHold, DecodeSource};
 pub use cwld_audio::{InputDevice, Source as AudioSource, TentativeOut};
 
 use cwld_radio::{
@@ -47,6 +51,8 @@ pub enum CoreError {
     /// A value the operator gave is not acceptable. The code says which one.
     #[error("invalid: {0}")]
     Invalid(&'static str),
+    #[error("{0}")]
+    Lookup(cwld_lookup::LookupError),
 }
 
 impl CoreError {
@@ -62,6 +68,7 @@ impl CoreError {
             CoreError::Audio(_) => "audio",
             CoreError::Log(_) => "log",
             CoreError::Invalid(c) => c,
+            CoreError::Lookup(e) => e.code(),
         }
     }
 }
@@ -126,6 +133,12 @@ pub enum CoreEvent {
     Audio { status: AudioStatus },
     /// Practice band transmissions that ended (see `practice_key`).
     PracticeDone { ids: Vec<u64> },
+    /// Why the decoder shows nothing (`None`: it decodes again), with the radio mode.
+    DecodeHold { hold: Option<DecodeHold>, mode: String },
+    /// Key down and up times in milliseconds for the paddle trainer: `[down, ms]` pairs.
+    Keying { runs: Vec<(bool, f32)> },
+    /// Practice mode turned the radio's speaker down and break-in off (`true`), or put them back.
+    RadioQuiet { quiet: bool },
 }
 
 pub struct AppCore {
@@ -139,8 +152,17 @@ pub struct AppCore {
     recordings_dir: Mutex<Option<PathBuf>>,
     link: Mutex<LinkState>,
     logbook: Mutex<cwld_log::Logbook>,
+    /// Callsign lookup (QRZ.com), with its own session and cache.
+    lookup: cwld_lookup::Lookup,
     /// The practice band while a practice exercise runs.
     practice: Mutex<Option<std::sync::Arc<Mutex<cwld_dsp::PracticeBand>>>>,
+    /// Speaker volume and break-in as they were before practice mode turned them down.
+    quieted: Mutex<Option<cwld_radio::AudioControls>>,
+    /// Practice mode already looked at the radio's speaker and break-in (once per practice
+    /// session, so a volume the operator turns up again by hand is left alone).
+    quiet_done: std::sync::atomic::AtomicBool,
+    /// What the interface was last told about `radio_is_quieted`.
+    quiet_reported: std::sync::atomic::AtomicBool,
 }
 
 /// Watches the link to a real radio, so a switched-off radio or a pulled cable shows as
@@ -192,9 +214,13 @@ impl AppCore {
             audio: Mutex::new(audio::AudioState::default()),
             tx_track: Mutex::new(audio::TxTrack::default()),
             practice: Mutex::new(None),
+            quieted: Mutex::new(None),
+            quiet_done: std::sync::atomic::AtomicBool::new(false),
+            quiet_reported: std::sync::atomic::AtomicBool::new(false),
             recordings_dir: Mutex::new(None),
             link: Mutex::new(LinkState::default()),
             logbook: Mutex::new(logbook),
+            lookup: cwld_lookup::Lookup::new(env!("CARGO_PKG_VERSION")),
         }
     }
 
@@ -219,6 +245,7 @@ impl AppCore {
                 }
             }
         };
+        self.radio_loud_again();
         let mut rig = self.rig.lock().unwrap();
         let _ = rig.execute(&RadioCommand::StopCw);
         let _ = rig.execute(&RadioCommand::SetScope(false));
@@ -257,6 +284,7 @@ impl AppCore {
     /// Lets go of the radio (the port is closed when the driver is dropped).
     pub fn disconnect(&self) {
         *self.link.lock().unwrap() = LinkState::default();
+        self.radio_loud_again();
         let mut rig = self.rig.lock().unwrap();
         let _ = rig.execute(&RadioCommand::StopCw);
         let _ = rig.execute(&RadioCommand::SetScope(false));
@@ -295,9 +323,61 @@ impl AppCore {
             self.practice_stop();
         }
         self.policy.set(policy);
+        if policy == TxPolicy::Practice && current != TxPolicy::Practice {
+            self.radio_quiet();
+        } else if current == TxPolicy::Practice && policy != TxPolicy::Practice {
+            self.radio_loud_again();
+        }
         let mut s = self.settings.lock().unwrap();
         s.last_policy = policy;
         Ok(())
+    }
+
+    /// Practice mode: turn the radio's speaker down and break-in off, if the operator wants that
+    /// and the radio reported both values. What was there is kept to put back later.
+    fn radio_quiet(&self) {
+        if !self.settings.lock().unwrap().practice.quiet_radio {
+            return;
+        }
+        let mut rig = self.rig.lock().unwrap();
+        let before = rig.audio_controls();
+        if !rig.status().connected || (before.af_level.is_none() && before.break_in.is_none()) {
+            // Not known yet (just connected): the next tick tries again.
+            return;
+        }
+        self.quiet_done.store(true, std::sync::atomic::Ordering::Relaxed);
+        let mut saved = cwld_radio::AudioControls::default();
+        if let Some(af) = before.af_level.filter(|v| *v > 0) {
+            if rig.execute(&RadioCommand::SetAfLevel(0)).is_ok() {
+                saved.af_level = Some(af);
+            }
+        }
+        if let Some(bk) = before.break_in.filter(|v| *v > 0) {
+            if rig.execute(&RadioCommand::SetBreakIn(0)).is_ok() {
+                saved.break_in = Some(bk);
+            }
+        }
+        if saved != cwld_radio::AudioControls::default() {
+            *self.quieted.lock().unwrap() = Some(saved);
+        }
+    }
+
+    /// Puts back what `radio_quiet` changed. Safe to call any time.
+    fn radio_loud_again(&self) {
+        self.quiet_done.store(false, std::sync::atomic::Ordering::Relaxed);
+        let Some(saved) = self.quieted.lock().unwrap().take() else { return };
+        let mut rig = self.rig.lock().unwrap();
+        if let Some(af) = saved.af_level {
+            let _ = rig.execute(&RadioCommand::SetAfLevel(af));
+        }
+        if let Some(bk) = saved.break_in {
+            let _ = rig.execute(&RadioCommand::SetBreakIn(bk));
+        }
+    }
+
+    /// The speaker volume and break-in are turned down by practice mode now.
+    pub fn radio_is_quieted(&self) -> bool {
+        self.quieted.lock().unwrap().is_some()
     }
 
     /// Sends text. Only `Live` reaches the radio. `Practice` simulates, `ListenOnly` refuses.
@@ -350,7 +430,15 @@ impl AppCore {
     /// Called about every 500 ms by the shell.
     pub fn tick(&self) -> Vec<CoreEvent> {
         let events = self.rig.lock().unwrap().poll();
-        let out = self.process(events);
+        let mut out = self.process(events);
+        if self.policy.get() == TxPolicy::Practice && !self.quiet_done.load(std::sync::atomic::Ordering::Relaxed) {
+            // A radio connected during practice mode reports its speaker volume a moment later.
+            self.radio_quiet();
+        }
+        let quiet = self.radio_is_quieted();
+        if quiet != self.quiet_reported.swap(quiet, std::sync::atomic::Ordering::Relaxed) {
+            out.push(CoreEvent::RadioQuiet { quiet });
+        }
         if self.reconnect_due(Instant::now()) {
             // The result is not an error for the operator: the next try follows in a few seconds.
             let cfg = self.settings.lock().unwrap().radio.clone();
@@ -744,6 +832,36 @@ mod radio_tests {
         assert!(c.snapshot().status.transmitting);
         c.set_policy(TxPolicy::ListenOnly, false).unwrap();
         assert!(!c.snapshot().status.transmitting);
+    }
+
+    #[test]
+    fn practice_mode_quiets_the_radio_and_puts_it_back() {
+        let c = AppCore::new(None);
+        c.connect(&RadioSettings::default()).unwrap();
+        let before = c.rig.lock().unwrap().audio_controls();
+        assert_eq!(before, cwld_radio::AudioControls { af_level: Some(128), break_in: Some(1) });
+        c.set_policy(TxPolicy::Practice, false).unwrap();
+        assert_eq!(c.rig.lock().unwrap().audio_controls(), cwld_radio::AudioControls { af_level: Some(0), break_in: Some(0) });
+        assert!(c.radio_is_quieted());
+        // The operator turns the volume up by hand: practice mode leaves it alone.
+        c.rig.lock().unwrap().execute(&RadioCommand::SetAfLevel(60)).unwrap();
+        c.tick();
+        assert_eq!(c.rig.lock().unwrap().audio_controls().af_level, Some(60));
+        c.set_policy(TxPolicy::ListenOnly, false).unwrap();
+        assert_eq!(c.rig.lock().unwrap().audio_controls(), before);
+        assert!(!c.radio_is_quieted());
+    }
+
+    #[test]
+    fn practice_mode_leaves_the_radio_alone_when_asked() {
+        let c = AppCore::new(None);
+        c.connect(&RadioSettings::default()).unwrap();
+        let mut s = c.settings();
+        s.practice.quiet_radio = false;
+        c.update_settings(s).unwrap();
+        c.set_policy(TxPolicy::Practice, false).unwrap();
+        c.tick();
+        assert_eq!(c.rig.lock().unwrap().audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(1) });
     }
 
     #[test]

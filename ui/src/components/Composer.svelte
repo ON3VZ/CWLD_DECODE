@@ -58,7 +58,9 @@
       oninput={() => (app.draft = app.draft.toUpperCase())} />
     <button class="btn primary" type="submit" disabled={!canSend || !app.draft.trim()}>{t('composer.send')}</button>
     <button class="btn" type="button" onclick={() => (app.qOpen = !app.qOpen)} title={`${t('qlib.open.hint')} (Ctrl+Q)`} aria-label={t('qlib.open.hint')} aria-pressed={app.qOpen}>Q</button>
-    <button class="btn danger" type="button" disabled={!busy && app.policy !== 'live'} onclick={() => app.stop()}>{t('composer.stop')} (Esc)</button>
+    <button class="btn danger" type="button" disabled={!busy && app.policy !== 'live'} onclick={() => app.stop()} title={t('composer.stop.help')}>{t('composer.stop')} (Esc)</button>
+    <button class="btn danger" type="button" disabled={!canSend} onclick={() => app.stopAndQrx()} title={t('composer.stopqrx.help')}>{t('composer.stopqrx')} (Esc Esc)</button>
+    <button class="btn" type="button" disabled={!canSend} onclick={() => app.sendError()} title={t('composer.error.help')}>{t('composer.error')}</button>
     {#if app.settings?.contest_mode}
     <label class="wpm inline">
       {t('composer.wpm')}

@@ -42,6 +42,8 @@ pub enum DecodeSource {
 pub(crate) struct AudioState {
     engine: Option<Engine>,
     status: AudioStatus,
+    /// The paddle trainer wants the key times (kept when the audio restarts).
+    keying: bool,
 }
 
 impl AudioState {
@@ -65,6 +67,27 @@ pub(crate) struct TxTrack {
     /// dropped), and how many resets are still under way.
     reset_route: Option<DecodeSource>,
     resets_pending: u32,
+    /// Why the decoder shows nothing right now (see `DecodeHold`), as last reported.
+    hold: Option<DecodeHold>,
+    /// The radio was on a phone or data mode at the previous tick.
+    mode_held: bool,
+    voice: bool,
+}
+
+/// Why no text comes out of the decoder although audio is running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DecodeHold {
+    /// The radio is on SSB, AM, FM or RTTY: CW is not expected, nothing is decoded.
+    Mode,
+    /// The audio sounds like speech or another wide signal, not like a CW tone.
+    Voice,
+}
+
+/// Modes in which a CW decoder can only make up text.
+pub fn mode_holds_decoder(mode: cwld_types::RadioMode) -> bool {
+    use cwld_types::RadioMode::*;
+    matches!(mode, Usb | Lsb | Am | Fm | Fsk)
 }
 
 impl AppCore {
@@ -100,6 +123,9 @@ impl AppCore {
         let mut st = self.audio.lock().unwrap();
         match Engine::start(source, cfg) {
             Ok(e) => {
+                if st.keying {
+                    e.set_keying(true);
+                }
                 st.engine = Some(e);
                 st.status = AudioStatus { running: true, tone_hz: s.audio.safe_tone() as f64, ..Default::default() };
                 Ok(st.status.clone())
@@ -292,12 +318,37 @@ impl AppCore {
         }
     }
 
+    /// The paddle trainer: hand out key down and up times (`CoreEvent::Keying`) or stop.
+    pub fn set_keying(&self, on: bool) {
+        let mut st = self.audio.lock().unwrap();
+        st.keying = on;
+        if let Some(e) = &st.engine {
+            e.set_keying(on);
+        }
+    }
+
     /// Called about every 100 ms by the shell: everything the audio thread reported.
     pub fn audio_tick(&self) -> Vec<CoreEvent> {
-        let transmitting = self.rig.lock().unwrap().status().transmitting;
+        let (transmitting, connected, mode) = {
+            let r = self.rig.lock().unwrap();
+            let s = r.status();
+            (s.transmitting, s.connected, s.mode)
+        };
         let radio_text = self.rig.lock().unwrap().capabilities().radio_decoder_text;
         let now = Instant::now();
         self.track_transmit(transmitting, radio_text, now);
+        // In practice mode the audio is the practice band, whatever the radio is set to.
+        let mode_hold = connected && self.policy() != cwld_types::TxPolicy::Practice && mode_holds_decoder(mode);
+        let back_on_cw = {
+            let mut t = self.tx_track.lock().unwrap();
+            let back = t.mode_held && !mode_hold;
+            t.mode_held = mode_hold;
+            back
+        };
+        if back_on_cw {
+            // What the decoder heard on SSB is of no use: start clean on CW.
+            self.reset_decoder(false, None);
+        }
         let events = {
             let st = self.audio.lock().unwrap();
             match &st.engine {
@@ -317,6 +368,9 @@ impl AppCore {
                     }
                 }
                 EngineEvent::Decode { text, conf, tentative, wpm } => {
+                    if mode_hold {
+                        continue;
+                    }
                     if let Some(source) = self.route_decode(now, radio_text) {
                         out.push(CoreEvent::Decode { source, text, conf, tentative, wpm });
                     }
@@ -324,7 +378,9 @@ impl AppCore {
                 EngineEvent::Waterfall { bins, lo_hz, hz_per_bin } => out.push(CoreEvent::Waterfall { bins, lo_hz, hz_per_bin }),
                 EngineEvent::Level { dbfs, peak } => out.push(CoreEvent::AudioLevel { dbfs, peak }),
                 EngineEvent::PracticeDone { ids } => out.push(CoreEvent::PracticeDone { ids }),
-                EngineEvent::Stats { confidence, snr_db, bandwidth_hz } => {
+                EngineEvent::Keying { runs } => out.push(CoreEvent::Keying { runs }),
+                EngineEvent::Stats { confidence, snr_db, bandwidth_hz, voice } => {
+                    self.tx_track.lock().unwrap().voice = voice;
                     out.push(CoreEvent::Bandwidth { hz: bandwidth_hz });
                     if let Some(c) = confidence {
                         out.push(CoreEvent::Decoder { stats: cwld_types::DecoderStats { confidence: c, snr_db, accuracy: None, bandwidth_hz: Some(bandwidth_hz) } });
@@ -359,6 +415,17 @@ impl AppCore {
         }
         if status_changed {
             out.push(CoreEvent::Audio { status: self.audio_status() });
+        }
+        let hold_change = {
+            let mut t = self.tx_track.lock().unwrap();
+            let hold = if mode_hold { Some(DecodeHold::Mode) } else if t.voice { Some(DecodeHold::Voice) } else { None };
+            (hold != t.hold).then(|| {
+                t.hold = hold;
+                hold
+            })
+        };
+        if let Some(hold) = hold_change {
+            out.push(CoreEvent::DecodeHold { hold, mode: format!("{mode:?}").to_uppercase() });
         }
         out
     }
@@ -473,6 +540,56 @@ mod tests {
         let ev = run_until_stopped(&c);
         assert_eq!(decoded(&ev, DecodeSource::Rx), "");
         assert_eq!(decoded(&ev, DecodeSource::Paddle), "");
+    }
+
+    #[test]
+    fn nothing_is_decoded_while_the_radio_is_on_ssb() {
+        let c = core();
+        c.connect(&cwld_types::RadioSettings::default()).unwrap();
+        c.rig.lock().unwrap().execute(&cwld_types::RadioCommand::SetMode(cwld_types::RadioMode::Usb)).unwrap();
+        let g = generate(&CwSpec { text: "CQ CQ DE DL1ABC K".into(), snr_db: Some(15.0), ..Default::default() });
+        c.start_audio_source(Source::Samples { rate: 8000, data: g.samples.clone(), realtime: false }).unwrap();
+        let ev = run_until_stopped(&c);
+        assert_eq!(decoded(&ev, DecodeSource::Rx), "");
+        assert!(ev.iter().any(|e| matches!(e, CoreEvent::DecodeHold { hold: Some(DecodeHold::Mode), mode } if mode == "USB")));
+        // In practice mode the radio mode does not matter.
+        let c = core();
+        c.connect(&cwld_types::RadioSettings::default()).unwrap();
+        c.rig.lock().unwrap().execute(&cwld_types::RadioCommand::SetMode(cwld_types::RadioMode::Lsb)).unwrap();
+        c.set_policy(TxPolicy::Practice, false).unwrap();
+        c.start_audio_source(Source::Samples { rate: 8000, data: g.samples, realtime: false }).unwrap();
+        assert_eq!(decoded(&run_until_stopped(&c), DecodeSource::Rx), g.truth);
+    }
+
+    #[test]
+    fn the_key_times_of_a_clean_sidetone_come_out_for_the_trainer() {
+        let c = core();
+        c.set_keying(true);
+        // 20 WPM: a dot is 60 ms, a dash 180 ms, a gap inside a character 60 ms.
+        let g = generate(&CwSpec { text: "PARIS PARIS".into(), wpm: 20.0, snr_db: None, lead_s: 0.5, trail_s: 3.0, ..Default::default() });
+        c.start_audio_source(Source::Samples { rate: 8000, data: g.samples, realtime: false }).unwrap();
+        let ev = run_until_stopped(&c);
+        let runs: Vec<(bool, f32)> = ev.iter().filter_map(|e| if let CoreEvent::Keying { runs } = e { Some(runs.clone()) } else { None }).flatten().collect();
+        let downs: Vec<f32> = runs.iter().filter(|r| r.0).map(|r| r.1).collect();
+        // PARIS has 14 elements: 10 dots and 4 dashes, twice.
+        assert_eq!(downs.len(), 28, "{runs:?}");
+        let dots = downs.iter().filter(|d| **d < 120.0).count();
+        assert_eq!(dots, 20, "{downs:?}");
+        for d in &downs {
+            let near = if *d < 120.0 { 60.0 } else { 180.0 };
+            assert!((d - near).abs() <= 20.0, "{d} ms, {downs:?}");
+        }
+    }
+
+    #[test]
+    fn phone_and_data_modes_hold_the_decoder() {
+        use cwld_types::RadioMode::*;
+        for m in [Usb, Lsb, Am, Fm, Fsk] {
+            assert!(mode_holds_decoder(m));
+        }
+        for m in [Cw, CwReverse, Other] {
+            assert!(!mode_holds_decoder(m));
+        }
     }
 
     #[test]
