@@ -10,12 +10,9 @@
 
 <section class="card">
   <h2>{t('qso.title')}</h2>
-  {#if !app.qso.call}
-    <p class="muted">{t('qso.empty')}</p>
-  {/if}
-  <label>
+  <label title={app.qso.call ? undefined : t('qso.empty')}>
     {t('qso.call')}
-    <input class="mono" bind:value={app.qso.call} oninput={typed} />
+    <input class="mono" bind:value={app.qso.call} oninput={typed} title={app.qso.call ? undefined : t('qso.empty')} />
   </label>
   <div class="mode" class:locked={app.callLocked}>
     {#if app.callLocked}
@@ -26,8 +23,11 @@
     {/if}
   </div>
   <label>{t('qso.name')}<input bind:value={app.qso.name} /></label>
-  <label>{t('qso.rst')}<input class="mono" bind:value={app.qso.rst} /></label>
   <label>{t('qso.qth')}<input bind:value={app.qso.qth} /></label>
+  <div class="pair">
+    <label>{t('qso.rst')}<input class="mono" bind:value={app.qso.rst} /></label>
+    {#if !app.settings?.contest_mode}<label>{t('contest.rcvd.rst')}<input class="mono" bind:value={app.entry.rst} /></label>{/if}
+  </div>
   {#if app.activation && !app.settings?.contest_mode}
     <label>{t('qso.theirref')}
       <span class="refrow">
@@ -37,7 +37,6 @@
     </label>
   {/if}
   {#if !app.settings?.contest_mode}
-    <label>{t('contest.rcvd.rst')}<input class="mono" bind:value={app.entry.rst} /></label>
     <button class="btn primary" onclick={() => app.logQso()} disabled={!app.qso.call.trim()} title={t('log.qso.help')}>{t('contest.log')}</button>
   {/if}
   <p class="muted small">{t('qso.hint')}</p>
@@ -50,6 +49,9 @@
   .small { font-size: 12px; }
   label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 2px; }
   input { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 16px; color: var(--text); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pair label { min-width: 0; }
+  .pair input { min-width: 0; width: 100%; box-sizing: border-box; }
   .refrow { display: grid; grid-template-columns: 5.5em 1fr; gap: 6px; }
   select { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; color: var(--text); }
   .mode { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); margin-top: -4px; }

@@ -611,5 +611,9 @@
   "wiz.s4.test.body": "This is what CWLD would send for a CQ at 18 words per minute. Nothing is transmitted now.",
   "wiz.s4.test.time": "Sending time: about {s} seconds.",
   "wiz.s4.mode": "You start in LISTEN mode, which never transmits. You switch to LIVE yourself, and Esc always stops sending.",
-  "wiz.err.nocall": "Fill in at least one callsign."
+  "wiz.err.nocall": "Fill in at least one callsign.",
+  "audio.tools": "Tuning",
+  "audio.tools.help": "Show or hide the decoder buttons: Weak, Medium, Strong, Narrow, Wide, Strongest, AFC and the gain.",
+  "act.chip.help": "Activation running: click for the details",
+  "act.close": "Close"
 }

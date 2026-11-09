@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
+  import ActivationButton from './ActivationButton.svelte';
 </script>
 
 <nav class="tabs" aria-label={t('tabs.title')}>
@@ -21,6 +22,7 @@
   {#if app.sessions.length > 1 || app.cur.messages.length > 0}
     <button class="btn newqso" onclick={() => app.requestCloseAll()} title={t('tabs.closeall.help')}>{t('tabs.closeall')}</button>
   {/if}
+  {#if app.profile && !app.settings?.contest_mode}<ActivationButton />{/if}
 </nav>
 
 <style>

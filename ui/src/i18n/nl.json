@@ -611,5 +611,9 @@
   "wiz.s4.test.body": "Dit is wat CWLD zou zenden voor een CQ op 18 woorden per minuut. Er wordt nu niets uitgezonden.",
   "wiz.s4.test.time": "Zendtijd: ongeveer {s} seconden.",
   "wiz.s4.mode": "Je start in LISTEN-modus, die nooit zendt. Je schakelt zelf naar LIVE, en Esc stopt het zenden altijd.",
-  "wiz.err.nocall": "Vul minstens één roepletter in."
+  "wiz.err.nocall": "Vul minstens één roepletter in.",
+  "audio.tools": "Afstellen",
+  "audio.tools.help": "Toon of verberg de decoderknoppen: Zwak, Midden, Sterk, Smal, Breed, Sterkste, AFC en de gain.",
+  "act.chip.help": "Activatie loopt: klik voor de details",
+  "act.close": "Sluiten"
 }

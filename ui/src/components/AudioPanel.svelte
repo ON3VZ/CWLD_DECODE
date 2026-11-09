@@ -15,6 +15,25 @@
   const zone = $derived(pct > 90 ? 'high' : pct < 5 ? 'low' : 'ok');
   const gain = $derived(app.settings?.audio.gain_db ?? 0);
   const wide = $derived(app.settings?.audio.wide_filter ?? false);
+
+  // The tuning buttons are tucked away by default. The choice is remembered on this computer.
+  const KEY = 'cwld.audio.tools';
+  let tools = $state(read());
+  function read(): boolean {
+    try {
+      return typeof localStorage !== 'undefined' && localStorage.getItem(KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+  function toggle() {
+    tools = !tools;
+    try {
+      localStorage.setItem(KEY, tools ? '1' : '0');
+    } catch {
+      // not remembered, still works
+    }
+  }
 </script>
 
 <section class="card">
@@ -35,12 +54,16 @@
       <span class="mono val {zone}">{Math.round(pct)}%</span>
     </div>
     <small class:warn={zone !== 'ok'} class="muted">{t(`meter.peak.${zone}`)}</small>
+  {/if}
+
+  <button class="tools" onclick={toggle} aria-expanded={tools} title={t('audio.tools.help')}>{tools ? '\u25BE' : '\u25B8'} {t('audio.tools')}</button>
+  {#if tools}
+  {#if app.audio?.running}
     <label class="gain">
       <span>{t('decoder.gain')}: <span class="mono">{gain > 0 ? '+' : ''}{gain.toFixed(0)} dB</span></span>
       <input type="range" min="-20" max="20" step="1" value={gain} oninput={(e) => app.setTuning({ gain_db: Number((e.currentTarget as HTMLInputElement).value) })} aria-label={t('decoder.gain')} />
     </label>
   {/if}
-
   <div class="ctl">
     <div class="seg" role="group" aria-label={t('decoder.preset.title')}>
       {#each ['weak', 'medium', 'strong'] as const as k (k)}
@@ -56,6 +79,7 @@
     <button class="btn small" onclick={() => app.goStrongest()} title={t('audio.panel.strongest.help')}><kbd>{app.settings?.contest_mode ? 'Ctrl+F6' : 'F6'}</kbd> {t('audio.panel.strongest')}</button>
     <button class="btn small" class:on={app.settings?.audio.afc ?? true} aria-pressed={app.settings?.audio.afc ?? true} onclick={() => app.setAfc(!(app.settings?.audio.afc ?? true))} title={t('decoder.afc.help')}><kbd>{app.settings?.contest_mode ? 'Ctrl+F7' : 'F7'}</kbd> AFC</button>
   </div>
+  {/if}
 </section>
 
 <style>
@@ -79,6 +103,7 @@
   .val { min-width: 3.2em; text-align: right; font-size: 13px; }
   .val.high { color: #e0584a; font-weight: 700; }
   .gain { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+  .tools { align-self: flex-start; background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }
   .ctl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .seg { display: inline-flex; }
   .seg button { background: var(--panel2); border: 1px solid var(--line); padding: 3px 10px; color: var(--text); cursor: pointer; font-size: 12px; }

@@ -196,3 +196,9 @@ Bij de eerste start opent een venster met vier stappen. Je kunt het altijd overs
 2. **Radio controleren.** Zet in de radio CI-V Transceive aan: MENU, SET, Connectors, CI-V. Draai aan de afstemknop: volgt de frequentie in het venster, dan staat het goed. CWLD kan deze instelling niet uit de radio lezen. Bij de QMX hoort hier niets, wel in stap 3 de zijtoon.
 3. **Geluid kiezen.** Kies de ingang van de radio (USB Audio CODEC), klik op Begin te luisteren en kijk naar de niveaubalk. Blijft die leeg: controleer de microfoon-privacy van Windows en zet geluidsverbeteringen uit. QMX: zet in het QMX-menu Audio, Sidetone volume hoog en Sidetone abs/rel op Relative.
 4. **Station.** Roepletters, naam, QTH en locator. De stille test toont de CQ die CWLD zou zenden en hoe lang die duurt, zonder iets te zenden.
+
+## 21. Meer ruimte (0.10.2)
+
+- De activatie zit niet meer in het rechterpaneel maar als groene knop rechts in de tabbalk. Zonder activatie heet ze Activatie en opent ze het formulier. Tijdens een activatie toont ze referentie en aantal QSO's. Klik erop voor grid, tellers, doel en Activatie beëindigen.
+- In het audiopaneel staan de decoderknoppen achter de schakelaar Afstellen. De sneltoetsen F6 (Sterkste) en F7 (AFC) werken ook als de knoppen verborgen zijn.
+- Het QSO-paneel toont de uitleg bij een leeg roepletterveld als tooltip.

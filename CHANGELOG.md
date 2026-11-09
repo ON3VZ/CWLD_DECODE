@@ -1,3 +1,15 @@
+## 0.10.2 (more room on the screen)
+
+- QSO panel: the line "No station selected. Click a callsign in the conversation." is gone from the screen. It is now a tooltip on the callsign field while that field is empty. RST and RST rcvd sit next to each other on one line.
+- Audio panel: the buttons Weak, Medium, Strong, Narrow, Wide, Strongest and AFC and the gain slider are behind a small Tuning switch (a triangle). They are hidden by default and CWLD remembers your choice on this computer. The waterfall and the peak meter stay visible, and the keys F6 and F7 (Ctrl+F6 and Ctrl+F7 in contest mode) keep working when the buttons are hidden.
+- Activation: the activation panel on the right is replaced by a green button at the right end of the tab bar, next to New QSO and Close all. Without an activation it says Activation and opens the form. During an activation it shows the reference and the number of QSOs (for example ONFF-0599 with a counter), with a red dot when the activation crosses midnight UTC. Click it for the grid in large letters, the counts, the target and the End activation button.
+
+## 0.10.1 (installer: the real cause of "Failed to kill CWLD")
+
+- The installer of Tauri does not look for a running cwld.exe. It asks the Windows Restart Manager which programs have the file cwld.exe open and tries to shut those down. When that is a program CWLD cannot shut down (an antivirus scan, Windows Search, Explorer, a backup tool), the installer stopped with "Failed to kill CWLD", even though CWLD itself was closed. The install window then showed "CWLD has stopped" followed by "Failed to kill CWLD".
+- CWLD now replaces that check by its own. The installer only stops when cwld.exe is really still running, with a clear message. When another program only has the file open, the install window names that program (process id and path), moves the old cwld.exe aside and carries on. The old file is removed later.
+- This works from the first installation of this version on, because the new installer does the check. Installing 0.10.1 over an older version needs no manual steps, except when you choose in the installer to uninstall the old version first: that runs the old uninstaller.
+
 ## 0.10.0 (guided first start)
 
 - A guided start in four steps opens on the first run, and again from Settings, Updates and about, Guided start. You can skip it at any time, and it never transmits.

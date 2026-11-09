@@ -228,3 +228,18 @@ Geen radio nodig.
 5. Stap 3: de radio-ingang staat voorgesteld. Klik op Begin te luisteren. Verwacht: niveaubalk beweegt bij een signaal. Zet in Windows de microfoon-privacy uit en meld wat er gebeurt.
 6. Stap 4: vul je gegevens in en kijk naar de stille test. Klik op Klaar. Verwacht: niets gezonden, CWLD start voortaan verbonden en luisterend.
 7. Wis de instellingen (map %APPDATA%\io.github.on3vz.cwld, bestand settings.json hernoemen) en start CWLD. Verwacht: het venster opent vanzelf.
+
+## A35. Installer zonder "Failed to kill CWLD" (0.10.1)
+
+1. Sluit CWLD. Start het installatieprogramma van 0.10.1 (dubbelklik op het bestand dat eindigt op -setup.exe).
+2. Klik in het installatievenster op Show details (of Details tonen) om de regels te zien.
+3. Verwacht: "CWLD has stopped" en daarna gewoon verder installeren. Staat er "The old cwld.exe is in use by another program", stuur dan een schermafbeelding van de regel "In use by: ...". Dat is het programma dat het bestand vasthield.
+4. Herhaal met CWLD open: het installatieprogramma sluit CWLD en installeert.
+5. Herhaal via de update in CWLD zelf (zodra 0.10.2 of later bestaat).
+
+## A36. Meer ruimte op het scherm (0.10.2)
+
+1. QSO-paneel: staat de lege tekst weg? Houd de muis boven het lege roepletterveld (klik Nieuwe QSO): verschijnt de uitleg als tooltip? Staan RST en RST ontv. naast elkaar en zijn ze groot genoeg om te lezen?
+2. Audio-paneel: staat Afstellen dicht? Klik erop: komen Zwak, Midden, Sterk, Smal, Breed, Sterkste en AFC en de gain-schuif tevoorschijn? Sluit CWLD en start opnieuw: onthoudt hij je keuze? Werken F6 en F7 ook als het dicht staat?
+3. Activatie: de groene knop Activatie staat rechts naast Alles sluiten. Start een activatie (ONFF-0599 en een grid): toont de knop de referentie en het aantal QSO's? Log een QSO: gaat de teller omhoog? Klik op de knop: grid in grote letters, Activatie beëindigen werkt, Sluiten werkt.
+4. Meld of de groene kleur van de knop past, of dat je een andere tint wilt.

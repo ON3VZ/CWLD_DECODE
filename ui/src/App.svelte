@@ -18,7 +18,6 @@
   import SettingsDialog from './components/SettingsDialog.svelte';
   import QCodePanel from './components/QCodePanel.svelte';
   import LogPanel from './components/LogPanel.svelte';
-  import ActivationPanel from './components/ActivationPanel.svelte';
   import PracticePanel from './components/PracticePanel.svelte';
   import LogEdit from './components/LogEdit.svelte';
   import ExportDialog from './components/ExportDialog.svelte';
@@ -108,7 +107,7 @@
         <Composer />
       </section>
       <aside class="side">
-        {#if app.policy === 'practice' || app.practiceScore}<PracticePanel />{:else if app.profile && !app.settings.contest_mode}<ActivationPanel />{/if}
+        {#if app.policy === 'practice' || app.practiceScore}<PracticePanel />{/if}
         <QsoPanel />
         {#if app.settings.signals_panel}
           <SignalsPanel />
