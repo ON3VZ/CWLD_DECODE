@@ -85,6 +85,10 @@ pub struct Pipeline {
     voice_clear_evals: u32,
     last_voice_eval: u64,
     keying: KeyingRecorder,
+    /// The speech check as configured, restored when the paddle trainer stops.
+    voice_gate_base: bool,
+    /// Audio of the last seconds is processed again after a pitch move.
+    replaying: bool,
 }
 
 /// Key down and key up runs in frames, with blips of one frame folded into the run around them.
@@ -93,12 +97,52 @@ struct KeyingRecorder {
     cur: bool,
     len: u32,
     runs: Vec<(bool, u32)>,
+    /// Envelope floor (key up level), follows downward fast and upward slowly.
+    floor: f32,
+    /// Recent peak (key down level), decays slowly.
+    peak: f32,
+    frames: u32,
 }
+
+/// The key state for the paddle trainer comes from the envelope at the sidetone pitch, not from the
+/// decoder's likelihoods: those need a few characters to settle and flip on noise. Down above
+/// `KEY_DOWN_AT` of the way from floor to peak, up below `KEY_UP_AT` (hysteresis), and only when the
+/// peak stands at least `KEY_MIN_RATIO` above the floor, so band noise alone never keys.
+const KEY_DOWN_AT: f32 = 0.5;
+const KEY_UP_AT: f32 = 0.3;
+const KEY_MIN_RATIO: f32 = 4.0;
+/// Per frame (5 ms): the peak halves in about 3 s; the floor is an average over about one second.
+const KEY_PEAK_DECAY: f32 = 0.99885;
+const KEY_FLOOR_RATE: f32 = 0.005;
+const KEY_WARMUP_FRAMES: u32 = 100;
 
 /// Runs shorter than this many frames (10 ms) are taken as noise on the edge of an element.
 const KEYING_MIN_FRAMES: u32 = 2;
 
 impl KeyingRecorder {
+    /// One frame of envelope: updates floor and peak and records the key state.
+    fn push_env(&mut self, env: f32) {
+        let env = env.max(0.0);
+        self.frames += 1;
+        if self.frames <= KEY_WARMUP_FRAMES {
+            // The first half second only measures the floor (running mean); no key-down yet.
+            self.floor += (env - self.floor) / self.frames as f32;
+            self.peak = self.peak.max(env);
+            self.push(false);
+            return;
+        }
+        // The floor is the average key-up level (band noise), not its deepest dip, so ordinary
+        // noise peaks stay well below `KEY_MIN_RATIO` times it. It does not move while the key is down.
+        if !self.cur {
+            self.floor += (env - self.floor) * KEY_FLOOR_RATE;
+        }
+        self.peak = (self.peak * KEY_PEAK_DECAY).max(env);
+        let span = self.peak - self.floor;
+        let real = self.peak > self.floor.max(1e-9) * KEY_MIN_RATIO;
+        let down = real && if self.cur { env > self.floor + KEY_UP_AT * span } else { env > self.floor + KEY_DOWN_AT * span };
+        self.push(down);
+    }
+
     fn push(&mut self, down: bool) {
         if down == self.cur {
             self.len += 1;
@@ -135,7 +179,13 @@ impl Pipeline {
         words.junk_strength = cfg.junk_strength;
         let cfg_gate = cfg.cw_gate;
         let cfg_rate = cfg.sample_rate;
-        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0, voice: crate::voice::VoiceDetector::new(cfg_rate), voice_heard: false, voice_clear_evals: 0, last_voice_eval: 0, keying: KeyingRecorder::default() }
+        let cfg_voice = cfg.voice_gate;
+        let mut cfg = cfg;
+        if cfg.keying {
+            // A pipeline rebuilt during a paddle exercise (engine reset) keeps the speech check off.
+            cfg.voice_gate = false;
+        }
+        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0, voice: crate::voice::VoiceDetector::new(cfg_rate), voice_heard: false, voice_clear_evals: 0, last_voice_eval: 0, keying: KeyingRecorder::default(), voice_gate_base: cfg_voice, replaying: false }
     }
 
     /// Keyed CW is in the envelope (not just noise at this pitch).
@@ -149,9 +199,17 @@ impl Pipeline {
     }
 
     /// Starts or stops keeping the key times.
+    /// While the paddle trainer listens, the speech check is off: the only signal is the radio's
+    /// own sidetone, and a sidetone with overtones or a little clipping looks like speech to it
+    /// (measured, see `paddle_harmonics_experiment`).
     pub fn set_keying(&mut self, on: bool) {
         self.cfg.keying = on;
         self.keying = KeyingRecorder::default();
+        self.cfg.voice_gate = self.voice_gate_base && !on;
+        if on {
+            self.voice_heard = false;
+            self.voice_clear_evals = 0;
+        }
     }
 
     /// The finished key runs since the last call, in milliseconds: (key down, length). The run
@@ -259,7 +317,10 @@ impl Pipeline {
         let replay: Vec<f32> = self.raw.range(..end).cloned().collect();
         self.quiet_updates = 0;
         self.hold_frames = (AUTO_HOLD_S * FRAME_RATE) as usize;
+        // The key times of this audio were already recorded once: not again.
+        self.replaying = true;
         self.process(&replay);
+        self.replaying = false;
     }
 
     /// Wide filter: double bandwidth for drifting or chirpy signals.
@@ -332,9 +393,9 @@ impl Pipeline {
             self.pending.clear();
             self.dec.push_llr(&vec![0.0; n]);
         }
-        if self.cfg.keying {
+        if self.cfg.keying && !self.replaying {
             for f in &frames {
-                self.keying.push(f.llr > 0.0);
+                self.keying.push_env(f.env);
             }
         }
         let envs: Vec<f32> = frames.iter().map(|f| f.env).collect();
@@ -431,3 +492,113 @@ impl Pipeline {
         FRAME_RATE
     }
 }
+
+#[cfg(test)]
+mod paddle_harmonics_experiment {
+    use super::*;
+    use cwld_dsp::{generate, CwSpec};
+
+    #[test]
+    #[ignore]
+    fn print_sidetone_with_overtones() {
+        for (label, h2, h3, h5, clip) in [
+            ("pure sine", 0.0, 0.0, 0.0, 1.0),
+            ("2nd -20 dB", 0.1, 0.0, 0.0, 1.0),
+            ("3rd -10 dB, 5th -14 dB (square-ish)", 0.0, 0.33, 0.2, 1.0),
+            ("hard clipped at 30 percent", 0.0, 0.0, 0.0, 0.3),
+        ] {
+            let g = generate(&CwSpec { text: "PARIS KMRSU PARIS".into(), tone_hz: 600.0, snr_db: None, lead_s: 5.0, trail_s: 3.0, ..Default::default() });
+            // The generator gives the keyed sine; rebuild the envelope from it and add overtones.
+            let sr = 8000.0;
+            let mut env = 0.0f32;
+            let s: Vec<f32> = g.samples.iter().enumerate().map(|(i, x)| {
+                env = env.max(x.abs()) * 0.995 + x.abs() * 0.005;
+                let t = i as f64 / sr;
+                let w = 2.0 * std::f64::consts::PI * 600.0 * t;
+                let over = (h2 * (2.0 * w).sin() + h3 * (3.0 * w).sin() + h5 * (5.0 * w).sin()) as f32;
+                let y = x + env.min(1.0) * over;
+                y.clamp(-clip, clip) * 0.5
+            }).collect();
+            let mut cfg = PipelineConfig::new(8000, 700.0);
+            cfg.auto_tone = true;
+            cfg.min_separation = 3.5;
+            let mut p = Pipeline::new(cfg);
+            p.set_keying(true);
+            let (mut text, mut downs, mut voice_blocks) = (String::new(), 0, 0);
+            for b in s.chunks(160) {
+                p.push(b);
+                text.push_str(&p.poll().committed);
+                downs += p.take_keying().iter().filter(|r| r.0).count();
+                if p.voice_heard() { voice_blocks += 1; }
+            }
+            println!("{label:40} text={:?} downs={downs} voice_blocks={voice_blocks} stats={:?}", text.trim(), p.voice_stats());
+        }
+    }
+}
+
+#[cfg(test)]
+mod paddle_keying {
+    use super::*;
+    use cwld_dsp::{generate, CwSpec};
+
+    /// Elements (dots and dashes) of a text: the key-downs a perfect reading gives.
+    fn elements(text: &str) -> usize {
+        let table = [("P", 4), ("A", 2), ("R", 3), ("I", 2), ("S", 3), ("K", 3), ("M", 2), ("U", 3)];
+        text.chars().filter(|c| *c != ' ').map(|c| table.iter().find(|(k, _)| k.starts_with(c)).unwrap().1).sum()
+    }
+
+    fn keyed(spec: CwSpec, overtones: bool) -> (Vec<(bool, f32)>, String) {
+        let mut env = 0.0f32;
+        let samples: Vec<f32> = generate(&spec)
+            .samples
+            .iter()
+            .enumerate()
+            .map(|(i, x)| {
+                if !overtones {
+                    return *x;
+                }
+                env = env.max(x.abs()) * 0.995 + x.abs() * 0.005;
+                let w = 2.0 * std::f64::consts::PI * spec.tone_hz * i as f64 / 8000.0;
+                (x + env.min(1.0) * (0.33 * (3.0 * w).sin() + 0.2 * (5.0 * w).sin()) as f32).clamp(-0.6, 0.6)
+            })
+            .collect();
+        let mut cfg = PipelineConfig::new(8000, 700.0);
+        cfg.auto_tone = true;
+        cfg.min_separation = 3.5;
+        let mut p = Pipeline::new(cfg);
+        p.set_keying(true);
+        let (mut runs, mut text) = (vec![], String::new());
+        for b in samples.chunks(160) {
+            p.push(b);
+            text.push_str(&p.poll().committed);
+            runs.extend(p.take_keying());
+        }
+        (runs, text)
+    }
+
+    #[test]
+    fn a_sidetone_with_overtones_is_decoded_not_taken_for_speech() {
+        // Found with ON3VZ (0.13.2): with the speech check on, this gave no text at all.
+        let (runs, text) = keyed(CwSpec { text: "PARIS KMRSU PARIS".into(), tone_hz: 600.0, lead_s: 5.0, trail_s: 3.0, ..Default::default() }, true);
+        assert!(text.contains("KMRSU"), "{text:?}");
+        assert_eq!(runs.iter().filter(|r| r.0).count(), elements("PARIS KMRSU PARIS"));
+    }
+
+    #[test]
+    fn key_times_are_exact_clean_and_with_band_noise() {
+        for snr in [None, Some(40.0), Some(25.0)] {
+            let (runs, _) = keyed(CwSpec { text: "PARIS KMRSU".into(), tone_hz: 600.0, snr_db: snr, lead_s: 10.0, trail_s: 3.0, ..Default::default() }, false);
+            let downs: Vec<f32> = runs.iter().filter(|r| r.0).map(|r| r.1).collect();
+            assert_eq!(downs.len(), elements("PARIS KMRSU"), "snr {snr:?}: {runs:?}");
+            // 20 WPM: dot 60 ms, dash 180 ms, within one frame or two.
+            assert!(downs.iter().all(|d| (*d - 60.0).abs() <= 15.0 || (*d - 180.0).abs() <= 15.0), "snr {snr:?}: {downs:?}");
+        }
+    }
+
+    #[test]
+    fn noise_alone_never_keys() {
+        let (runs, _) = keyed(CwSpec { text: "".into(), snr_db: Some(20.0), lead_s: 8.0, trail_s: 0.0, ..Default::default() }, false);
+        assert_eq!(runs.iter().filter(|r| r.0).count(), 0, "{runs:?}");
+    }
+}
+

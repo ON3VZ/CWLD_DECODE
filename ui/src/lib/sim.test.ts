@@ -4,7 +4,7 @@ import type { SimTx } from './sim';
 import { emptyLogQso } from './types';
 import type { ContestSettings, LogQso, PracticeSettings } from './types';
 
-const cfg = (o: Partial<PracticeSettings> = {}): PracticeSettings => ({ exercise: 'they_cq', wpm_min: 18, wpm_max: 26, strength: 'medium', noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5, quiet_radio: true, paddle: { exercise: 'chars', stats: [], sessions: [] }, ...o });
+const cfg = (o: Partial<PracticeSettings> = {}): PracticeSettings => ({ exercise: 'they_cq', wpm_min: 18, wpm_max: 26, strength: 'medium', noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5, quiet_radio: true, paddle: { exercise: 'chars', stats: [], sessions: [] }, koch: { chars: 'KMRSUAPTLOWINJEF0YVG5/Q9ZH38B?427C1D6X', char_wpm: 20, eff_wpm: 12, tone_hz: 650, listen: 'groups', stats: [], sessions: [] }, ...o });
 const contest = (active: string, sent_index = 0): ContestSettings => ({ active, sent_index, session: 1, profiles: [], vars: [] });
 const sim = (o: Partial<PracticeSettings> = {}, c?: ContestSettings, seed = 7) => new PracticeSim({ cfg: cfg(o), myCall: 'ON3VZ', myName: 'KRIS', toneHz: 700, contest: c, seed });
 /** Lets every transmission end, as the band would. */

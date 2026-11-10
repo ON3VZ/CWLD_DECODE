@@ -293,6 +293,8 @@ Zo kijk je na of het werkt:
 
 ### Wat de score meet
 
+CWLD leest wat je seinde rechtstreeks uit je sleuteltijden (wanneer de zijtoon aan en uit ging), met je eigen snelheid gemeten over de hele poging. Dat is betrouwbaarder dan de gewone decoder, die eerst een paar tekens nodig heeft om je snelheid te vinden. Tijdens paddle oefenen staat de spraakcontrole van de decoder uit: een zijtoon met boventonen werd anders voor spraak aangezien en dan kwam er niets door (gevonden met ON3VZ, hersteld in 0.13.2).
+
 - **Juist**: het aandeel tekens dat goed overkwam. Een pauze midden in een teken telt als fout, want een keyer knipt dan het teken in twee (A wordt E T).
 - **Spatiëring**: de pauze in een teken (ideaal 1 punt), tussen tekens (3 punten) en tussen woorden (7 punten), en bij een seinsleutel ook de streeplengte (3 punten) en hoe gelijk je punten en strepen zijn.
 - Met de keyer van de radio zijn punten en strepen altijd perfect. Dan is alleen je spatiëring van jou, en CWLD zegt dat ook.
@@ -329,3 +331,32 @@ Heb je een QRZ.com account, dan kan CWLD de voornaam en woonplaats van het stati
 
 Het wachtwoord staat versleuteld in Windows Referentiebeheer, voor je eigen Windows-account. Het staat nooit in het instellingenbestand, in het logboek of op het scherm. Wil je het wissen, klik dan "Opgeslagen wachtwoord wissen". Op Linux gebruikt CWLD de Secret Service (bijvoorbeeld GNOME Keyring of KWallet); is die er niet, dan meldt CWLD dat het wachtwoord niet bewaard kan worden.
 
+## 27. De Koch-methode: tekens kiezen en kopiëren (0.14.0)
+
+De Koch-methode leert je morse door te beginnen met maar twee of drie tekens op volle snelheid. Pas als je die goed kopieert, komt er een teken bij. Zo leer je de klank van elk teken en tel je geen punten en strepen.
+
+### Je tekens kiezen
+
+1. Zet de radio in OEFENEN (het kopje bovenaan). Rechts staat de kaart "Tekens leren (Koch)".
+2. Sleep het schuifje: "De eerste 8 van 40 tekens" gebruikt de eerste acht van de Koch-volgorde (K M R S U A P T).
+3. Wil je een teken ook gebruiken dat nog niet aan de beurt is, of juist weglaten? Klik op dat teken. Gekleurd betekent: in gebruik. Minstens twee tekens blijven staan.
+4. Het omrande teken is het nieuwste. Dat komt vaker terug, net als tekens die je eerder fout deed.
+
+De keuze wordt onthouden. Standaard staan alle tekens aan, dus er verandert niets tot je ze beperkt.
+
+### Seinen met de paddle met jouw tekens
+
+De paddle-oefeningen (kaart "Paddle oefenen") gebruiken alleen je gekozen tekens. Woorden, roepletters en zinnen komen alleen voor als ze volledig uit jouw tekens bestaan. Zijn het er te weinig, dan staat er een korte melding en krijg je tekengroepen. Roepletters hebben minstens drie letters en een cijfer nodig.
+
+### Luisteren en typen
+
+1. Kies bij "Wat wordt afgespeeld" groepen van 5 tekens of woorden.
+2. Stel de tekensnelheid in (standaard 20 WPM) en de totale snelheid (standaard 12 WPM). Het verschil zit in de pauzes: de tekens blijven snel, de ruimte ertussen wordt langer (Farnsworth). Werk langzaam omhoog met de totale snelheid, niet met de tekensnelheid.
+3. Klik "Start luisteren". Het geluid komt van deze computer, nooit via de radio, dus je kunt dit ook zonder verbonden radio doen.
+4. Typ wat je hoort in het vak en druk op Enter. Fout getypte tekens worden rood onderstreept met wat jij typte eronder. "Nog eens afspelen" speelt dezelfde tekst opnieuw. Esc stopt.
+
+### Wanneer komt er een teken bij?
+
+CWLD telt de laatste drie rondes met dezelfde tekens. Zijn ze samen minstens 90 procent juist (en minstens 30 tekens), dan verschijnt een voorstel om het volgende Koch-teken toe te voegen. Je klikt zelf op "Voeg ... toe"; CWLD doet het nooit vanzelf.
+
+Onder de kaart staan de tekens waar je het vaakst fout op zat en je laatste vijf rondes. "Vergeet mijn resultaten" wist ze.

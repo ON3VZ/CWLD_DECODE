@@ -191,6 +191,26 @@ export interface PracticeSettings {
   /** Practice mode turns the radio's speaker down and break-in off, and puts both back after. */
   quiet_radio: boolean;
   paddle: PaddleProgress;
+  koch: KochSettings;
+}
+
+/** Koch method choices (see the Rust struct KochSettings). */
+export interface KochSettings {
+  /** Characters in use, in Koch order. */
+  chars: string;
+  char_wpm: number;
+  eff_wpm: number;
+  tone_hz: number;
+  listen: 'groups' | 'words';
+  stats: { ch: string; tries: number; errors: number }[];
+  sessions: ListenSession[];
+}
+
+export interface ListenSession {
+  ts: number;
+  accuracy: number;
+  n: number;
+  chars: number;
 }
 
 export interface PaddleProgress {

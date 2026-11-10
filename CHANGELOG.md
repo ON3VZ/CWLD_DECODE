@@ -1,3 +1,17 @@
+## 0.14.0 (Koch method: choose your characters, copy by ear)
+
+- New card "Characters to learn (Koch)" in the practice panel: all 40 characters in Koch order (K M R S U A P T L O W I N J E F 0 Y V G 5 / Q 9 Z H 3 8 B ? 4 2 7 C 1 D 6 X). A slider takes the first N characters, and you can switch single characters on or off. At least two stay. The choice is saved. Default: all characters, so nothing changes until you narrow it down.
+- The paddle exercises now use only the chosen characters: groups, words and abbreviations, callsigns and QSO phrases. A word, callsign or phrase is only asked when it is made entirely of chosen characters; with too few of them you get character groups and a short note says so. The newest character and the ones that went wrong before come back more often.
+- New listening exercise (copying): CWLD plays groups of 5 characters or words from your characters on this computer, never through the radio. Characters run at their own speed (default 20 WPM) with longer gaps (Farnsworth, default 12 WPM overall), pitch adjustable. You type what you hear (Enter checks, Esc stops, spaces do not matter); wrong characters are marked and counted per character.
+- The 90 percent rule: after three listening rounds in a row with the same characters and together at least 90 percent right (at least 30 characters), CWLD proposes the next Koch character. It never adds one by itself.
+- Internal: `schedule`, `durationSeconds` and `playSidetone` take an optional overall speed for Farnsworth timing; settings gain `practice.koch` (old settings files get all characters).
+
+## 0.13.2 (paddle practice recognises the sidetone)
+
+- Fixed: paddle practice heard the sidetone but showed nothing. A radio sidetone with overtones or slight clipping was taken for speech by the speech check from 0.12.0, which then held the decoder. The speech check is now off while the paddle trainer listens.
+- Paddle practice reads your text straight from the key times, with your own speed measured over the whole attempt. The live decoder often misread the first letter while it was still finding your speed.
+- The key times come from a new sidetone detector on the signal envelope (floor and peak with hysteresis): exact with a clean sidetone and with band noise up to 25 dB SNR in the tests, and band noise alone never counts as keying. Before, noise gave up to six times too many key-downs and audio heard again after a pitch move was counted twice.
+
 ## 0.13.1 (paddle practice works on the IC-7300 MK II, QRZ.com fixes)
 
 - Practice mode no longer turns the radio's AF volume down. On the IC-7300 MK II the AF volume also sets how loud the sidetone is on the USB audio, so at 0 the paddle trainer heard nothing (found by ON3VZ). CWLD now closes the squelch instead (CI-V 14 03, still to confirm on the MK II) and switches break-in off; both are put back when you leave practice mode.

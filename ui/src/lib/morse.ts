@@ -29,21 +29,30 @@ export function durationUnits(text: string): number {
   return units;
 }
 
-export function durationSeconds(text: string, wpm: number): number {
-  return (durationUnits(text) * 1.2) / Math.max(1, wpm);
+/**
+ * Length of one gap unit in seconds. At `eff` below `wpm` (Farnsworth) the characters keep their
+ * speed and the gaps between characters and words are stretched so the whole text runs at `eff`.
+ * A PARIS word has 31 units of character time and 19 units of gaps.
+ */
+export function gapUnit(wpm: number, eff?: number): number {
+  const c = Math.max(1, wpm);
+  const e = Math.min(c, Math.max(1, eff ?? c));
+  if (e >= c) return 1.2 / c;
+  return (60 / e - 37.2 / c) / 19;
 }
 
-/** Key-down/up schedule in seconds, used for the practice sidetone. */
-export function schedule(text: string, wpm: number): Array<{ on: number; off: number }> {
+/** Key-down/up schedule in seconds. `eff`: overall speed with stretched gaps (Farnsworth). */
+export function schedule(text: string, wpm: number, eff?: number): Array<{ on: number; off: number }> {
   const unit = 1.2 / Math.max(1, wpm);
+  const g = gapUnit(wpm, eff);
   const out: Array<{ on: number; off: number }> = [];
   let t = 0;
   const words = text.trim().split(/\s+/).filter(Boolean);
   words.forEach((w, wi) => {
-    if (wi > 0) t += 7 * unit;
+    if (wi > 0) t += 7 * g;
     const chars = [...w].map((c) => pattern(c)).filter((p): p is string => !!p);
     chars.forEach((p, ci) => {
-      if (ci > 0) t += 3 * unit;
+      if (ci > 0) t += 3 * g;
       [...p].forEach((el, ei) => {
         if (ei > 0) t += unit;
         const len = (el === '.' ? 1 : 3) * unit;
@@ -55,10 +64,15 @@ export function schedule(text: string, wpm: number): Array<{ on: number; off: nu
   return out;
 }
 
+export function durationSeconds(text: string, wpm: number, eff?: number): number {
+  const s = schedule(text, wpm, eff);
+  return s.length ? s[s.length - 1].off : 0;
+}
+
 let ctx: AudioContext | null = null;
 
 /** Plays a sidetone in the browser. Silent when audio is not available. Returns a cancel function. */
-export function playSidetone(text: string, wpm: number, freq = 650): () => void {
+export function playSidetone(text: string, wpm: number, freq = 650, eff?: number): () => void {
   try {
     const AC = (globalThis as any).AudioContext ?? (globalThis as any).webkitAudioContext;
     if (!AC) return () => {};
@@ -72,12 +86,12 @@ export function playSidetone(text: string, wpm: number, freq = 650): () => void 
     osc.connect(gain);
     const start = c.currentTime + 0.05;
     const ramp = 0.004;
-    for (const { on, off } of schedule(text, wpm)) {
+    for (const { on, off } of schedule(text, wpm, eff)) {
       gain.gain.setTargetAtTime(0.25, start + on, ramp);
       gain.gain.setTargetAtTime(0, start + off, ramp);
     }
     osc.start(start);
-    const total = durationSeconds(text, wpm);
+    const total = durationSeconds(text, wpm, eff);
     osc.stop(start + total + 0.2);
     return () => {
       try {

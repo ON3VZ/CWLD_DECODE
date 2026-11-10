@@ -284,7 +284,7 @@ Bevindingen ON3VZ met 0.12.0 en 0.13.0: AF op 0 maakte de band stil, maar ook de
 6. Klik LUISTEREN. Verwacht: squelch terug zoals hij was, BK-IN terug aan, AF ongewijzigd.
 7. Staat er "niet gemeld" bij een waarde, meld dat: dan antwoordt de radio niet op dat commando.
 
-## A41. Paddle oefenen (0.12.0, opnieuw met 0.13.1)
+## A41. Paddle oefenen (0.12.0, opnieuw met 0.13.2)
 
 0. Op de radio eenmalig: MENU, SET, Connectors, USB AF/IF Output, "AF Beep/Speech... Output" op ON (bevestigd door ON3VZ: daarna komt de zijtoon op de USB-audio). AF-volume op ongeveer 20 procent.
 1. OEFENEN, audio-ingang van de radio actief, klik "Start paddle oefenen" met Tekengroepen. Verwacht: een nieuw tabblad "Oefenen".
@@ -319,3 +319,17 @@ Bevindingen ON3VZ met 0.12.0 en 0.13.0: AF op 0 maakte de band stil, maar ook de
 2. Verwacht: na een korte pauze Naam en QTH ingevuld, met de grijze regel "Van QRZ.com" voor precies die roepletters.
 3. Typ daarna andere roepletters. Verwacht: de grijze regel verdwijnt meteen, naam en QTH van het vorige station verdwijnen en worden vervangen door die van het nieuwe station.
 4. Typ zelf een naam en wissel dan de roepletters. Verwacht: jouw getypte naam blijft staan.
+
+## A45. Koch-methode (0.14.0)
+
+1. Zet OEFENEN aan. Verwacht: rechts een kaart "Tekens leren (Koch)" met alle 40 tekens aan.
+2. Sleep het schuifje naar 5. Verwacht: alleen K M R S U zijn gekleurd, U heeft een rand.
+3. Klik op "Start luisteren". Verwacht: een toon uit de pc, nooit uit de radio, vier groepen van vijf tekens uit K M R S U, snelle tekens met lange pauzes.
+4. Typ wat je hoort (kleine letters mogen) en druk Enter. Verwacht: foute tekens rood onderstreept met jouw invoer eronder, een percentage juist.
+5. Druk Esc tijdens het typen. Verwacht: de oefening stopt.
+6. Zet totale snelheid op 20 en tekensnelheid op 20. Verwacht: gewone morse zonder extra pauzes. Zet tekensnelheid op 15 en totale snelheid op 18: totale snelheid wordt 15.
+7. Doe drie rondes met minstens 90 procent juist. Verwacht: een voorstel "Voeg A toe". Zonder klik blijft het aantal 5.
+8. Start de paddle oefening "Tekengroepen" (radio in OEFENEN). Verwacht: alleen K M R S U (en A als je die toevoegde).
+9. Kies "Roepletters" met alleen letters. Verwacht: melding dat er te weinig echte roepletters passen, en tekengroepen.
+10. Meld: is 20 en 12 WPM prettig als begin, en klopt de toon qua volume?
+

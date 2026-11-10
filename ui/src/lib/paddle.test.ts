@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { accuracy, analyseTiming, KOCH, markTarget, nextTarget, rng, sessionScore, updateStats, weakest, type Run } from './paddle';
-import { pattern } from './morse';
+import { accuracy, analyseTiming, exerciseFits, KOCH, kochFirst, kochPool, kochReady, markTarget, nextTarget, rng, runsToText, sessionScore, updateStats, weakest, type Run } from './paddle';
+import { gapUnit, pattern, schedule } from './morse';
 
 /** Key runs for a text: element, character and word gaps in units, with optional jitter. */
 function runsFor(text: string, wpm: number, o: { charGap?: number; wordGap?: number; dash?: number; jitter?: number; seed?: number } = {}): Run[] {
@@ -124,5 +124,90 @@ describe('targets', () => {
     const t = analyseTiming(runsFor('PARIS PARIS', 20));
     expect(sessionScore(1, t)).toBeGreaterThan(95);
     expect(sessionScore(0.5, t)).toBeLessThan(70);
+  });
+});
+
+describe('reading the text from the key times (0.13.2)', () => {
+  it('reads what was keyed, with word gaps', () => {
+    expect(runsToText(runsFor('CQ CQ DE ON3VZ K', 20))).toBe('CQ CQ DE ON3VZ K');
+    expect(runsToText(runsFor('PARIS KMRSU', 28, { jitter: 0.15, seed: 3 }))).toBe('PARIS KMRSU');
+  });
+
+  it('the first letter is right too (the live decoder often read NARIS)', () => {
+    expect(runsToText(runsFor('PARIS', 20))[0]).toBe('P');
+  });
+
+  it('a pause inside a character splits it, as the keyer does', () => {
+    // A (.-) with a 3 unit pause between dot and dash: E T.
+    const unit = 60;
+    const runs: Run[] = [[false, 500], [true, unit], [false, 3 * unit], [true, 3 * unit], [false, 3 * unit], [true, unit], [false, unit], [true, unit], [false, 2000]];
+    expect(runsToText(runs)).toBe('ETI');
+  });
+
+  it('nothing keyed gives nothing, an unknown pattern gives a star', () => {
+    expect(runsToText([[false, 3000]])).toBe('');
+    const u = 60;
+    const runs: Run[] = [[true, u], [false, u], [true, u], [false, u], [true, u], [false, u], [true, u], [false, u], [true, u], [false, u], [true, u], [false, u], [true, u], [false, u], [true, u], [false, 2000]];
+    expect(runsToText(runs)).toBe('*');
+  });
+});
+
+describe('Koch method', () => {
+  const ctx = (chars: string) => ({ myCall: 'ON3VZ', name: 'KRISTOF', qth: 'HOBOKEN', stats: [], chars });
+
+  it('uses only the chosen characters in every exercise', () => {
+    const chars = kochFirst(12); // KMRSUAPTLOWI
+    const pool = new Set(chars);
+    for (const ex of ['chars', 'weak', 'words', 'calls', 'phrases'] as const) {
+      const r = rng(5);
+      for (let i = 0; i < 30; i++) {
+        const text = nextTarget(ex, ctx(chars), r);
+        for (const c of text.replace(/ /g, '')) expect(pool.has(c), `${ex}: ${c} in ${text}`).toBe(true);
+      }
+    }
+  });
+
+  it('falls back to groups when too few words fit', () => {
+    expect(exerciseFits('words', 'KM')).toBe(false);
+    const text = nextTarget('words', ctx('KM'), rng(3));
+    expect(text.split(' ')).toHaveLength(4);
+    expect(text.split(' ')[0]).toHaveLength(5);
+    expect(exerciseFits('words', KOCH)).toBe(true);
+    expect(exerciseFits('calls', 'KMRSUAPTLOWI')).toBe(false); // no digit
+  });
+
+  it('keeps Koch order and ignores unknown characters', () => {
+    expect(kochPool('MK#').join('')).toBe('KM');
+    expect(kochPool('').length).toBe(KOCH.length);
+    expect(kochFirst(1).length).toBe(2);
+  });
+
+  it('asks the newest character more often', () => {
+    const r = rng(11);
+    let n = 0;
+    let total = 0;
+    for (let i = 0; i < 400; i++) for (const c of nextTarget('chars', ctx('KMRSU'), r).replace(/ /g, '')) { total++; if (c === 'U') n++; }
+    expect(n / total).toBeGreaterThan(0.25);
+  });
+
+  it('proposes the next character after three good rounds with the same set, never earlier', () => {
+    const s = (accuracy: number, n = 5) => ({ accuracy, n, chars: 20 });
+    expect(kochReady([s(0.95), s(0.92)], 5)).toBe(false);
+    expect(kochReady([s(0.95), s(0.92), s(0.9)], 5)).toBe(true);
+    expect(kochReady([s(0.95), s(0.92), s(0.9, 4)], 5)).toBe(false);
+    expect(kochReady([s(0.95), s(0.8), s(0.8)], 5)).toBe(false);
+    expect(kochReady([s(1, 38), s(1, 38), s(1, 38)], 38)).toBe(false);
+  });
+});
+
+describe('Farnsworth timing', () => {
+  it('keeps the character speed and stretches the gaps so the text runs at the overall speed', () => {
+    // PARIS and a following word gap is exactly 50 units: 60 / eff seconds.
+    const s = schedule('PARIS', 20, 10);
+    expect(s[1].off - s[1].on).toBeCloseTo(3 * 0.06, 6); // dash length stays at 20 WPM
+    const end = s[s.length - 1].off;
+    expect(end + 7 * gapUnit(20, 10)).toBeCloseTo(60 / 10, 5);
+    expect(gapUnit(20)).toBeCloseTo(0.06, 6);
+    expect(gapUnit(20, 30)).toBeCloseTo(0.06, 6);
   });
 });

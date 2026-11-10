@@ -15,7 +15,8 @@ export const LOOKUP_DELAY_MS = 700;
 import { PracticeSim, type Score, type SimTx } from './sim';
 import type { PracticeSettings } from './types';
 import { durationSeconds, playSidetone } from './morse';
-import { accuracy, analyseTiming, markTarget, nextTarget, rng, sessionScore, updateStats, type Marked, type PaddleExercise, type Run, type Timing } from './paddle';
+import type { KochSettings } from './types';
+import { accuracy, analyseTiming, kochFirst, kochPool, markTarget, nextTarget, rng, runsToText, sessionScore, updateStats, type Marked, type PaddleExercise, type Run, type Timing } from './paddle';
 
 export interface Qso {
   call: string;
@@ -1275,13 +1276,15 @@ class AppState {
     runs: Run[];
     /** Key times are coming in: the sidetone reaches CWLD. */
     heard: boolean;
+    /** The text read from the key times (see `runsToText`): what is shown and scored. */
+    keys: string;
     result: { marks: Marked[]; timing: Timing; accuracy: number; score: number } | null;
   } | null>(null);
   private paddleRng = rng(Date.now() % 1e9);
 
   private paddleTargetFor(ex: PaddleExercise): string {
     const s = this.settings;
-    return nextTarget(ex, { myCall: this.myCall, name: s?.station.name.split(/\s+/)[0] ?? '', qth: s?.station.qth ?? '', stats: s?.practice.paddle?.stats ?? [] }, this.paddleRng);
+    return nextTarget(ex, { myCall: this.myCall, name: s?.station.name.split(/\s+/)[0] ?? '', qth: s?.station.qth ?? '', stats: s?.practice.paddle?.stats ?? [], chars: s?.practice.koch?.chars }, this.paddleRng);
   }
 
   /** Starts a paddle exercise. Needs practice mode and the radio's audio (not the practice band). */
@@ -1291,6 +1294,7 @@ class AppState {
       return;
     }
     if (this.practiceRun) await this.stopExercise();
+    this.listenStop();
     this.error = null;
     try {
       await this.api.keyingCapture(true);
@@ -1303,19 +1307,19 @@ class AppState {
       if (p.paddle?.exercise !== ex) await this.patchSettings({ practice: { ...p, paddle: { ...(p.paddle ?? { stats: [], sessions: [] }), exercise: ex } } });
     }
     this.practiceTab();
-    this.paddleEx = { exercise: ex, target: this.paddleTargetFor(ex), got: '', runs: [], heard: false, result: null };
+    this.paddleEx = { exercise: ex, target: this.paddleTargetFor(ex), got: '', keys: '', runs: [], heard: false, result: null };
   }
 
   /** The next text of the same exercise. */
   paddleNext() {
     if (!this.paddleEx) return;
-    this.paddleEx = { ...this.paddleEx, target: this.paddleTargetFor(this.paddleEx.exercise), got: '', runs: [], heard: false, result: null };
+    this.paddleEx = { ...this.paddleEx, target: this.paddleTargetFor(this.paddleEx.exercise), got: '', keys: '', runs: [], heard: false, result: null };
   }
 
   /** Clears what was heard so far, same text: start this one again. */
   paddleRetry() {
     if (!this.paddleEx) return;
-    this.paddleEx = { ...this.paddleEx, got: '', runs: [], heard: false, result: null };
+    this.paddleEx = { ...this.paddleEx, got: '', keys: '', runs: [], heard: false, result: null };
   }
 
   async paddleStop() {
@@ -1337,9 +1341,10 @@ class AppState {
     if (!p) return;
     p.runs.push(...runs);
     if (runs.some((r) => r[0])) p.heard = true;
+    p.keys = runsToText(p.runs);
     // Done by itself: everything asked has come out and the key has been up for two seconds.
     const want = p.target.replace(/\s+/g, '').length;
-    const have = p.got.replace(/\s+/g, '').length;
+    const have = (p.keys || p.got).replace(/\s+/g, '').length;
     const last = runs[runs.length - 1];
     if (have >= want && last && !last[0] && last[1] >= 2000) void this.paddleFinish();
   }
@@ -1348,12 +1353,15 @@ class AppState {
   async paddleFinish() {
     const p = this.paddleEx;
     if (!p || p.result) return;
-    const marks = markTarget(p.target, p.got);
+    // The key times are the most reliable reading; the decoder text only when there are none
+    // (a radio that reports its own paddle text, such as the QMX).
+    const got = p.keys || p.got;
+    const marks = markTarget(p.target, got);
     const timing = analyseTiming(p.runs, (p.target.match(/ /g) ?? []).length);
     const acc = accuracy(marks);
     const score = sessionScore(acc, timing);
     p.result = { marks, timing, accuracy: acc, score };
-    if (!this.settings || !p.got.trim()) return;
+    if (!this.settings || !got.trim()) return;
     const cfg = $state.snapshot(this.settings.practice) as PracticeSettings;
     const prog = cfg.paddle ?? { exercise: p.exercise, stats: [], sessions: [] };
     const session = { ts: Math.floor(Date.now() / 1000), exercise: p.exercise, score, wpm: Math.round((timing.wpm ?? 0) * 10) / 10, accuracy: Math.round(acc * 1000) / 1000 };
@@ -1365,6 +1373,105 @@ class AppState {
     if (!this.settings) return;
     const cfg = $state.snapshot(this.settings.practice) as PracticeSettings;
     await this.patchSettings({ practice: { ...cfg, paddle: { exercise: cfg.paddle?.exercise ?? 'chars', stats: [], sessions: [] } } });
+  }
+
+  // ---- Koch method: characters in use and the listening exercise ----
+
+  /** The listening exercise under way: what was played, what was typed and the result. */
+  listenEx = $state<{
+    target: string;
+    typed: string;
+    playing: boolean;
+    played: number;
+    result: { marks: Marked[]; accuracy: number } | null;
+  } | null>(null);
+  private listenRng = rng((Date.now() + 77) % 1e9);
+  private listenStopFn: (() => void) | null = null;
+  private listenTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Changes the Koch choices (characters, speeds, pitch, kind of exercise). */
+  async setKoch(patch: Partial<KochSettings>) {
+    if (!this.settings) return;
+    const cur = $state.snapshot(this.settings.practice.koch) as KochSettings;
+    const next = { ...cur, ...patch };
+    if (patch.chars !== undefined) next.chars = kochPool(patch.chars).join('');
+    next.char_wpm = Math.min(40, Math.max(10, Math.round(next.char_wpm)));
+    next.eff_wpm = Math.min(next.char_wpm, Math.max(5, Math.round(next.eff_wpm)));
+    next.tone_hz = Math.min(900, Math.max(400, Math.round(next.tone_hz)));
+    await this.setPracticeCfg({ koch: next });
+  }
+
+  /** Uses the first `n` characters of the Koch order. */
+  async setKochCount(n: number) {
+    await this.setKoch({ chars: kochFirst(n) });
+  }
+
+  private listenTargetFor(): string {
+    const s = this.settings;
+    const k = s?.practice.koch;
+    return nextTarget(k?.listen === 'words' ? 'words' : 'chars', { myCall: this.myCall, name: '', qth: '', stats: k?.stats ?? [], chars: k?.chars }, this.listenRng);
+  }
+
+  /** Starts a listening round. The sound comes from this computer, never from the radio. */
+  listenStart() {
+    if (this.paddleEx) void this.paddleStop();
+    this.listenStopSound();
+    this.listenEx = { target: this.listenTargetFor(), typed: '', playing: false, played: 0, result: null };
+    this.listenPlay();
+  }
+
+  /** Plays the text of the round (again). */
+  listenPlay() {
+    const e = this.listenEx;
+    const k = this.settings?.practice.koch;
+    if (!e || !k || e.result) return;
+    this.listenStopSound();
+    e.playing = true;
+    e.played++;
+    this.listenStopFn = playSidetone(e.target, k.char_wpm, k.tone_hz, k.eff_wpm);
+    this.listenTimer = setTimeout(() => {
+      if (this.listenEx) this.listenEx.playing = false;
+    }, (durationSeconds(e.target, k.char_wpm, k.eff_wpm) + 0.3) * 1000);
+  }
+
+  private listenStopSound() {
+    this.listenStopFn?.();
+    this.listenStopFn = null;
+    if (this.listenTimer) clearTimeout(this.listenTimer);
+    this.listenTimer = null;
+    if (this.listenEx) this.listenEx.playing = false;
+  }
+
+  /** Scores what was typed and keeps the result per character. */
+  async listenSubmit() {
+    const e = this.listenEx;
+    if (!e || e.result) return;
+    this.listenStopSound();
+    const marks = markTarget(e.target.replace(/ /g, ''), e.typed.replace(/\s+/g, ''));
+    const acc = accuracy(marks);
+    e.result = { marks, accuracy: acc };
+    if (!this.settings || !e.typed.trim()) return;
+    const cfg = $state.snapshot(this.settings.practice) as PracticeSettings;
+    const k = cfg.koch;
+    const session = { ts: Math.floor(Date.now() / 1000), accuracy: Math.round(acc * 1000) / 1000, n: kochPool(k.chars).length, chars: marks.length };
+    await this.setPracticeCfg({ koch: { ...k, stats: updateStats(k.stats, marks), sessions: [...k.sessions, session].slice(-200) } });
+  }
+
+  listenNext() {
+    if (!this.listenEx) return;
+    this.listenStart();
+  }
+
+  listenStop() {
+    this.listenStopSound();
+    this.listenEx = null;
+  }
+
+  /** Forgets the listening results. */
+  async listenReset() {
+    if (!this.settings) return;
+    const k = $state.snapshot(this.settings.practice.koch) as KochSettings;
+    await this.setPracticeCfg({ koch: { ...k, stats: [], sessions: [] } });
   }
 
   async setPracticeCfg(patch: Partial<PracticeSettings>) {

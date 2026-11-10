@@ -40,11 +40,11 @@
         {ex.target}
       {/if}
     </div>
-    <div class="heard"><span class="muted small">{t('paddle.heard')}</span> <span class="mono">{ex.got.trim() || '…'}</span></div>
+    <div class="heard"><span class="muted small">{t('paddle.heard')}</span> <span class="mono">{(ex.keys || ex.got).trim() || '…'}</span></div>
 
     <div class="row">
       {#if !r}
-        <button class="btn primary" disabled={!ex.got.trim()} onclick={() => app.paddleFinish()} title={t('paddle.done.help')}>{t('paddle.done')}</button>
+        <button class="btn primary" disabled={!(ex.keys || ex.got).trim()} onclick={() => app.paddleFinish()} title={t('paddle.done.help')}>{t('paddle.done')}</button>
         <button class="btn" onclick={() => app.paddleRetry()}>{t('paddle.retry')}</button>
       {:else}
         <button class="btn primary" onclick={() => app.paddleNext()}>{t('paddle.next')}</button>

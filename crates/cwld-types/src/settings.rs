@@ -333,6 +333,50 @@ pub struct PracticeSettings {
     pub quiet_radio: bool,
     /// Results of the paddle exercises.
     pub paddle: PaddleProgress,
+    /// Koch method: which characters are practised, and the listening exercise.
+    pub koch: KochSettings,
+}
+
+/// The Koch order, the same as the interface uses.
+pub const KOCH_ORDER: &str = "KMRSUAPTLOWINJEF0YVG5/Q9ZH38B?427C1D6X";
+
+/// Koch method choices: the characters used for listening and for keying, and the listening
+/// exercise. Kept by the interface.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct KochSettings {
+    /// The characters in use, in Koch order. All of them until the operator narrows it down.
+    pub chars: String,
+    /// Speed of the characters themselves in the listening exercise, in WPM.
+    pub char_wpm: u8,
+    /// Overall speed with the longer gaps (Farnsworth), in WPM. Never above `char_wpm`.
+    pub eff_wpm: u8,
+    /// Pitch of the tone in Hz.
+    pub tone_hz: u16,
+    /// "groups" or "words".
+    pub listen: String,
+    /// Results per character of the listening exercise.
+    pub stats: Vec<CharStat>,
+    pub sessions: Vec<ListenSession>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ListenSession {
+    /// Seconds since 1970, UTC.
+    pub ts: i64,
+    /// Share of characters copied right, 0 to 1.
+    pub accuracy: f32,
+    /// Number of characters in use at the time.
+    pub n: u8,
+    /// Characters asked.
+    pub chars: u16,
+}
+
+impl Default for KochSettings {
+    fn default() -> Self {
+        KochSettings { chars: KOCH_ORDER.into(), char_wpm: 20, eff_wpm: 12, tone_hz: 650, listen: "groups".into(), stats: Vec::new(), sessions: Vec::new() }
+    }
 }
 
 /// What the paddle trainer remembers between sessions. Kept by the interface.
@@ -368,7 +412,7 @@ pub struct PaddleSession {
 
 impl Default for PracticeSettings {
     fn default() -> Self {
-        PracticeSettings { exercise: "they_cq".into(), wpm_min: 18, wpm_max: 26, strength: "medium".into(), noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5, quiet_radio: true, paddle: PaddleProgress::default() }
+        PracticeSettings { exercise: "they_cq".into(), wpm_min: 18, wpm_max: 26, strength: "medium".into(), noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5, quiet_radio: true, paddle: PaddleProgress::default(), koch: KochSettings::default() }
     }
 }
 
@@ -760,5 +804,17 @@ mod tests {
         let text = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&text).unwrap();
         assert_eq!(back.contest, s.contest);
+    }
+}
+
+#[cfg(test)]
+mod koch_tests {
+    use super::*;
+
+    #[test]
+    fn old_settings_without_koch_get_all_characters() {
+        let p: PracticeSettings = serde_json::from_str(r#"{"exercise":"they_cq"}"#).unwrap();
+        assert_eq!(p.koch.chars, KOCH_ORDER);
+        assert!(p.koch.eff_wpm <= p.koch.char_wpm);
     }
 }

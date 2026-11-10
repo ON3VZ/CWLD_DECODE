@@ -6,6 +6,8 @@
 // pauses inside a character (they split the character in two). With a straight key the
 // element lengths count too.
 
+import { pattern } from './morse';
+
 /** One key run: down (true) or up, and its length in milliseconds. */
 export type Run = [boolean, number];
 
@@ -266,45 +268,153 @@ export interface TargetContext {
   name: string;
   qth: string;
   stats: CharStat[];
+  /** The characters in use (Koch). Empty or missing: all of them. */
+  chars?: string;
 }
 
-/** The next text to key. Characters that went wrong before come back more often. */
+/** The characters in use, in Koch order, only known ones. All of them when nothing valid is given. */
+export function kochPool(chars?: string): string[] {
+  const set = new Set([...(chars ?? '').toUpperCase()]);
+  const pool = [...KOCH].filter((c) => set.has(c));
+  return pool.length ? pool : [...KOCH];
+}
+
+/** The first `n` characters of the Koch order. */
+export const kochFirst = (n: number): string => KOCH.slice(0, Math.max(2, Math.min(KOCH.length, Math.round(n))));
+
+const fits = (text: string, pool: string[]) => [...text.replace(/ /g, '')].every((c) => pool.includes(c));
+
+/** Words and abbreviations that only use the characters in use. */
+export function wordPool(chars?: string): string[] {
+  const pool = kochPool(chars);
+  return WORDS.filter((w) => fits(w, pool));
+}
+
+/** Fewer words than this and the word exercises fall back to character groups. */
+export const MIN_WORDS = 4;
+
+/** The next text to key or copy. Characters that went wrong before and the newest one come back more often. */
 export function nextTarget(ex: PaddleExercise, ctx: TargetContext, r: () => number): string {
+  const all = kochPool(ctx.chars);
+  const newest = all.length < KOCH.length ? all[all.length - 1] : '';
   const errRate = (c: string) => {
     const s = ctx.stats.find((x) => x.ch === c);
     return s && s.tries ? s.errors / s.tries : 0.2;
   };
-  const group = (pool: string[], n: number) => Array.from({ length: n }, () => pickWeighted(pool, (c) => 1 + 4 * errRate(c), r)).join('');
-  const all = [...KOCH];
+  const group = (pool: string[], n: number) => Array.from({ length: n }, () => pickWeighted(pool, (c) => 1 + 4 * errRate(c) + (c === newest ? 1.5 : 0), r)).join('');
+  const groups = (pool: string[]) => Array.from({ length: 4 }, () => group(pool, 5)).join(' ');
   switch (ex) {
     case 'chars':
-      return Array.from({ length: 4 }, () => group(all, 5)).join(' ');
+      return groups(all);
     case 'weak': {
-      const weak = weakest(ctx.stats).map((s) => s.ch);
-      const pool = weak.length >= 2 ? weak : all;
-      return Array.from({ length: 4 }, () => group(pool, 5)).join(' ');
+      const weak = weakest(ctx.stats).map((s) => s.ch).filter((c) => all.includes(c));
+      return groups(weak.length >= 2 ? weak : all);
     }
-    case 'words':
-      return Array.from({ length: 5 }, () => WORDS[Math.floor(r() * WORDS.length)]).join(' ');
-    case 'calls':
+    case 'words': {
+      const words = wordPool(ctx.chars);
+      if (words.length < MIN_WORDS) return groups(all);
+      return Array.from({ length: 5 }, () => words[Math.floor(r() * words.length)]).join(' ');
+    }
+    case 'calls': {
+      const letters = all.filter((c) => /[A-Z]/.test(c));
+      const digits = all.filter((c) => /[0-9]/.test(c));
+      // A callsign needs letters and a digit. Without them there is nothing real to ask.
+      if (letters.length < 3 || !digits.length) return groups(all);
+      const prefixes = PREFIXES.filter((p) => fits(p, all) && /[A-Z]/.test(p));
       return Array.from({ length: 3 }, () => {
-        const p = PREFIXES[Math.floor(r() * PREFIXES.length)];
-        const suffix = Array.from({ length: 1 + Math.floor(r() * 3) }, () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(r() * 26)]).join('');
-        return `${p}${Math.floor(r() * 10)}${suffix}`;
+        const p = prefixes.length ? prefixes[Math.floor(r() * prefixes.length)] : pickWeighted(letters, () => 1, r) + pickWeighted(letters, () => 1, r);
+        const suffix = Array.from({ length: 1 + Math.floor(r() * 3) }, () => pickWeighted(letters, (c) => 1 + 4 * errRate(c) + (c === newest ? 1.5 : 0), r)).join('');
+        return `${p}${pickWeighted(digits, () => 1, r)}${suffix}`;
       }).join(' ');
+    }
     case 'phrases': {
-      const p = PHRASES[Math.floor(r() * PHRASES.length)];
       // Without own callsign or name the phrase uses neutral words: nothing is made up.
-      return p
-        .replaceAll('{MYCALL}', ctx.myCall || 'TEST')
-        .replaceAll('{NAME}', (ctx.name || 'OP').toUpperCase())
-        .replaceAll('{QTH}', (ctx.qth || 'HOME').toUpperCase())
-        .replace(/[^A-Z0-9/?., ]/g, '');
+      const fill = (p: string) =>
+        p
+          .replaceAll('{MYCALL}', ctx.myCall || 'TEST')
+          .replaceAll('{NAME}', (ctx.name || 'OP').toUpperCase())
+          .replaceAll('{QTH}', (ctx.qth || 'HOME').toUpperCase())
+          .replace(/[^A-Z0-9/?., ]/g, '');
+      const ok = PHRASES.map(fill).filter((p) => fits(p, all));
+      if (!ok.length) return groups(all);
+      return ok[Math.floor(r() * ok.length)];
     }
   }
+}
+
+/** Whether an exercise can use real words, calls or phrases with these characters (else groups). */
+export function exerciseFits(ex: PaddleExercise, chars?: string): boolean {
+  const all = kochPool(chars);
+  switch (ex) {
+    case 'words':
+      return wordPool(chars).length >= MIN_WORDS;
+    case 'calls':
+      return all.filter((c) => /[A-Z]/.test(c)).length >= 3 && all.some((c) => /[0-9]/.test(c));
+    case 'phrases':
+      return PHRASES.some((p) => fits(p.replace(/\{[A-Z]+\}/g, 'TEST'), all));
+    default:
+      return true;
+  }
+}
+
+/**
+ * The 90 percent rule of the Koch method: when the last `rounds` listening rounds with the
+ * characters in use are all together at least `limit` right, the next character may be added.
+ * Only rounds with the same number of characters count, so a new character starts fresh.
+ */
+export function kochReady(sessions: { accuracy: number; n: number; chars: number }[], n: number, limit = 0.9, rounds = 3): boolean {
+  if (n >= KOCH.length) return false;
+  const last = sessions.slice(-rounds);
+  if (last.length < rounds || last.some((s) => s.n !== n)) return false;
+  const total = last.reduce((a, s) => a + s.chars, 0);
+  if (total < 30) return false;
+  return last.reduce((a, s) => a + s.accuracy * s.chars, 0) / total >= limit;
 }
 
 /** One number for a session: mostly the right characters, partly the timing. */
 export function sessionScore(acc: number, timing: Timing): number {
   return Math.round(Math.max(0, Math.min(100, acc * 70 + timing.score * 0.3)));
+}
+
+/** Character for each dot-dash pattern, built from the morse table. */
+const FROM_PATTERN: Map<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/?=.,') {
+    const p = pattern(c);
+    if (p && !m.has(p)) m.set(p, c);
+  }
+  return m;
+})();
+
+/**
+ * Reads the keyed text straight from the key times, with the operator's own speed taken from the
+ * whole attempt. More reliable for scoring than the live decoder, which needs a few characters to
+ * find the speed (the first letter was often wrong) and cannot look back.
+ * Gaps under 2 units are inside a character, 2 to 5 between characters, longer between words.
+ * A pattern that is no character gives `*`.
+ */
+export function runsToText(runs: Run[]): string {
+  const r = [...runs];
+  while (r.length && !r[0][0]) r.shift();
+  while (r.length && !r[r.length - 1][0]) r.pop();
+  const downs = r.filter((x) => x[0]).map((x) => x[1]);
+  if (!downs.length) return '';
+  const unit = analyseTiming(r).unitMs ?? (downs.length === 1 ? downs[0] : median(twoGroups(downs).short));
+  if (!unit || !Number.isFinite(unit)) return '';
+  let out = '';
+  let cur = '';
+  const close = () => {
+    if (cur) out += FROM_PATTERN.get(cur) ?? '*';
+    cur = '';
+  };
+  for (const [down, ms] of r) {
+    const u = ms / unit;
+    if (down) cur += u < 2 ? '.' : '-';
+    else if (u >= 5) {
+      close();
+      out += ' ';
+    } else if (u >= 2) close();
+  }
+  close();
+  return out.replace(/ +/g, ' ').trim();
 }

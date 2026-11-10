@@ -152,3 +152,27 @@ Wat de opnames leerden:
 - Daarnaast een harde regel: staat de radio op USB, LSB, AM, FM of RTTY, dan toont CWLD geen tekst en meldt dat boven het gesprek. Bij OEFENEN niet, want dan komt het geluid van de oefenband.
 - Te zwakke CW gaf al geen tekst (bij -10 dB en lager 0 tekens, bij -6 dB gemiddeld 1,4 tekens per bericht met de standaarddrempel).
 - Nog te doen: een opname van een echt SSB-station en van CW met een sterk SSB-station ernaast. Is de spraak zelf op de toonhoogte van de decoder, dan wacht de decoder ook voor een CW-signaal in die spraak; dat is de bewuste keuze.
+
+## Paddle oefenen: zijtoon en sleuteltijden (0.13.2)
+
+Aanleiding: ON3VZ zag de zijtoon van zijn paddle in de audio van CWLD, maar de paddle-kaart herkende niets. Nagebootst met de testbank (`paddle_harmonics_experiment` en `paddle_keying` in crates/cwld-decoder/src/pipeline.rs), zijtoon 600 Hz, decoder start op 700 Hz, 20 WPM.
+
+| Zijtoon | Tekst voor (0.13.1) | Tekst na (0.13.2) |
+|---|---|---|
+| Zuivere sinus | NARIS KMRSU PARIS | NARIS KMRSU PARIS (score leest nu PARIS uit de sleuteltijden) |
+| 2de boventoon op -20 dB | NARIS KMRSU PARIS | idem |
+| 3de en 5de boventoon (blokachtig) | geen tekst: spraakcontrole hield de decoder vast | NARIS KMRSU PARIS |
+| Hard geknipt op 30 procent | geen tekst | NARIS KMRSU PARIS |
+
+Sleuteltijden (aantal key-downs, PARIS KMRSU heeft er 28):
+
+| Situatie | Voor | Na |
+|---|---|---|
+| Zuivere zijtoon, 0,5 s stilte vooraf | 34 (heraudio na toonwissel dubbel geteld) | 28 |
+| Zuivere zijtoon, 10 s stilte vooraf | 34 | 28 |
+| Bandruis 40 dB en 20 dB, 10 s ruis vooraf | 179 tot 210 | 28 |
+| Alleen ruis, 20 dB, 8 s | veel valse key-downs | 0 |
+| Bandruis 10 dB | niet gemeten | eerste element van P gemist |
+
+Elke key-down valt binnen 15 ms van 60 ms (punt) of 180 ms (streep). Met de squelch dicht (de standaard in OEFENEN) is er geen ruis, dus dit is het gewone geval.
+

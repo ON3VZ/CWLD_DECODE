@@ -20,6 +20,7 @@
   import LogPanel from './components/LogPanel.svelte';
   import PracticePanel from './components/PracticePanel.svelte';
   import PaddleTrainer from './components/PaddleTrainer.svelte';
+  import ListenTrainer from './components/ListenTrainer.svelte';
   import LogEdit from './components/LogEdit.svelte';
   import ExportDialog from './components/ExportDialog.svelte';
   import Wizard from './components/Wizard.svelte';
@@ -106,6 +107,8 @@
       <section class="center" aria-label={t('conversation.title')}>
         {#if app.paddleEx}
           <PaddleTrainer />
+        {:else if app.listenEx}
+          <ListenTrainer />
         {:else}
           <Conversation />
           <Composer />

@@ -3,7 +3,7 @@
   import { t } from '../lib/i18n.svelte';
   import { allProfiles, plain } from '../lib/contest';
   import type { PracticeSettings } from '../lib/types';
-  import { PADDLE_EXERCISES, weakest, type PaddleExercise } from '../lib/paddle';
+  import { PADDLE_EXERCISES, KOCH, exerciseFits, kochPool, kochReady, weakest, type PaddleExercise } from '../lib/paddle';
 
   /** Kristof's own app for learning morse by ear (letters, Koch method). */
   const LEARN_URL = 'https://on3vz.github.io/CWLD/';
@@ -32,6 +32,19 @@
   const weak = $derived(weakest(prog?.stats ?? []));
   const day = (ts: number) => new Date(ts * 1000).toISOString().slice(5, 16).replace('T', ' ');
   let confirmReset = $state(false);
+
+  const koch = $derived(cfg?.koch);
+  const inUse = $derived(kochPool(koch?.chars));
+  const newest = $derived(inUse.length < KOCH.length ? inUse[inUse.length - 1] : '');
+  const listenWeak = $derived(weakest(koch?.stats ?? []));
+  const ready = $derived(kochReady(koch?.sessions ?? [], inUse.length));
+  let confirmListenReset = $state(false);
+  /** Click a character to use it or leave it out. At least two stay. */
+  function toggle(c: string) {
+    const next = inUse.includes(c) ? inUse.filter((x) => x !== c) : [...inUse, c];
+    if (next.length < 2) return;
+    app.setKoch({ chars: next.join('') });
+  }
 </script>
 
 <section class="card" aria-label={t('practice.title')}>
@@ -114,6 +127,7 @@
         {#each PADDLE_EXERCISES as k (k)}<option value={k}>{t(`paddle.ex.${k}`)}</option>{/each}
       </select>
     </label>
+    {#if !exerciseFits(paddleEx, koch?.chars)}<small class="muted">{t('koch.fallback')}</small>{/if}
     {#if paddleEx === 'weak' && weak.length < 2}<small class="muted">{t('paddle.weak.none')}</small>{/if}
     {#if app.paddleEx}
       <button class="btn" onclick={() => app.paddleStop()}>{t('paddle.stop')}</button>
@@ -132,6 +146,58 @@
         <div class="row"><button class="btn" onclick={() => { app.paddleReset(); confirmReset = false; }}>{t('paddle.reset.yes')}</button><button class="link" onclick={() => (confirmReset = false)}>{t('paddle.reset.no')}</button></div>
       {:else}
         <button class="link small" onclick={() => (confirmReset = true)}>{t('paddle.reset')}</button>
+      {/if}
+    {/if}
+  </section>
+{/if}
+
+{#if cfg && koch && !run}
+  <section class="card" aria-label={t('koch.title')}>
+    <div class="head"><h2>{t('koch.title')}</h2></div>
+    <p class="muted small">{t('koch.intro')}</p>
+    <label>{t('koch.count', { n: String(inUse.length), total: String(KOCH.length) })}
+      <input type="range" min="2" max={KOCH.length} value={inUse.length} oninput={(e) => app.setKochCount(num(e))} aria-label={t('koch.count.help')} />
+    </label>
+    <div class="chars" role="group" aria-label={t('koch.chars.help')}>
+      {#each [...KOCH] as c (c)}
+        <button class="ch mono" class:on={inUse.includes(c)} class:new={c === newest} aria-pressed={inUse.includes(c)} title={c === newest ? t('koch.newest') : t('koch.toggle')} onclick={() => toggle(c)}>{c}</button>
+      {/each}
+    </div>
+    <small class="muted">{t('koch.chars.hint')}</small>
+    {#if ready}<p class="advice small" role="status">{t('koch.ready', { next: KOCH[inUse.length] })}
+      <button class="btn" onclick={() => app.setKochCount(inUse.length + 1)}>{t('koch.add', { next: KOCH[inUse.length] })}</button></p>{/if}
+    <h3>{t('koch.listen.title')}</h3>
+    <p class="muted small">{t('koch.listen.intro')}</p>
+    <label>{t('koch.listen.kind')}
+      <select value={koch.listen} onchange={(e) => app.setKoch({ listen: (e.currentTarget as HTMLSelectElement).value as 'groups' | 'words' })}>
+        <option value="groups">{t('koch.listen.groups')}</option>
+        <option value="words">{t('koch.listen.words')}</option>
+      </select>
+    </label>
+    {#if koch.listen === 'words' && !exerciseFits('words', koch.chars)}<small class="muted">{t('koch.fallback')}</small>{/if}
+    <div class="two">
+      <label>{t('koch.listen.char_wpm')}<input class="mono" type="number" min="10" max="40" value={koch.char_wpm} onchange={(e) => app.setKoch({ char_wpm: num(e) || 20 })} /></label>
+      <label title={t('koch.listen.eff.help')}>{t('koch.listen.eff_wpm')}<input class="mono" type="number" min="5" max={koch.char_wpm} value={koch.eff_wpm} onchange={(e) => app.setKoch({ eff_wpm: num(e) || 12 })} /></label>
+    </div>
+    <label>{t('koch.listen.tone')}<input class="mono" type="number" min="400" max="900" step="10" value={koch.tone_hz} onchange={(e) => app.setKoch({ tone_hz: num(e) || 650 })} /></label>
+    {#if app.listenEx}
+      <button class="btn" onclick={() => app.listenStop()}>{t('koch.listen.stop')}</button>
+    {:else}
+      <button class="btn primary" onclick={() => app.listenStart()}>{t('koch.listen.start')}</button>
+    {/if}
+    {#if listenWeak.length}
+      <div class="small"><span class="muted">{t('paddle.weak')}</span> {#each listenWeak as w (w.ch)}<span class="chip mono" title={t('paddle.weak.rate', { errors: String(w.errors), tries: String(w.tries) })}>{w.ch}</span>{/each}</div>
+    {/if}
+    {#if koch.sessions.length}
+      {@const last = koch.sessions.slice(-5).reverse()}
+      <table class="small">
+        <thead><tr><th>{t('paddle.when')}</th><th>{t('koch.listen.right')}</th><th>{t('koch.listen.n')}</th></tr></thead>
+        <tbody>{#each last as s (s.ts)}<tr><td class="mono">{day(s.ts)}</td><td class="mono">{Math.round(s.accuracy * 100)}%</td><td class="mono">{s.n}</td></tr>{/each}</tbody>
+      </table>
+      {#if confirmListenReset}
+        <div class="row"><button class="btn" onclick={() => { app.listenReset(); confirmListenReset = false; }}>{t('paddle.reset.yes')}</button><button class="link" onclick={() => (confirmListenReset = false)}>{t('paddle.reset.no')}</button></div>
+      {:else}
+        <button class="link small" onclick={() => (confirmListenReset = true)}>{t('paddle.reset')}</button>
       {/if}
     {/if}
   </section>
@@ -202,4 +268,10 @@
   .lines li.bad { color: var(--warn); }
   .ok { color: var(--listen); }
   .act { display: flex; justify-content: flex-end; }
+  h3 { margin: 6px 0 0; font-size: 13px; }
+  .chars { display: flex; flex-wrap: wrap; gap: 4px; }
+  .ch { min-width: 28px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--muted); font-size: 15px; }
+  .ch.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .ch.new { outline: 2px solid #8b6cf0; outline-offset: 1px; }
+  .advice { background: var(--panel2); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 </style>

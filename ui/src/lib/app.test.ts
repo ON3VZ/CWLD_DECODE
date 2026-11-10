@@ -1443,3 +1443,32 @@ describe('practice in its own tab and radio controls (0.13.1)', () => {
     expect(app.radioControls?.squelch).toBe(255);
   });
 });
+
+describe('Koch method listening', () => {
+  it('plays only chosen characters, scores per character and keeps the result', async () => {
+    await fresh();
+    await app.setKochCount(5);
+    expect(app.settings!.practice.koch.chars).toBe('KMRSU');
+    app.listenStart();
+    const target = app.listenEx!.target;
+    expect(target.replace(/ /g, '')).toMatch(/^[KMRSU]+$/);
+    // Typed with one wrong character.
+    const letters = [...target.replace(/ /g, '')];
+    letters[0] = letters[0] === 'K' ? 'M' : 'K';
+    app.listenEx!.typed = letters.join('').toLowerCase();
+    await app.listenSubmit();
+    expect(app.listenEx!.result!.accuracy).toBeCloseTo(19 / 20, 5);
+    const k = app.settings!.practice.koch;
+    expect(k.sessions).toHaveLength(1);
+    expect(k.sessions[0].n).toBe(5);
+    expect(k.stats.reduce((a, s) => a + s.errors, 0)).toBe(1);
+    app.listenStop();
+    expect(app.listenEx).toBeNull();
+  });
+
+  it('keeps the effective speed at or below the character speed', async () => {
+    await fresh();
+    await app.setKoch({ char_wpm: 18, eff_wpm: 30 });
+    expect(app.settings!.practice.koch.eff_wpm).toBe(18);
+  });
+});
