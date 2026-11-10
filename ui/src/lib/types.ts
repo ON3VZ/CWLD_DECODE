@@ -345,7 +345,15 @@ export type CoreEvent =
   | { type: 'decode_hold'; hold: 'mode' | 'voice' | null; mode: string }
   /** Key down and up times in ms for the paddle trainer. */
   | { type: 'keying'; runs: [boolean, number][] }
-  | { type: 'radio_quiet'; quiet: boolean };
+  | { type: 'radio_quiet'; quiet: boolean }
+  /** What the radio reports about its volume (0 to 255), squelch (0 open to 255 closed) and break-in. `null`: not reported. */
+  | { type: 'radio_controls'; controls: RadioControls };
+
+export interface RadioControls {
+  af_level: number | null;
+  break_in: number | null;
+  squelch: number | null;
+}
 
 export type SendOutcome = { kind: 'sent' } | { kind: 'simulated'; seconds: number };
 

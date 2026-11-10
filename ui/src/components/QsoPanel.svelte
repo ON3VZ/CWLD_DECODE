@@ -5,6 +5,8 @@
   function typed() {
     app.qso.call = app.qso.call.toUpperCase();
     app.callLocked = true;
+    // Same path as a click: dupe check and (after a short pause) the QRZ.com lookup.
+    app.noteCallChange();
   }
 </script>
 
@@ -24,7 +26,7 @@
   </div>
   <label>{t('qso.name')}<input bind:value={app.qso.name} /></label>
   <label>{t('qso.qth')}<input bind:value={app.qso.qth} /></label>
-  {#if app.lookupNote}<small class="muted lookup-note">{t('lookup.from', { text: app.lookupNote.text })}</small>{/if}
+  {#if app.lookupNote && app.lookupNote.call === app.qso.call.trim().toUpperCase()}<small class="muted lookup-note">{t('lookup.from', { text: app.lookupNote.text })}</small>{/if}
   <div class="pair">
     <label>{t('qso.rst')}<input class="mono" bind:value={app.qso.rst} /></label>
     {#if !app.settings?.contest_mode}<label>{t('contest.rcvd.rst')}<input class="mono" bind:value={app.entry.rst} /></label>{/if}

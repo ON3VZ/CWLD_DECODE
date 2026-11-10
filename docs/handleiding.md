@@ -243,7 +243,7 @@ De N1MM-koppeling in CWLD zendt wel hetzelfde berichtformaat (contactinfo) uit v
 
 Bronnen: [Log4OM, Working with JT](https://www.log4om.com/l4ong/usermanual/Working_with_JT.pdf), [VarAC en logboekprogramma's](https://www.varac-hamradio.com/post/integrating-varac-with-your-qso-logging-application), [N1MM, externe UDP-uitzendingen](https://n1mmwp.hamdocs.com/appendices/external-udp-broadcasts/).
 
-## 24. Paddle oefenen en een stille radio (0.12.0)
+## 24. Paddle oefenen en een stille radio (0.12.0, aangepast in 0.13.1)
 
 In OEFENEN kun je met de paddle op de radio seinen, zonder dat er iets gezonden wordt. CWLD hoort je zijtoon, leest wat je seint en meet je spatiëring.
 
@@ -251,20 +251,34 @@ In OEFENEN kun je met de paddle op de radio seinen, zonder dat er iets gezonden 
 
 Staat "Radio stil tijdens het oefenen" aan (in het oefenpaneel rechts, standaard aan), dan doet CWLD bij de overstap naar OEFENEN twee dingen op de IC-7300 MK II:
 
-- De luidspreker gaat dicht (AF-niveau op 0). Je hoort alleen nog CWLD in je koptelefoon of luidsprekers van de pc.
+- De squelch gaat dicht. De band valt stil in je hoofdtelefoon.
 - Break-in gaat uit. De paddle maakt dan alleen de zijtoon, de radio zendt niet.
 
-Ga je naar LUISTEREN of LIVE, of sluit je CWLD, dan zet CWLD beide terug zoals ze waren. Draai je tijdens het oefenen zelf aan de AF-knop, dan laat CWLD dat zo. Valt de pc of CWLD onverwacht uit, dan blijft de radio stil: draai dan de AF-knop open en zet Break-in weer aan met de knop BK-IN op de radio.
+Het AF-volume blijft staan. Op de IC-7300 MK II bepaalt de AF-knop ook hoe luid de zijtoon op de USB-audio staat: staat hij op 0, dan hoort CWLD je paddle niet. Gemeten door ON3VZ: met AF op ongeveer 20 procent en de squelch dicht is de band stil en herkent CWLD de paddle. Tot en met 0.13.0 zette CWLD het AF-volume op 0, en dan werkte paddle oefenen niet.
 
-**[TEST]** De commando's zijn die van de IC-7300 (AF-niveau `14 01`, break-in `16 47`). Dat ze op de MK II gelijk zijn, is nog niet bevestigd (test A40). Bij de QMX doet CWLD dit niet.
+Ga je naar LUISTEREN of LIVE, of sluit je CWLD, dan zet CWLD squelch en break-in terug zoals ze waren. Draai je tijdens het oefenen zelf aan de SQL-knop, dan laat CWLD dat zo. Valt de pc of CWLD onverwacht uit, dan blijft de squelch dicht: draai dan de SQL-knop linksom en zet Break-in weer aan met de knop BK-IN op de radio.
+
+Onder het vakje staat wat de radio meldt: volume, squelch en break-in. Staat er "niet gemeld", dan antwoordde de radio niet op die vraag en doet CWLD niets: draai dan zelf de SQL-knop rechtsom.
+
+**[TEST]** De commando's zijn die van de IC-7300 (squelch `14 03`, break-in `16 47`, AF-niveau `14 01` alleen gelezen). Dat ze op de MK II gelijk zijn, is nog niet bevestigd (test A40). Bij de QMX doet CWLD dit niet.
 
 ### Hoort CWLD je zijtoon?
 
-De zijtoon moet op de USB-audio van de radio staan, anders hoort CWLD niets. Dat is test I10 uit het testplan, nog niet bevestigd. Zo kijk je het na:
+De zijtoon moet op de USB-audio van de radio staan, anders hoort CWLD niets. Standaard stuurt de radio die niet mee. Zet dit eenmalig op de radio (gevonden en bevestigd door ON3VZ op zijn IC-7300 MK II):
+
+1. Druk op MENU en tik op SET.
+2. Kies Connectors, dan USB AF/IF Output.
+3. Zet "AF Beep/Speech... Output" op ON.
+4. Laat het AF-volume van de radio op ongeveer 20 procent staan (niet op 0, zie hierboven).
+
+Deze instelling stuurt ook de pieptonen en spraakmeldingen van de radio mee op de USB-audio. Voor het zenden maakt dat niets uit. Gebruik je ook WSJT-X of andere digitale software, dan hoort die die tonen ook; zet de instelling dan eventueel weer uit.
+
+Zo kijk je na of het werkt:
 
 1. Zet CWLD in OEFENEN en start het luisteren met de audio-ingang van de radio (Instellingen, Audio, kies "USB Audio CODEC", klik Toepassen).
 2. Klik rechts op "Start paddle oefenen" en sein een paar tekens.
 3. Verschijnt er tekst onder "Gehoord", dan werkt het. Blijft de melding "Nog geen zijtoon gehoord" staan:
+   - Controleer de instelling "AF Beep/Speech... Output" hierboven en of het AF-volume niet op 0 staat (de paddle-kaart waarschuwt dan ook).
    - Zet op de radio het zijtoonniveau hoger: druk op MENU, kies KEYER, dan EDIT/SET, dan CW-KEY SET, en zet "Side Tone Level" op ongeveer 70 procent.
    - Zet de Monitor-functie van de radio aan (zie de Basic-handleiding van de radio bij Monitor) en probeer opnieuw.
    - Lukt het nog niet, meld het dan. Dan bouwen we de terugvalweg (CWLD maakt zelf de toon).
@@ -273,7 +287,7 @@ De zijtoon moet op de USB-audio van de radio staan, anders hoort CWLD niets. Dat
 
 1. Kies de oefening: tekengroepen, je zwakke tekens, woorden en afkortingen, roepletters of QSO-zinnen.
 2. Klik "Start paddle oefenen". In het midden verschijnt de tekst in grote letters.
-3. Sein de tekst. Wat CWLD hoort, staat eronder.
+3. Sein de tekst. Wat CWLD hoort, staat eronder. Elke oefening (ook de simulator) start in een eigen tabblad "Oefenen", zodat ze nooit in een echt QSO terechtkomt.
 4. Ben je klaar en stop je twee seconden, dan beoordeelt CWLD vanzelf. Je kunt ook op "Klaar" klikken.
 5. Je ziet welke tekens fout waren (rood, met wat CWLD in de plaats hoorde), je score, het aantal juiste tekens, je snelheid en je spatiëring met tips. Klik "Volgende" of "Opnieuw".
 
@@ -307,7 +321,7 @@ Heb je een QRZ.com account, dan kan CWLD de voornaam en woonplaats van het stati
 ### Wat gebeurt er
 
 - Zodra een roepletterreeks in het paneel staat en je even niet meer typt, vraagt CWLD die ene roepletterreeks aan QRZ.com via HTTPS.
-- Is "Naam" of "QTH" leeg, dan vult CWLD ze in. Stond er al iets, ook al typte je het zelf, dan blijft dat staan. Onder de velden staat wat QRZ.com antwoordde.
+- Is "Naam" of "QTH" leeg, of vulde CWLD ze zelf in voor een vorig station, dan vult CWLD ze in. Wat je zelf typte, blijft staan. Onder de velden staat wat QRZ.com antwoordde, alleen zolang die roepletters in het paneel staan.
 - Antwoorden worden een dag onthouden, zodat QRZ.com niet onnodig bevraagd wordt.
 - Is QRZ.com onbereikbaar of klopt het wachtwoord niet, dan komt er één rustige melding en gaat loggen gewoon door.
 

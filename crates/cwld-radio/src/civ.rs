@@ -33,6 +33,8 @@ pub mod cmd {
     pub const AF_LEVEL: [u8; 2] = [0x14, 0x01];
     /// Break-in: 00 off, 01 semi, 02 full. Same as the IC-7300; to confirm on the MK II **[TEST]**.
     pub const BREAK_IN: [u8; 2] = [0x16, 0x47];
+    /// Squelch level, 0000 to 0255. Same as the IC-7300; to confirm on the MK II **[TEST]**.
+    pub const SQUELCH: [u8; 2] = [0x14, 0x03];
 }
 
 /// Builds one frame: `FE FE to from body FD`.

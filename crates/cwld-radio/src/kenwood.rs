@@ -321,7 +321,7 @@ impl<T: Transport> Rig for QmxRig<T> {
             // The QMX has no band scope.
             RadioCommand::SetScope(_) => Ok(()),
             // Not built for the QMX: its speaker volume and break-in are not changed by CWLD.
-            RadioCommand::SetAfLevel(_) | RadioCommand::SetBreakIn(_) => Err(RigError::InvalidArgument("not_supported".into())),
+            RadioCommand::SetAfLevel(_) | RadioCommand::SetBreakIn(_) | RadioCommand::SetSquelch(_) => Err(RigError::InvalidArgument("not_supported".into())),
         }
     }
 

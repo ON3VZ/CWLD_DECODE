@@ -33,7 +33,7 @@ fn poll_asks_for_the_status_values() {
     r.poll();
     let frames = written_frames(&h);
     let bodies: Vec<Vec<u8>> = frames.iter().map(|f| f.body.clone()).collect();
-    assert_eq!(bodies, vec![vec![0x03], vec![0x04], vec![0x1C, 0x00], vec![0x14, 0x0C], vec![0x15, 0x02], vec![0x14, 0x01], vec![0x16, 0x47]]);
+    assert_eq!(bodies, vec![vec![0x03], vec![0x04], vec![0x1C, 0x00], vec![0x14, 0x0C], vec![0x15, 0x02], vec![0x14, 0x01], vec![0x16, 0x47], vec![0x14, 0x03]]);
     assert!(frames.iter().all(|f| f.to == RADIO && f.from == CONTROLLER));
 }
 
@@ -42,16 +42,18 @@ fn af_level_and_break_in_are_read_and_set() {
     let (mut r, h, _c) = rig(false);
     h.feed(&from_radio(&[0x14, 0x01, 0x01, 0x28])); // AF level 128
     h.feed(&from_radio(&[0x16, 0x47, 0x02])); // full break-in
+    h.feed(&from_radio(&[0x14, 0x03, 0x00, 0x40])); // squelch 40
     r.poll();
-    assert_eq!(r.audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(2) });
+    assert_eq!(r.audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(2), squelch: Some(40) });
     let _ = written_frames(&h);
     // In practice mode (no transmitting allowed) both may be changed: neither keys the radio.
     let mut g = GuardedRig::new(r, PolicyHandle::new(TxPolicy::Practice));
     g.execute(&RadioCommand::SetAfLevel(0)).unwrap();
     g.execute(&RadioCommand::SetBreakIn(0)).unwrap();
+    g.execute(&RadioCommand::SetSquelch(255)).unwrap();
     let bodies: Vec<Vec<u8>> = written_frames(&h).into_iter().map(|f| f.body).collect();
-    assert_eq!(bodies, vec![vec![0x14, 0x01, 0x00, 0x00], vec![0x16, 0x47, 0x00]]);
-    assert_eq!(g.audio_controls(), cwld_radio::AudioControls { af_level: Some(0), break_in: Some(0) });
+    assert_eq!(bodies, vec![vec![0x14, 0x01, 0x00, 0x00], vec![0x16, 0x47, 0x00], vec![0x14, 0x03, 0x02, 0x55]]);
+    assert_eq!(g.audio_controls(), cwld_radio::AudioControls { af_level: Some(0), break_in: Some(0), squelch: Some(255) });
     assert!(g.execute(&RadioCommand::SetBreakIn(3)).is_err());
 }
 
@@ -199,6 +201,7 @@ fn radio_refusing_a_block_without_pipeline_is_retried_then_given_up() {
                 [0x17, ..] => h.feed(&from_radio(&[civ::NG])),
                 [0x14, 0x01] => h.feed(&from_radio(&[0x14, 0x01, 0x01, 0x28])),
                 [0x16, 0x47] => h.feed(&from_radio(&[0x16, 0x47, 0x01])),
+                [0x14, 0x03] => h.feed(&from_radio(&[0x14, 0x03, 0x00, 0x00])),
                 _ => {}
             }
         }

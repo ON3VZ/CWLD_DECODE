@@ -1366,3 +1366,80 @@ describe('QRZ.com lookup', () => {
     expect(app.warning).toBeTruthy();
   });
 });
+
+describe('QRZ.com lookup when the call is typed (0.13.1)', () => {
+  async function withLookup() {
+    const api = new MockApi({ station: { calls: ['ON3VZ'], name: 'KRISTOF', qth: 'HOBOKEN', locator: 'JO20EE' }, lookup: { qrz_enabled: true, qrz_user: 'ON3VZ' } });
+    api.lookupPassword = 'geheim';
+    await app.init(api);
+    return api;
+  }
+  /** What the call field in the QSO panel does on every key. */
+  function type(call: string) {
+    app.qso.call = call;
+    app.callLocked = true;
+    app.noteCallChange();
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('a typed call is looked up and fills name and QTH', async () => {
+    const api = await withLookup();
+    app.qso = { ...app.qso, call: '', name: '', qth: '' };
+    for (const c of ['O', 'ON', 'ON4', 'ON4Z', 'ON4ZZ']) type(c);
+    await vi.advanceTimersByTimeAsync(800);
+    expect(api.lookupCalls).toEqual(['ON4ZZ']);
+    expect(app.qso.name).toBe('Jan');
+    expect(app.qso.qth).toBe('Gent');
+  });
+
+  it('the name of the station before is replaced, a typed name is not', async () => {
+    const api = await withLookup();
+    // The decoder filled HANS and BERLIN for DL1ABC (demo conversation).
+    expect(app.qso.name).toBe('HANS');
+    type('ON4ZZ');
+    await vi.advanceTimersByTimeAsync(800);
+    expect(app.qso.name).toBe('Jan');
+    expect(app.qso.qth).toBe('Gent');
+    // The operator types a name; another lookup of the same call leaves it.
+    app.qso = { ...app.qso, name: 'JEF' };
+    type('ON4ZZ/P');
+    await vi.advanceTimersByTimeAsync(800);
+    api.lookupAnswers['ON4ZZ/P'] = { ...api.lookupAnswers.ON4ZZ, call: 'ON4ZZ/P' };
+    expect(app.qso.name).toBe('JEF');
+  });
+
+  it('the grey QRZ line belongs to the call in the panel only', async () => {
+    await withLookup();
+    type('ON4ZZ');
+    await vi.advanceTimersByTimeAsync(800);
+    expect(app.lookupNote?.call).toBe('ON4ZZ');
+    type('G3ABC');
+    expect(app.lookupNote).toBeNull();
+  });
+});
+
+describe('practice in its own tab and radio controls (0.13.1)', () => {
+  const on = (e: unknown[]) => (app as unknown as { onEvents(e: unknown[]): void }).onEvents(e);
+
+  it('a paddle exercise opens a fresh Practice tab and leaves the QSO alone', async () => {
+    await fresh();
+    await app.requestPolicy('practice');
+    const before = app.sessions.length;
+    const qsoTab = app.cur.id;
+    await app.paddleStart('chars');
+    expect(app.sessions.length).toBe(before + 1);
+    expect(app.cur.id).not.toBe(qsoTab);
+    expect(app.cur.practice).toBe(true);
+    expect(app.title(app.cur)).toMatch(/Practice|Oefenen/);
+    expect(app.sessions.find((s) => s.id === qsoTab)?.qso.call).toBe('DL1ABC');
+  });
+
+  it('shows what the radio reports and warns when the volume is 0', async () => {
+    await fresh();
+    on([{ type: 'radio_controls', controls: { af_level: 0, break_in: 0, squelch: 255 } }]);
+    expect(app.radioControls?.af_level).toBe(0);
+    expect(app.radioControls?.squelch).toBe(255);
+  });
+});

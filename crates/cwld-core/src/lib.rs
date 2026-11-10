@@ -137,8 +137,10 @@ pub enum CoreEvent {
     DecodeHold { hold: Option<DecodeHold>, mode: String },
     /// Key down and up times in milliseconds for the paddle trainer: `[down, ms]` pairs.
     Keying { runs: Vec<(bool, f32)> },
-    /// Practice mode turned the radio's speaker down and break-in off (`true`), or put them back.
+    /// Practice mode closed the radio's squelch and switched break-in off (`true`), or put them back.
     RadioQuiet { quiet: bool },
+    /// What the radio reports about its volume, squelch and break-in (`None`: not reported).
+    RadioControls { controls: cwld_radio::AudioControls },
 }
 
 pub struct AppCore {
@@ -163,6 +165,8 @@ pub struct AppCore {
     quiet_done: std::sync::atomic::AtomicBool,
     /// What the interface was last told about `radio_is_quieted`.
     quiet_reported: std::sync::atomic::AtomicBool,
+    /// The radio controls the interface was last told about.
+    controls_reported: Mutex<Option<cwld_radio::AudioControls>>,
 }
 
 /// Watches the link to a real radio, so a switched-off radio or a pulled cable shows as
@@ -178,6 +182,9 @@ struct LinkState {
 
 /// Pause between two tries to open the radio again.
 pub const RECONNECT_EVERY: Duration = Duration::from_secs(5);
+
+/// Squelch level that closes it fully (Icom 0 to 255).
+pub const SQUELCH_CLOSED: u16 = 255;
 
 #[derive(Default)]
 struct SwrState {
@@ -217,6 +224,7 @@ impl AppCore {
             quieted: Mutex::new(None),
             quiet_done: std::sync::atomic::AtomicBool::new(false),
             quiet_reported: std::sync::atomic::AtomicBool::new(false),
+            controls_reported: Mutex::new(None),
             recordings_dir: Mutex::new(None),
             link: Mutex::new(LinkState::default()),
             logbook: Mutex::new(logbook),
@@ -333,23 +341,27 @@ impl AppCore {
         Ok(())
     }
 
-    /// Practice mode: turn the radio's speaker down and break-in off, if the operator wants that
-    /// and the radio reported both values. What was there is kept to put back later.
+    /// Practice mode: close the radio's squelch and switch break-in off, if the operator wants that
+    /// and the radio reported the values. What was there is kept to put back later.
+    ///
+    /// The AF volume is never touched: on the IC-7300 MK II it also sets how loud the sidetone is on
+    /// the USB audio, so at 0 the paddle trainer hears nothing (measured by the operator, 0.13.1).
+    /// A closed squelch silences the band in the headphones and keeps the sidetone.
     fn radio_quiet(&self) {
         if !self.settings.lock().unwrap().practice.quiet_radio {
             return;
         }
         let mut rig = self.rig.lock().unwrap();
         let before = rig.audio_controls();
-        if !rig.status().connected || (before.af_level.is_none() && before.break_in.is_none()) {
+        if !rig.status().connected || (before.squelch.is_none() && before.break_in.is_none()) {
             // Not known yet (just connected): the next tick tries again.
             return;
         }
         self.quiet_done.store(true, std::sync::atomic::Ordering::Relaxed);
         let mut saved = cwld_radio::AudioControls::default();
-        if let Some(af) = before.af_level.filter(|v| *v > 0) {
-            if rig.execute(&RadioCommand::SetAfLevel(0)).is_ok() {
-                saved.af_level = Some(af);
+        if let Some(sql) = before.squelch.filter(|v| *v < SQUELCH_CLOSED) {
+            if rig.execute(&RadioCommand::SetSquelch(SQUELCH_CLOSED)).is_ok() {
+                saved.squelch = Some(sql);
             }
         }
         if let Some(bk) = before.break_in.filter(|v| *v > 0) {
@@ -367,15 +379,15 @@ impl AppCore {
         self.quiet_done.store(false, std::sync::atomic::Ordering::Relaxed);
         let Some(saved) = self.quieted.lock().unwrap().take() else { return };
         let mut rig = self.rig.lock().unwrap();
-        if let Some(af) = saved.af_level {
-            let _ = rig.execute(&RadioCommand::SetAfLevel(af));
+        if let Some(sql) = saved.squelch {
+            let _ = rig.execute(&RadioCommand::SetSquelch(sql));
         }
         if let Some(bk) = saved.break_in {
             let _ = rig.execute(&RadioCommand::SetBreakIn(bk));
         }
     }
 
-    /// The speaker volume and break-in are turned down by practice mode now.
+    /// The squelch is closed and break-in is off because of practice mode now.
     pub fn radio_is_quieted(&self) -> bool {
         self.quieted.lock().unwrap().is_some()
     }
@@ -438,6 +450,14 @@ impl AppCore {
         let quiet = self.radio_is_quieted();
         if quiet != self.quiet_reported.swap(quiet, std::sync::atomic::Ordering::Relaxed) {
             out.push(CoreEvent::RadioQuiet { quiet });
+        }
+        let controls = self.rig.lock().unwrap().audio_controls();
+        {
+            let mut last = self.controls_reported.lock().unwrap();
+            if *last != Some(controls) {
+                *last = Some(controls);
+                out.push(CoreEvent::RadioControls { controls });
+            }
         }
         if self.reconnect_due(Instant::now()) {
             // The result is not an error for the operator: the next try follows in a few seconds.
@@ -839,14 +859,15 @@ mod radio_tests {
         let c = AppCore::new(None);
         c.connect(&RadioSettings::default()).unwrap();
         let before = c.rig.lock().unwrap().audio_controls();
-        assert_eq!(before, cwld_radio::AudioControls { af_level: Some(128), break_in: Some(1) });
+        assert_eq!(before, cwld_radio::AudioControls { af_level: Some(128), break_in: Some(1), squelch: Some(0) });
         c.set_policy(TxPolicy::Practice, false).unwrap();
-        assert_eq!(c.rig.lock().unwrap().audio_controls(), cwld_radio::AudioControls { af_level: Some(0), break_in: Some(0) });
+        // Squelch closed and break-in off; the volume stays, so the sidetone stays on the USB audio.
+        assert_eq!(c.rig.lock().unwrap().audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(0), squelch: Some(SQUELCH_CLOSED) });
         assert!(c.radio_is_quieted());
-        // The operator turns the volume up by hand: practice mode leaves it alone.
-        c.rig.lock().unwrap().execute(&RadioCommand::SetAfLevel(60)).unwrap();
+        // The operator opens the squelch by hand: practice mode leaves it alone.
+        c.rig.lock().unwrap().execute(&RadioCommand::SetSquelch(60)).unwrap();
         c.tick();
-        assert_eq!(c.rig.lock().unwrap().audio_controls().af_level, Some(60));
+        assert_eq!(c.rig.lock().unwrap().audio_controls().squelch, Some(60));
         c.set_policy(TxPolicy::ListenOnly, false).unwrap();
         assert_eq!(c.rig.lock().unwrap().audio_controls(), before);
         assert!(!c.radio_is_quieted());
@@ -861,7 +882,18 @@ mod radio_tests {
         c.update_settings(s).unwrap();
         c.set_policy(TxPolicy::Practice, false).unwrap();
         c.tick();
-        assert_eq!(c.rig.lock().unwrap().audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(1) });
+        assert_eq!(c.rig.lock().unwrap().audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(1), squelch: Some(0) });
+    }
+
+    #[test]
+    fn the_radio_controls_are_reported_once_and_again_after_a_change() {
+        let c = AppCore::new(None);
+        c.connect(&RadioSettings::default()).unwrap();
+        let reports = |ev: Vec<CoreEvent>| ev.into_iter().filter_map(|e| match e { CoreEvent::RadioControls { controls } => Some(controls), _ => None }).collect::<Vec<_>>();
+        assert_eq!(reports(c.tick()).len(), 1);
+        assert!(reports(c.tick()).is_empty());
+        c.set_policy(TxPolicy::Practice, false).unwrap();
+        assert_eq!(reports(c.tick()), vec![cwld_radio::AudioControls { af_level: Some(128), break_in: Some(0), squelch: Some(SQUELCH_CLOSED) }]);
     }
 
     #[test]

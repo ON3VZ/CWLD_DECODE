@@ -31,6 +31,7 @@
       <p class="muted small">{t('paddle.waiting')}</p>
     {/if}
     {#if app.radioQuiet}<p class="muted small">{t('paddle.quiet')}</p>{/if}
+    {#if app.radioControls?.af_level === 0}<p class="warn small" role="alert">{t('paddle.af_zero')}</p>{/if}
 
     <div class="target mono" aria-label={t('paddle.target')}>
       {#if r}

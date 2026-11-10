@@ -43,7 +43,7 @@ impl SimRig {
             rng: 0x2545_F491_4F6C_DD1D,
             swr: 1.1,
             scope: false,
-            audio: crate::AudioControls { af_level: Some(128), break_in: Some(1) },
+            audio: crate::AudioControls { af_level: Some(128), break_in: Some(1), squelch: Some(0) },
             ticks: 0,
         }
     }
@@ -167,6 +167,7 @@ impl Rig for SimRig {
             RadioCommand::SetScope(on) => self.scope = *on,
             RadioCommand::SetAfLevel(v) => self.audio.af_level = Some((*v).min(255)),
             RadioCommand::SetBreakIn(v) => self.audio.break_in = Some((*v).min(2)),
+            RadioCommand::SetSquelch(v) => self.audio.squelch = Some((*v).min(255)),
         }
         Ok(())
     }

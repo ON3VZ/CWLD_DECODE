@@ -1,3 +1,4 @@
+import type { RadioControls } from './types';
 import type { Activation, ActivationStats, Api, DupeInfo, LogQso, AudioStatus, Tuning, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
 import { i18n, t } from './i18n.svelte';
 import { activeProfile, activeSent, copyProfile as copyContestProfileData, cutNumber, isBuiltin, mergeImport, newProfileId, ownVars, parseImport, usesSerial, allProfiles, plain } from './contest';
@@ -43,6 +44,15 @@ export interface Session {
   touched?: number;
   /** The QSO of this conversation is in the logbook. */
   logged?: boolean;
+  /**
+   * Name and QTH as CWLD filled them in (decoder or QRZ.com), not typed by the operator. Only these
+   * may be replaced when the callsign changes or a lookup answers.
+   */
+  auto?: { name: string; qth: string };
+  /** The callsign `auto` belongs to. */
+  autoCall?: string;
+  /** This conversation belongs to a practice exercise (simulator or paddle). */
+  practice?: boolean;
 }
 
 /** Closing idle conversations is checked this often (ms). */
@@ -188,6 +198,28 @@ class AppState {
     return emptyQso(this.settings?.default_rst ?? '5NN');
   }
 
+  /**
+   * Every practice exercise starts in a fresh conversation tab, so practice text never mixes with a
+   * real QSO. An empty live tab is reused.
+   */
+  private practiceTab() {
+    const live = this.cur;
+    if (live && live.messages.length === 0) {
+      live.qso = this.blankQso();
+      live.callLocked = false;
+      live.practice = true;
+      this.viewId = live.id;
+      this.tail = null;
+      return;
+    }
+    const next = { ...this.makeSession(this.status.frequency_hz), practice: true };
+    this.sessions.push(next);
+    while (this.sessions.length > MAX_SESSIONS) this.sessions.shift();
+    this.viewId = next.id;
+    this.tail = null;
+    this.persist();
+  }
+
   private makeSession(freq: number): Session {
     return { id: this.nextId++, freq, started: clockNow(), messages: [], qso: this.blankQso(), callLocked: false, touched: Date.now() };
   }
@@ -300,6 +332,7 @@ class AppState {
   }
 
   title(x: Session): string {
+    if (x.practice) return [t('tabs.practice'), x.qso.call].filter(Boolean).join(' ');
     const khz = x.freq ? (x.freq / 1000).toFixed(1) : '';
     return [khz, x.qso.call].filter(Boolean).join(' ') || t('tabs.empty');
   }
@@ -482,6 +515,10 @@ class AppState {
       }
       if (ev.type === 'radio_quiet') {
         this.radioQuiet = ev.quiet;
+        continue;
+      }
+      if (ev.type === 'radio_controls') {
+        this.radioControls = ev.controls;
         continue;
       }
       if (ev.type === 'waterfall') {
@@ -790,8 +827,16 @@ class AppState {
     }
     // Name and QTH only fill empty fields, and only for the station that is in the panel.
     if (h.call && h.call === live.qso.call) {
-      if (h.name && !live.qso.name) live.qso.name = h.name;
-      if (h.qth && !live.qso.qth) live.qso.qth = h.qth;
+      if (h.name && !live.qso.name) {
+        live.qso.name = h.name;
+        live.auto = { name: h.name, qth: live.auto?.qth ?? '' };
+        live.autoCall = h.call;
+      }
+      if (h.qth && !live.qso.qth) {
+        live.qso.qth = h.qth;
+        live.auto = { name: live.auto?.name ?? '', qth: h.qth };
+        live.autoCall = h.call;
+      }
     }
   }
 
@@ -1220,6 +1265,8 @@ class AppState {
 
   /** Practice mode turned the radio's speaker down and break-in off. */
   radioQuiet = $state(false);
+  /** Volume, squelch and break-in as the radio reports them (null until the radio answers). */
+  radioControls = $state<RadioControls | null>(null);
   /** The paddle exercise under way: what to key, what was heard, the key times, and the result. */
   paddleEx = $state<{
     exercise: PaddleExercise;
@@ -1255,6 +1302,7 @@ class AppState {
       const p = $state.snapshot(this.settings.practice) as PracticeSettings;
       if (p.paddle?.exercise !== ex) await this.patchSettings({ practice: { ...p, paddle: { ...(p.paddle ?? { stats: [], sessions: [] }), exercise: ex } } });
     }
+    this.practiceTab();
     this.paddleEx = { exercise: ex, target: this.paddleTargetFor(ex), got: '', runs: [], heard: false, result: null };
   }
 
@@ -1345,6 +1393,7 @@ class AppState {
     }
     this.error = null;
     this.practiceScore = null;
+    this.practiceTab();
     this.practiceRestore = { contest_mode: this.settings.contest_mode, testMode: this.testMode, audio: !!this.audio?.running };
     const seed = Math.floor(Math.random() * 1e9) + 1;
     try {
@@ -1564,6 +1613,16 @@ class AppState {
     if (this.lookupTimer) clearTimeout(this.lookupTimer);
     this.lookupTimer = null;
     if (this.lookupNote && this.lookupNote.call !== call) this.lookupNote = null;
+    // Name and QTH that CWLD filled in for another station go; what the operator typed stays.
+    const s = this.shown;
+    if (s.auto && s.autoCall !== call) {
+      const q = { ...s.qso };
+      if (s.auto.name && q.name === s.auto.name) q.name = '';
+      if (s.auto.qth && q.qth === s.auto.qth) q.qth = '';
+      s.qso = q;
+      s.auto = undefined;
+      s.autoCall = undefined;
+    }
     const l = this.settings?.lookup;
     if (!l?.qrz_enabled || !l.qrz_user.trim() || !looksLikeCall(call)) return;
     this.lookupTimer = setTimeout(() => void this.lookupNow(call), LOOKUP_DELAY_MS);
@@ -1576,11 +1635,23 @@ class AppState {
   async lookupNow(call: string) {
     try {
       const info = await this.api.lookupCall(call);
-      if (!info || this.qso.call.trim().toUpperCase() !== call) return;
-      const next = { ...this.qso };
-      if (!next.name && info.first_name) next.name = info.first_name;
-      if (!next.qth && info.qth) next.qth = info.qth;
-      this.qso = next;
+      const s = this.shown;
+      if (!info || s.qso.call.trim().toUpperCase() !== call) return;
+      const next = { ...s.qso };
+      // Empty, or filled in by CWLD itself: QRZ.com may fill it. Typed by the operator: it stays.
+      const mine = (field: 'name' | 'qth') => !next[field] || (s.auto?.[field] ?? '') === next[field];
+      const auto = { name: s.auto?.name ?? '', qth: s.auto?.qth ?? '' };
+      if (info.first_name && mine('name')) {
+        next.name = info.first_name;
+        auto.name = info.first_name;
+      }
+      if (info.qth && mine('qth')) {
+        next.qth = info.qth;
+        auto.qth = info.qth;
+      }
+      s.qso = next;
+      s.auto = auto;
+      s.autoCall = call;
       const place = [info.qth, info.country].filter(Boolean).join(', ');
       this.lookupNote = { call, text: [info.first_name, place, info.grid].filter(Boolean).join(' · ') };
     } catch (e) {

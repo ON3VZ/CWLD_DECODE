@@ -272,18 +272,22 @@ Doe dit op een dummy load of met laag vermogen, in LIVE.
 6. Meld of Log4OM het bericht pas na een druk op een knop verwerkt, en of de poort 2333 bij jou al door een ander programma gebruikt werd.
 7. Optioneel, N1MM-formaat: stuur naar een luisterend programma en meld of het contactinfo-bericht begrepen wordt.
 
-## A40. Radio stil in OEFENEN (0.12.0)
+## A40. Radio stil in OEFENEN (0.13.1, squelch in plaats van volume)
 
-1. Verbind de IC-7300 MK II, LUISTEREN, AF-knop op een normaal niveau, BK-IN aan (semi).
-2. Klik OEFENEN. Verwacht binnen een seconde: de luidspreker gaat dicht, BK-IN gaat uit op het scherm van de radio, en rechts staat "Radio stil".
-3. Sein met de paddle. Verwacht: de radio zendt niet (geen TX-lampje), je hoort (of hoort niet) de zijtoon in de radio. Noteer welke.
-4. Draai de AF-knop open tijdens OEFENEN. Verwacht: CWLD laat hem zo.
-5. Klik LUISTEREN. Verwacht: AF terug op het oude niveau (of wat het was voor OEFENEN), BK-IN terug aan.
-6. Meld of de radio de commando's weigerde (dan doet CWLD niets en verschijnt "Radio stil" niet).
+Bevindingen ON3VZ met 0.12.0 en 0.13.0: AF op 0 maakte de band stil, maar ook de zijtoon op de USB, dus paddle oefenen werkte niet. Met AF op 20 procent en de SQL-knop helemaal rechtsom was de band stil en werkte de herkenning. Daarom sluit 0.13.1 de squelch.
 
-## A41. Paddle oefenen (0.12.0)
+1. Verbind de IC-7300 MK II, LUISTEREN, AF-knop op ongeveer 20 procent, SQL-knop linksom (open), BK-IN aan (semi).
+2. Kijk rechts in het oefenpaneel na de overstap naar OEFENEN: "Radio meldt: volume ..., squelch ..., break-in ...". Noteer de waarden.
+3. Verwacht binnen een seconde: de band valt stil, BK-IN gaat uit op het scherm van de radio, squelch "dicht", en "Radio stil".
+4. Sein met de paddle. Verwacht: de radio zendt niet (geen TX-lampje) en je hoort de zijtoon.
+5. Draai de SQL-knop open tijdens OEFENEN. Verwacht: CWLD laat hem zo.
+6. Klik LUISTEREN. Verwacht: squelch terug zoals hij was, BK-IN terug aan, AF ongewijzigd.
+7. Staat er "niet gemeld" bij een waarde, meld dat: dan antwoordt de radio niet op dat commando.
 
-1. OEFENEN, audio-ingang van de radio actief, klik "Start paddle oefenen" met Tekengroepen.
+## A41. Paddle oefenen (0.12.0, opnieuw met 0.13.1)
+
+0. Op de radio eenmalig: MENU, SET, Connectors, USB AF/IF Output, "AF Beep/Speech... Output" op ON (bevestigd door ON3VZ: daarna komt de zijtoon op de USB-audio). AF-volume op ongeveer 20 procent.
+1. OEFENEN, audio-ingang van de radio actief, klik "Start paddle oefenen" met Tekengroepen. Verwacht: een nieuw tabblad "Oefenen".
 2. Sein de groepen. Verwacht: tekst onder "Gehoord", na twee seconden stilte de beoordeling.
 3. Sein met opzet een te korte pauze tussen tekens. Verwacht: de tip "De tekens lopen in elkaar".
 4. Meld de gemeten WPM tegenover de keyer-snelheid van de radio.
@@ -309,3 +313,9 @@ Doe dit op een dummy load of met laag vermogen, in LIVE.
 8. Probeer een verkeerd wachtwoord. Verwacht: "QRZ.com weigerde de aanmelding".
 9. Meld ook: welke velden een gratis account teruggeeft (naam en plaats ja of nee).
 
+## A44. QRZ.com bij getypte roepletters (0.13.1)
+
+1. QRZ.com aan (zie A43). Typ in het QSO-paneel een bekende roepletterreeks met het toetsenbord.
+2. Verwacht: na een korte pauze Naam en QTH ingevuld, met de grijze regel "Van QRZ.com" voor precies die roepletters.
+3. Typ daarna andere roepletters. Verwacht: de grijze regel verdwijnt meteen, naam en QTH van het vorige station verdwijnen en worden vervangen door die van het nieuwe station.
+4. Typ zelf een naam en wissel dan de roepletters. Verwacht: jouw getypte naam blijft staan.

@@ -60,12 +60,15 @@ pub trait Rig: Send {
 }
 
 /// Settings of the radio that practice mode changes and puts back afterwards.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub struct AudioControls {
-    /// AF level 0 to 255.
+    /// AF level 0 to 255. On the IC-7300 MK II it also sets how loud the sidetone is on the USB
+    /// audio, so practice mode never turns it down (measured by the operator).
     pub af_level: Option<u16>,
     /// 0 off, 1 semi, 2 full.
     pub break_in: Option<u8>,
+    /// Squelch 0 (open) to 255 (closed).
+    pub squelch: Option<u16>,
 }
 
 impl Rig for Box<dyn Rig> {

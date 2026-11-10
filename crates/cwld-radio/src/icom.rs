@@ -202,6 +202,13 @@ impl<T: Transport> IcomRig<T> {
                     self.audio.af_level = Some(raw.min(255));
                 }
             }
+            // Squelch, 0000 (open) to 0255 (closed) in BCD **[TEST]** on the MK II.
+            0x14 if b.len() >= 4 && b[1] == 0x03 => {
+                self.answered_read();
+                if let Some(raw) = civ::from_bcd2(&b[2..]) {
+                    self.audio.squelch = Some(raw.min(255));
+                }
+            }
             // Break-in: 00 off, 01 semi, 02 full **[TEST]** on the MK II.
             0x16 if b.len() >= 3 && b[1] == 0x47 => {
                 self.answered_read();
@@ -286,7 +293,7 @@ impl<T: Transport> Rig for IcomRig<T> {
                 // At most one pair of these reads under way, so a radio that does not answer them
                 // never fills the list of expected answers.
                 if !self.acks.contains(&Ack::Read) {
-                    for body in [&cmd::AF_LEVEL[..], &cmd::BREAK_IN[..]] {
+                    for body in [&cmd::AF_LEVEL[..], &cmd::BREAK_IN[..], &cmd::SQUELCH[..]] {
                         self.send(body)?;
                         self.acks.push_back(Ack::Read);
                     }
@@ -354,6 +361,12 @@ impl<T: Transport> Rig for IcomRig<T> {
                 }
                 self.send_set(&[cmd::BREAK_IN[0], cmd::BREAK_IN[1], *v])?;
                 self.audio.break_in = Some(*v);
+                Ok(())
+            }
+            RadioCommand::SetSquelch(v) => {
+                let raw = civ::bcd2((*v).min(255));
+                self.send_set(&[cmd::SQUELCH[0], cmd::SQUELCH[1], raw[0], raw[1]])?;
+                self.audio.squelch = Some((*v).min(255));
                 Ok(())
             }
         }

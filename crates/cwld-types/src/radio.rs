@@ -82,6 +82,9 @@ pub enum RadioCommand {
     /// Break-in: 0 off, 1 semi, 2 full. Off means the paddle only makes the sidetone. Setting it
     /// does not key the radio by itself.
     SetBreakIn(u8),
+    /// Squelch level 0 to 255 (Icom SQL). Fully closed silences the band in the headphones while
+    /// the sidetone and the USB audio stay. Receive only.
+    SetSquelch(u16),
 }
 
 /// Safety class of a command. Outside `TxPolicy::Live` only the first three are allowed.
@@ -114,6 +117,7 @@ impl RadioCommand {
             RadioCommand::SetScope(_) => CommandClass::Config,
             RadioCommand::SetAfLevel(_) => CommandClass::Config,
             RadioCommand::SetBreakIn(_) => CommandClass::Config,
+            RadioCommand::SetSquelch(_) => CommandClass::Config,
         }
     }
 
@@ -132,6 +136,7 @@ impl RadioCommand {
             RadioCommand::SetScope(true),
             RadioCommand::SetAfLevel(0),
             RadioCommand::SetBreakIn(0),
+            RadioCommand::SetSquelch(255),
         ]
     }
 
@@ -149,6 +154,7 @@ impl RadioCommand {
             RadioCommand::SetScope(_) => "set_scope",
             RadioCommand::SetAfLevel(_) => "set_af_level",
             RadioCommand::SetBreakIn(_) => "set_break_in",
+            RadioCommand::SetSquelch(_) => "set_squelch",
         }
     }
 }
@@ -173,6 +179,7 @@ mod tests {
             ("set_scope", Config),
             ("set_af_level", Config),
             ("set_break_in", Config),
+            ("set_squelch", Config),
         ];
         let examples = RadioCommand::examples();
         assert_eq!(examples.len(), expected.len());

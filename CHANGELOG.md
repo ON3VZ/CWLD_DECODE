@@ -1,3 +1,12 @@
+## 0.13.1 (paddle practice works on the IC-7300 MK II, QRZ.com fixes)
+
+- Practice mode no longer turns the radio's AF volume down. On the IC-7300 MK II the AF volume also sets how loud the sidetone is on the USB audio, so at 0 the paddle trainer heard nothing (found by ON3VZ). CWLD now closes the squelch instead (CI-V 14 03, still to confirm on the MK II) and switches break-in off; both are put back when you leave practice mode.
+- The practice panel shows what the radio reports: volume, squelch and break-in, or "not reported". The paddle card warns when the AF volume is 0.
+- Handbook section 24 now explains the radio setting that puts the sidetone on the USB audio: MENU, SET, Connectors, USB AF/IF Output, AF Beep/Speech... Output ON.
+- Every practice exercise (simulator and paddle) starts in its own "Practice" tab, so practice text never mixes with a real QSO.
+- Fixed: a callsign typed in the QSO panel was never looked up on QRZ.com; only clicked or decoded calls were. The grey QRZ.com line now only shows for the call in the panel.
+- Fixed: name and QTH that CWLD filled in for the previous station are replaced when the callsign changes. What you typed yourself is never replaced.
+
 ## 0.13.0 (QRZ.com lookup)
 
 - New in Settings, Logging link: QRZ.com lookup. With a QRZ.com account CWLD fetches the first name and the town of the station in the QSO panel and fills the Name and QTH fields. Only empty fields are filled; what you typed is never replaced. A small line under the fields shows what QRZ.com said (name, town and country, locator). Off by default.

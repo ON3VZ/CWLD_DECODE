@@ -94,6 +94,14 @@
   {#if cfg}
     <label class="check" title={t('practice.quiet.help')}><input type="checkbox" checked={cfg.quiet_radio} onchange={(e) => set('quiet_radio', (e.currentTarget as HTMLInputElement).checked)} /> {t('practice.quiet')}</label>
     {#if app.radioQuiet}<small class="muted">{t('paddle.quiet')}</small>{/if}
+    {#if app.radioControls && app.status.connected}
+      {@const c = app.radioControls}
+      <small class="muted" title={t('practice.controls.help')}>{t('practice.controls', {
+        af: c.af_level === null ? t('practice.controls.none') : `${Math.round((c.af_level / 255) * 100)}%`,
+        sql: c.squelch === null ? t('practice.controls.none') : c.squelch >= 255 ? t('practice.controls.closed') : `${Math.round((c.squelch / 255) * 100)}%`,
+        bk: c.break_in === null ? t('practice.controls.none') : t(`practice.controls.bk${c.break_in}`),
+      })}</small>
+    {/if}
   {/if}
 </section>
 
