@@ -133,6 +133,26 @@ mod tests {
     }
 
     #[test]
+    fn fast_fading_is_read_better_with_the_fading_switch_on() {
+        // The level swings between full and a third (10 dB) about once a second, in little noise:
+        // every mark is far above the noise, but many are far below the level of their neighbours.
+        let text = "CQ CQ DE ON3VZ ON3VZ K";
+        let (mut on, mut off) = (0, 0);
+        for seed in 1..=6 {
+            let g = generate(&CwSpec { text: text.into(), snr_db: Some(25.0), qsb_depth: 0.67, qsb_hz: 1.1, lead_s: 1.0, trail_s: 2.0, seed, ..Default::default() });
+            let read = |fading: bool| {
+                let mut cfg = PipelineConfig::new(g.sample_rate, 700.0);
+                cfg.fading = fading;
+                crate::bench::levenshtein(text, &decode_samples(&g.samples, cfg))
+            };
+            on += read(true);
+            off += read(false);
+        }
+        println!("errors in {} characters: on {on}, off {off}", 6 * text.len());
+        assert!(on < off, "on {on} off {off}");
+    }
+
+    #[test]
     fn a_speed_range_keeps_the_decoder_inside_it() {
         // Fast keying at 40 WPM, decoder told to look only between 5 and 25 WPM: the speed it
         // works with never leaves that range. (Since the decoder follows the sender's style it

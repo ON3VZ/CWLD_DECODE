@@ -15,6 +15,7 @@
   const zone = $derived(pct > 90 ? 'high' : pct < 5 ? 'low' : 'ok');
   const gain = $derived(app.settings?.audio.gain_db ?? 0);
   const wide = $derived(app.settings?.audio.wide_filter ?? false);
+  const fading = $derived(app.settings?.audio.fading ?? true);
 
   // The tuning buttons are tucked away by default. The choice is remembered on this computer.
   const KEY = 'cwld.audio.tools';
@@ -56,6 +57,15 @@
     <small class:warn={zone !== 'ok'} class="muted">{t(`meter.peak.${zone}`)}</small>
   {/if}
 
+  <!-- Always in sight, not under the tools: it changes what the decoder reads. -->
+  <div class="ctl fade">
+    <span class="lbl" id="fading-lbl">{t('decoder.fading')}</span>
+    <div class="seg" role="group" aria-labelledby="fading-lbl">
+      <button class:on={fading} aria-pressed={fading} onclick={() => app.setFading(true)} title={t('decoder.fading.on.help')}>{t('decoder.fading.on')}</button>
+      <button class:on={!fading} aria-pressed={!fading} onclick={() => app.setFading(false)} title={t('decoder.fading.off.help')}>{t('decoder.fading.off')}</button>
+    </div>
+    <small class="muted">{t(fading ? 'decoder.fading.on.note' : 'decoder.fading.off.note')}</small>
+  </div>
   <button class="tools" onclick={toggle} aria-expanded={tools} title={t('audio.tools.help')}>{tools ? '\u25BE' : '\u25B8'} {t('audio.tools')}</button>
   {#if tools}
   {#if app.audio?.running}
@@ -106,6 +116,8 @@
   .tools { align-self: flex-start; background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }
   .ctl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .seg { display: inline-flex; }
+  .lbl { font-size: 12px; color: var(--muted); }
+  .fade small { flex-basis: 100%; font-size: 11px; line-height: 1.3; }
   .seg button { background: var(--panel2); border: 1px solid var(--line); padding: 3px 10px; color: var(--text); cursor: pointer; font-size: 12px; }
   .seg button:first-child { border-radius: 8px 0 0 8px; }
   .seg button:last-child { border-radius: 0 8px 8px 0; }

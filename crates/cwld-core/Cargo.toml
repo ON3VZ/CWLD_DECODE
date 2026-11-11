@@ -15,6 +15,7 @@ cwld-audio = { path = "../cwld-audio" }
 cwld-log = { path = "../cwld-log" }
 cwld-dsp = { path = "../cwld-dsp" }
 cwld-lookup = { path = "../cwld-lookup" }
+cwld-cluster = { path = "../cwld-cluster" }
 
 [dev-dependencies]
 

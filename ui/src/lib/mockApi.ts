@@ -1,6 +1,7 @@
-import type { Activation, ActivationStats, Api, AudioStatus, CheckIssue, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, CoreFailure, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, SwrAlert, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TentativeChar, Tuning, TxPolicy } from './types';
+import type { Activation, ActivationStats, Api, AudioStatus, CheckIssue, ClusterProbe, ClusterSpot, ClusterStatus, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, CoreFailure, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, SwrAlert, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TentativeChar, Tuning, TxPolicy } from './types';
 import { durationSeconds, playSidetone } from './morse';
 import { adifText, bandOf } from './adif';
+import { DEFAULT_CLUSTER_NODES } from './cluster';
 import { checkExport, validGrid, validWwffRef } from './logcheck';
 
 /** Same rule as the Rust keyer: blocks of at most 30 characters, cut on word boundaries. */
@@ -32,7 +33,7 @@ export function defaultSettings(): Settings {
     theme: 'dark',
     station: { calls: [], name: '', qth: '', locator: '' },
     swr: { enabled: true, limit: 1.5, qrx_after_stop: true },
-    audio: { input: '', tone_hz: 700, auto_start: true, record_dir: '', squelch: 3.5, auto_tone: true, gain_db: 0, wide_filter: false, min_wpm: 5, max_wpm: 50, lock_wpm: 0, afc: true },
+    audio: { input: '', tone_hz: 700, auto_start: true, record_dir: '', squelch: 3.5, auto_tone: true, gain_db: 0, wide_filter: false, fading: true, min_wpm: 5, max_wpm: 50, lock_wpm: 0, afc: true },
     radio: { kind: 'simulator', port: '', civ_address: 0xb6, baud: 115200, pipeline: false, auto_connect: true },
     last_policy: 'listen_only',
     first_run_done: false,
@@ -50,6 +51,14 @@ export function defaultSettings(): Settings {
     scope_size: 'medium',
     scope_size_contest: 'small',
     lookup: { qrz_enabled: false, qrz_user: '' },
+    cluster: {
+      enabled: false,
+      nodes: DEFAULT_CLUSTER_NODES.map((n) => ({ ...n })),
+      node: 'auto',
+      skimmer: true,
+      show_labels: true,
+      max_age_minutes: 30,
+    },
     link: { adif_enabled: false, adif_host: '127.0.0.1', adif_port: 2333, n1mm_enabled: false, n1mm_targets: '127.0.0.1:12060' },
     practice: { exercise: 'they_cq', wpm_min: 18, wpm_max: 26, strength: 'medium', noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5, quiet_radio: true, paddle: { exercise: 'chars', stats: [], sessions: [] }, koch: { chars: 'KMRSUAPTLOWINJEF0YVG5/Q9ZH38B?427C1D6X', char_wpm: 20, eff_wpm: 12, tone_hz: 650, listen: 'groups', stats: [], sessions: [] } },
     contest: { active: '', sent_index: 0, session: 1, profiles: [], vars: [{ name: 'SEC', value: 'WLD' }, { name: 'ZONE', value: '14' }, { name: 'ITU', value: '27' }, { name: 'PWR', value: '20' }] },
@@ -212,6 +221,57 @@ export class MockApi implements Api {
   async activationCurrent(): Promise<Activation | null> {
     return this.act ? { ...this.act } : null;
   }
+  // ---- DX cluster (demo: a few invented spots around the VFO, nothing leaves the browser) ----
+  private clusterState: ClusterStatus = { state: 'off', node: '', software: '', reason: '' };
+  private clusterList: ClusterSpot[] = [];
+  /** Commands the real core accepts: reading and filter commands only. */
+  static readonly CLUSTER_OK = ['sh', 'show', 'set', 'unset', 'clear', 'accept', 'acc', 'reject', 'rej', 'help', 'bye', 'quit', 'q'];
+
+  private spotStatus(call: string, band: string): ClusterSpot['status'] {
+    const mine = this.qsos.filter((x) => !x.deleted && !x.test && x.call === call);
+    if (mine.some((x) => x.band === band)) return 'worked';
+    return mine.length ? 'other_band' : 'new';
+  }
+  private colorSpots(): ClusterSpot[] {
+    this.clusterList = this.clusterList.map((s) => ({ ...s, status: this.spotStatus(s.call, s.band) }));
+    return this.clusterList.map((s) => ({ ...s }));
+  }
+  async clusterStart(): Promise<ClusterStatus> {
+    if (!this.settings.station.calls[0]?.trim()) fail('cluster_call_missing');
+    const node = this.settings.cluster.nodes[0]?.name ?? 'demo';
+    this.clusterState = { state: 'online', node, software: 'CC Cluster', reason: '' };
+    const f = this.status.frequency_hz;
+    const band = bandOf(f);
+    const now = this.nowSec();
+    const make = (call: string, off: number, snr: number, wpm: number): ClusterSpot => ({
+      call, freq_hz: Math.round((f + off) / 100) * 100, band, spotter: 'DL1ABC-#', comment: `CW ${snr} dB ${wpm} WPM CQ`, snr, wpm, skimmer: true, ts: now, hits: 1, status: this.spotStatus(call, band),
+    });
+    this.clusterList = [make('PA3ABC', -2400, 24, 22), make('DL1XYZ', -900, 12, 26), make('OK1TEST', 600, 18, 20), make('SP9ZZ', 1700, 9, 24)];
+    this.pending.push({ type: 'cluster_status', status: { ...this.clusterState } });
+    this.pending.push({ type: 'cluster_spots', spots: this.colorSpots() });
+    return { ...this.clusterState };
+  }
+  async clusterStop(): Promise<ClusterStatus> {
+    this.clusterState = { state: 'off', node: '', software: '', reason: '' };
+    this.clusterList = [];
+    return { ...this.clusterState };
+  }
+  async clusterStatus(): Promise<ClusterStatus> {
+    return { ...this.clusterState };
+  }
+  async clusterSend(line: string): Promise<void> {
+    if (this.clusterState.state !== 'online') fail('cluster_not_connected');
+    const first = line.trim().toLowerCase().split(/[\s/]/)[0];
+    if (!MockApi.CLUSTER_OK.includes(first)) fail('cluster_command_not_allowed');
+    this.pending.push({ type: 'cluster_lines', lines: [`(demo) ${line.trim()}`] });
+  }
+  async clusterSpots(): Promise<ClusterSpot[]> {
+    return this.colorSpots();
+  }
+  async clusterProbe(): Promise<ClusterProbe[]> {
+    return this.settings.cluster.nodes.map((n, i) => ({ node: n.name, host: n.host, port: n.port, ok: i !== 2, millis: 40 + i * 25, software: i % 2 ? 'DX Spider' : 'CC Cluster', error: i === 2 ? 'connection refused' : '' }));
+  }
+
   async activationStats(id: number): Promise<ActivationStats> {
     const q = this.qsos.filter((x) => !x.deleted && !x.test && x.activation_id === id);
     const unique = new Set(q.map((x) => `${x.call}|${x.band}|${x.mode}`)).size;
@@ -286,6 +346,10 @@ export class MockApi implements Api {
 
   async setAfc(on: boolean) {
     this.settings.audio.afc = on;
+  }
+
+  async setFading(on: boolean) {
+    this.settings.audio.fading = on;
   }
 
   strongestCalls = 0;
@@ -513,6 +577,11 @@ export class MockApi implements Api {
   keying = false;
   async keyingCapture(on: boolean) {
     this.keying = on;
+  }
+
+  /** Delivers these events to the listeners at once (tests). */
+  emitNow(events: CoreEvent[]) {
+    this.handlers.forEach((h) => h(events));
   }
 
   /** Delivers waiting events at once (tests do not want to wait for the 500 ms tick). */

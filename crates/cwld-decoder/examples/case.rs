@@ -29,6 +29,7 @@ fn main() {
         if std::env::args().any(|a| a == "notrack") { cfg.track_fading = false; }
         if std::env::args().any(|a| a == "nolm") { cfg.language_model = false; }
         if std::env::args().any(|a| a == "nospace") { cfg.spacing = false; }
+        if let Ok(w) = std::env::var("WEAK") { let v: Vec<f64> = w.split(',').map(|x| x.parse().unwrap()).collect(); cfg.weak_marks = Some((v[0], v[1], v[2])); }
         if std::env::args().any(|a| a == "nostyle") { cfg.decoder.learn_style = false; }
         for a in std::env::args() {
             if let Some(v) = a.strip_prefix("es=") { cfg.decoder.evidence_scale = v.parse().unwrap(); }

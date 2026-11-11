@@ -114,6 +114,9 @@ pub struct AudioSettings {
     pub gain_db: f32,
     /// Wide decoder filter (double bandwidth) for drifting or chirpy signals.
     pub wide_filter: bool,
+    /// Read weak dots and dashes in fast fading (QSB). Off: only marks near the followed level
+    /// count, which is steadier on very weak signals and with very uneven keying.
+    pub fading: bool,
     /// Slowest and fastest speed the decoder looks for, in WPM.
     pub min_wpm: u8,
     pub max_wpm: u8,
@@ -140,7 +143,7 @@ pub const NEW_TAB_SECONDS_DEFAULT: u32 = 5;
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new(), squelch: SQUELCH_DEFAULT, auto_tone: true, gain_db: 0.0, wide_filter: false, min_wpm: WPM_FLOOR, max_wpm: MAX_WPM_DEFAULT, lock_wpm: 0, afc: true }
+        AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new(), squelch: SQUELCH_DEFAULT, auto_tone: true, gain_db: 0.0, wide_filter: false, fading: true, min_wpm: WPM_FLOOR, max_wpm: MAX_WPM_DEFAULT, lock_wpm: 0, afc: true }
     }
 }
 
@@ -268,6 +271,57 @@ pub struct Settings {
     pub link: LinkSettings,
     /// Callsign lookup (QRZ.com). The password is never part of the settings: it is kept by the OS.
     pub lookup: LookupSettings,
+    /// DX cluster spots on the band scope (read only, over Telnet).
+    pub cluster: ClusterSettings,
+}
+
+/// One DX cluster node.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterNode {
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+}
+
+/// DX cluster spots. Off by default: the app only goes onto the internet when the operator asks for it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ClusterSettings {
+    /// Connect when the app starts.
+    pub enabled: bool,
+    pub nodes: Vec<ClusterNode>,
+    /// `auto` (the first node that answers, then the next one on trouble) or `host:port` of one node.
+    pub node: String,
+    /// Also ask for skimmer (RBN) spots, the stations heard automatically.
+    pub skimmer: bool,
+    /// Show the spot labels on the band scope.
+    pub show_labels: bool,
+    /// A spot disappears after this many minutes.
+    pub max_age_minutes: u32,
+}
+
+pub const CLUSTER_AGE_DEFAULT: u32 = 30;
+pub const CLUSTER_AGE_MAX: u32 = 240;
+
+/// The nodes offered at the start. The first one is Belgian. The list is the operator's to change.
+pub fn default_cluster_nodes() -> Vec<ClusterNode> {
+    let n = |name: &str, host: &str, port: u16| ClusterNode { name: name.into(), host: host.into(), port };
+    vec![
+        n("ON0DXK (Belgium)", "on0dxk.dyndns.org", 8000),
+        n("OE9 (Austria)", "cluster.oe9.at", 7373),
+        n("S50CLX (Slovenia)", "s50clx.infrax.si", 41112),
+        n("S50DXS (Slovenia)", "s50dxs.s53m.com", 8000),
+        n("HamQTH (Czechia)", "hamqth.com", 7300),
+        n("GB7DXG (United Kingdom)", "gb7dxg.lebs.org.uk", 7373),
+        n("VE7CC (Canada)", "ve7cc.net", 23),
+        n("DXSpots (USA)", "dxspots.com", 23),
+    ]
+}
+
+impl Default for ClusterSettings {
+    fn default() -> Self {
+        ClusterSettings { enabled: false, nodes: default_cluster_nodes(), node: "auto".into(), skimmer: true, show_labels: true, max_age_minutes: CLUSTER_AGE_DEFAULT }
+    }
 }
 
 /// QRZ.com XML lookup. Off by default; the password lives in the operating system's credential store.
@@ -590,6 +644,7 @@ impl Default for Settings {
             practice: PracticeSettings::default(),
             link: LinkSettings::default(),
             lookup: LookupSettings::default(),
+            cluster: ClusterSettings::default(),
         }
     }
 }

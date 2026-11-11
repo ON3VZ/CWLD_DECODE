@@ -781,10 +781,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cwld-cluster"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "cwld-core"
 version = "0.1.0"
 dependencies = [
  "cwld-audio",
+ "cwld-cluster",
  "cwld-dsp",
  "cwld-log",
  "cwld-lookup",

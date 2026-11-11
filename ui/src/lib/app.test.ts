@@ -1472,3 +1472,97 @@ describe('Koch method listening', () => {
     expect(app.settings!.practice.koch.eff_wpm).toBe(18);
   });
 });
+
+describe('fading switch', () => {
+  it('is on by default, and the choice is kept', async () => {
+    await fresh();
+    expect(app.settings!.audio.fading).toBe(true);
+    await app.setFading(false);
+    expect(app.settings!.audio.fading).toBe(false);
+  });
+});
+
+describe('DX cluster spots', () => {
+  it('is off until the operator turns it on, and needs an own callsign', async () => {
+    const api = await fresh([]);
+    expect(app.clusterStatus.state).toBe('off');
+    expect(app.settings!.cluster.enabled).toBe(false);
+    expect(app.settings!.cluster.skimmer).toBe(true);
+    expect(app.settings!.cluster.nodes[0].host).toBe('on0dxk.dyndns.org');
+    await app.clusterConnect();
+    expect(app.clusterStatus.state, 'no callsign, no login').toBe('off');
+    expect(app.error).toBeTruthy();
+    void api;
+  });
+
+  it('connects, receives spots and colors them by the logbook', async () => {
+    const api = await fresh();
+    await app.clusterConnect();
+    api.flush();
+    expect(app.clusterStatus.state).toBe('online');
+    expect(app.clusterSpots.length).toBe(4);
+    expect(app.clusterSpots.every((s) => s.status === 'new')).toBe(true);
+    // Work a station that is on the list: its label turns to "worked" after the refresh.
+    const spot = app.clusterSpots[0];
+    app.selectCall(spot.call);
+    app.entry.rst = '599';
+    await app.logQso();
+    await Promise.resolve();
+    await app.clusterRefresh();
+    expect(app.clusterSpots.find((s) => s.call === spot.call)?.status).toBe('worked');
+    expect(app.clusterSpots.filter((s) => s.status === 'new').length).toBe(3);
+  });
+
+  it('a spot on another band of a worked station is "other_band"', async () => {
+    const api = await fresh();
+    const blank = ['rst_sent', 'rst_rcvd', 'nr_rcvd', 'extra_sent', 'extra_rcvd', 'name', 'qth', 'comment', 'contest', 'my_call', 'station_call', 'operator', 'my_grid', 'tx_pwr', 'my_rig', 'my_antenna', 'my_wwff', 'my_pota', 'my_sota', 'their_prog', 'their_ref', 'exported_to'];
+    await api.logAdd({ ...Object.fromEntries(blank.map((k) => [k, ''])), id: 0, call: 'PA3ABC', band: '20m', freq_hz: 14_030_000, mode: 'CW', ts: Math.floor(Date.now() / 1000), nr_sent: 0, session: 1, test: false, deleted: false, activation_id: 0 } as never);
+    await app.clusterConnect();
+    api.flush();
+    expect(app.clusterSpots.find((s) => s.call === 'PA3ABC')?.status).toBe('other_band');
+  });
+
+  it('merges a repeated spot of the same station instead of adding a second label', async () => {
+    const api = await fresh();
+    await app.clusterConnect();
+    api.flush();
+    const first = app.clusterSpots[0];
+    api.emitNow([{ type: 'cluster_spots', spots: [{ ...first, snr: 30, hits: 2, freq_hz: first.freq_hz + 100 }] }]);
+    expect(app.clusterSpots.length).toBe(4);
+    expect(app.clusterSpots[0].snr).toBe(30);
+    api.emitNow([{ type: 'cluster_spots', spots: [{ ...first, call: 'NEW1AA', freq_hz: first.freq_hz + 5000 }] }]);
+    expect(app.clusterSpots.length).toBe(5);
+  });
+
+  it('disconnecting clears the spots, and the labels switch is remembered', async () => {
+    const api = await fresh();
+    await app.clusterConnect();
+    api.flush();
+    await app.setClusterLabels(false);
+    expect(app.settings!.cluster.show_labels).toBe(false);
+    await app.clusterDisconnect();
+    expect(app.clusterStatus.state).toBe('off');
+    expect(app.clusterSpots).toEqual([]);
+  });
+
+  it('only reading commands can be typed, and the answer shows in the window', async () => {
+    const api = await fresh();
+    await app.clusterConnect();
+    api.flush();
+    await app.clusterSendLine('sh/dx 5');
+    api.flush();
+    expect(app.clusterLines.some((l) => l.includes('sh/dx 5'))).toBe(true);
+    app.error = null;
+    await app.clusterSendLine('dx 7030 PA3ABC up');
+    expect(app.error).toBeTruthy();
+    expect(app.clusterLines.some((l) => l.includes('dx 7030'))).toBe(false);
+  });
+
+  it('tests the nodes and keeps the result', async () => {
+    await fresh();
+    await app.clusterTest();
+    expect(app.clusterProbeResult.busy).toBe(false);
+    expect(app.clusterProbeResult.list.length).toBe(8);
+    expect(app.clusterProbeResult.list.some((r) => !r.ok)).toBe(true);
+  });
+});

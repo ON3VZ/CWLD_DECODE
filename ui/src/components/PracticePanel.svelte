@@ -185,6 +185,18 @@
     {:else}
       <button class="btn primary" onclick={() => app.listenStart()}>{t('koch.listen.start')}</button>
     {/if}
+    <h3>{t('koch.send.title')}</h3>
+    <p class="muted small">{t('koch.send.intro')}</p>
+    {#if app.policy !== 'practice'}
+      <small class="muted">{t('koch.send.need_practice')}</small>
+    {:else if app.paddleEx}
+      <button class="btn" onclick={() => app.paddleStop()}>{t('paddle.stop')}</button>
+    {:else}
+      <div class="row">
+        <button class="btn primary" onclick={() => app.paddleStart('chars')}>{t('koch.send.groups')}</button>
+        <button class="btn" onclick={() => app.paddleStart('words')}>{t('koch.send.words')}</button>
+      </div>
+    {/if}
     {#if listenWeak.length}
       <div class="small"><span class="muted">{t('paddle.weak')}</span> {#each listenWeak as w (w.ch)}<span class="chip mono" title={t('paddle.weak.rate', { errors: String(w.errors), tries: String(w.tries) })}>{w.ch}</span>{/each}</div>
     {/if}

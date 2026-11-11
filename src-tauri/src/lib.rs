@@ -1,6 +1,6 @@
 //! Thin Tauri shell around `cwld-core`. All rules live in the core, so they are tested there.
 
-use cwld_core::{Activation, AppCore, AudioStatus, CoreError, CoreEvent, InputDevice, LogFilter, Qso, SendOutcome, Snapshot};
+use cwld_core::{Activation, AppCore, AudioStatus, ClusterProbe, ClusterStatus, CoreError, CoreEvent, InputDevice, LogFilter, Qso, SendOutcome, Snapshot, SpotOut};
 use cwld_radio::PortInfo;
 use cwld_types::{RadioSettings, Settings, TxPolicy};
 use serde::Serialize;
@@ -142,6 +142,13 @@ fn set_tuning(core: Core, gain_db: f32, wide_filter: bool, min_wpm: u8, max_wpm:
 }
 
 #[tauri::command]
+fn set_fading(core: Core, on: bool) -> Result<(), Failure> {
+    core.set_fading(on)?;
+    let _ = core.save_settings();
+    Ok(())
+}
+
+#[tauri::command]
 fn set_afc(core: Core, on: bool) -> Result<(), Failure> {
     core.set_afc(on)?;
     let _ = core.save_settings();
@@ -258,6 +265,41 @@ fn lookup_clear_password(core: Core) -> Result<(), Failure> {
     Ok(core.lookup_clear_password()?)
 }
 
+#[tauri::command]
+fn cluster_start(core: Core) -> Result<ClusterStatus, Failure> {
+    core.cluster_start()?;
+    Ok(core.cluster_status())
+}
+
+#[tauri::command]
+fn cluster_stop(core: Core) -> ClusterStatus {
+    core.cluster_stop()
+}
+
+#[tauri::command]
+fn cluster_status(core: Core) -> ClusterStatus {
+    core.cluster_status()
+}
+
+#[tauri::command]
+fn cluster_send(core: Core, line: String) -> Result<(), Failure> {
+    Ok(core.cluster_send(&line)?)
+}
+
+#[tauri::command]
+fn cluster_spots(core: Core) -> Vec<SpotOut> {
+    core.cluster_spots()
+}
+
+/// Trying the nodes waits for the network, so it runs off the interface thread.
+#[tauri::command]
+async fn cluster_probe(core: Core<'_>) -> Result<Vec<ClusterProbe>, Failure> {
+    let c = core.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || c.cluster_probe())
+        .await
+        .map_err(|_| Failure { code: "cluster_network", message: "cluster test failed".into() })
+}
+
 /// The two network commands wait for QRZ.com, so they run off the interface thread.
 #[tauri::command]
 async fn lookup_test(core: Core<'_>) -> Result<cwld_core::LookupTest, Failure> {
@@ -339,6 +381,7 @@ fn start_ticker(app: AppHandle, core: Arc<AppCore>) {
             round = round.wrapping_add(1);
             let mut events: Vec<CoreEvent> = core.fast_tick();
             events.extend(core.audio_tick());
+            events.extend(core.cluster_tick());
             if round % 5 == 0 {
                 events.extend(core.tick());
             }
@@ -365,6 +408,10 @@ pub fn run() {
             }
             // Connect to the saved radio. A radio that is off is not fatal: the status shows it.
             let _ = core.auto_connect();
+            // The cluster connects only when the operator turned it on and has given a callsign.
+            if core.settings().cluster.enabled {
+                let _ = core.cluster_start();
+            }
             app.manage(core.clone());
             start_ticker(app.handle().clone(), core);
             Ok(())
@@ -394,6 +441,7 @@ pub fn run() {
             set_squelch,
             set_tuning,
             set_afc,
+            set_fading,
             go_strongest,
             set_auto_tone,
             start_recording,
@@ -418,7 +466,13 @@ pub fn run() {
             activation_start,
             activation_end,
             activation_current,
-            activation_stats
+            activation_stats,
+            cluster_start,
+            cluster_stop,
+            cluster_status,
+            cluster_send,
+            cluster_spots,
+            cluster_probe
         ])
         .build(tauri::generate_context!())
         .expect("error while building CWLD")

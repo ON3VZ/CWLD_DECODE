@@ -1,0 +1,9 @@
+[package]
+name = "cwld-cluster"
+description = "DX cluster client of CWLD: Telnet login, spot parsing and fail-over between nodes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true

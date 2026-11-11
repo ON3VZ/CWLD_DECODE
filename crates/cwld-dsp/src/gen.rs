@@ -44,6 +44,16 @@ pub struct CwSpec {
     pub word_gap: f64,
     /// Extra relative spread of the gaps only (a keyer makes even elements, the operator the gaps).
     pub gap_jitter: f64,
+    /// Share of the dots and dashes that a short deep fade takes away completely (0.03 = three
+    /// in a hundred). The text that was keyed stays the truth.
+    pub lost_elements: f64,
+    /// The sender changes his ways part of the way through: after this share of the words
+    /// (0 = never) the gaps between characters and words and the speed become the second set.
+    /// A value of 0 in the second set keeps the first.
+    pub change_after: f64,
+    pub char_gap2: f64,
+    pub word_gap2: f64,
+    pub wpm2: f64,
     /// The speed swings slowly by this share around `wpm` (0.15 = 15 percent up and down).
     pub speed_wobble: f64,
     /// Key rise and fall time in milliseconds.
@@ -80,6 +90,11 @@ impl Default for CwSpec {
             word_gap: 7.0,
             gap_jitter: 0.0,
             speed_wobble: 0.0,
+            change_after: 0.0,
+            char_gap2: 0.0,
+            word_gap2: 0.0,
+            wpm2: 0.0,
+            lost_elements: 0.0,
             rise_ms: 5.0,
             lead_s: 0.5,
             trail_s: 1.5,
@@ -108,19 +123,23 @@ pub(crate) fn timeline(spec: &CwSpec, text: &str, rng: &mut Rng) -> Vec<(bool, f
     let mut out: Vec<(bool, f64)> = Vec::new();
     let mut n = 0usize;
     // One swing of the speed takes about 40 elements and gaps (a few words).
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let change_at = if spec.change_after > 0.0 { (words.len() as f64 * spec.change_after).round() as usize } else { usize::MAX };
+    let late = std::cell::Cell::new(false);
+    let pick = |first: f64, second: f64| if late.get() && second > 0.0 { second } else { first };
     let unit = |n: &mut usize| {
         *n += 1;
-        base * (1.0 + spec.speed_wobble * (2.0 * std::f64::consts::PI * *n as f64 / 40.0).sin())
+        pick(base, if spec.wpm2 > 0.0 { 1.2 / spec.wpm2 } else { 0.0 }) * (1.0 + spec.speed_wobble * (2.0 * std::f64::consts::PI * *n as f64 / 40.0).sin())
     };
-    let words: Vec<&str> = text.split_whitespace().collect();
     for (wi, word) in words.iter().enumerate() {
+        late.set(wi >= change_at);
         if wi > 0 {
-            out.push((false, gjit(spec.word_gap * unit(&mut n) * spec.gap_scale, rng)));
+            out.push((false, gjit(pick(spec.word_gap, spec.word_gap2) * unit(&mut n) * spec.gap_scale, rng)));
         }
         let chars: Vec<char> = word.chars().collect();
         for (ci, c) in chars.iter().enumerate() {
             if ci > 0 {
-                out.push((false, gjit(spec.char_gap * unit(&mut n) * spec.gap_scale, rng)));
+                out.push((false, gjit(pick(spec.char_gap, spec.char_gap2) * unit(&mut n) * spec.gap_scale, rng)));
             }
             let pat = morse::pattern(*c).unwrap_or("");
             for (ei, e) in pat.chars().enumerate() {
@@ -128,7 +147,10 @@ pub(crate) fn timeline(spec: &CwSpec, text: &str, rng: &mut Rng) -> Vec<(bool, f
                     out.push((false, gjit(spec.intra_gap * unit(&mut n), rng)));
                 }
                 let len = if e == '-' { spec.dash_ratio } else { 1.0 };
-                out.push((true, jit(len * unit(&mut n), rng)));
+                let d = jit(len * unit(&mut n), rng);
+                // Lost in a fade: the time passes, the key is not heard.
+                let heard = spec.lost_elements <= 0.0 || rng.uniform() >= spec.lost_elements;
+                out.push((heard, d));
             }
         }
     }

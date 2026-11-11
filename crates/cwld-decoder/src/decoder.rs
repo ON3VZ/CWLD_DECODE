@@ -59,6 +59,8 @@ pub struct DecodeUpdate {
     /// This sender's usual gap between characters in units as measured so far (3 by the book),
     /// 0 while no signal is locked.
     pub char_gap_units: f32,
+    /// The sender went from wide to tight spacing since the last poll (see `Decoder::tightened`).
+    pub spacing_changed: bool,
     /// Not final yet: the characters of the last stretch with their alternatives.
     pub tentative: Vec<TentativeChar>,
     pub wpm: f32,
@@ -124,6 +126,9 @@ pub struct Decoder {
     intra: f64,
     /// The last gaps between characters and words, in units: the sender's spacing.
     gap_hist: std::collections::VecDeque<f64>,
+    /// The last gaps read as gaps inside characters, in units.
+    intra_hist: std::collections::VecDeque<f64>,
+    spacing_changed: bool,
     /// Marks learned from so far: the style is followed fast at first, then slowly.
     learned: usize,
     gaps: Vec<f32>,
@@ -168,6 +173,8 @@ impl Decoder {
             gap: 1.0,
             intra: 1.0,
             gap_hist: std::collections::VecDeque::new(),
+            intra_hist: std::collections::VecDeque::new(),
+            spacing_changed: false,
             learned: 0,
             gaps: Vec::new(),
             intras: Vec::new(),
@@ -254,6 +261,7 @@ impl Decoder {
         up.committed_gap = std::mem::take(&mut self.gaps);
         up.committed_intra = std::mem::take(&mut self.intras);
         up.silence_units = self.trail as f32 / self.u.unwrap_or(12.0) as f32;
+        up.spacing_changed = std::mem::take(&mut self.spacing_changed);
         up.char_gap_units = if self.locked { (3.0 * self.gap) as f32 } else { 0.0 };
         up.tentative = self.tentative.clone();
         up.wpm = self.wpm().unwrap_or(0.0) as f32;
@@ -850,6 +858,35 @@ impl Decoder {
         (dots, dashes, intra, inter)
     }
 
+    /// The sender changed from wide to tight spacing (he spelled a name slowly and now keys on
+    /// at his usual pace). His new gaps between characters are then shorter than the boundary
+    /// learned from the wide part, so they are read as gaps inside characters and the
+    /// characters run together. It shows in those gaps themselves: they fall in two groups,
+    /// the real ones around one unit and a second group well above. When that second group
+    /// is clearly shorter than the gap between characters believed so far, it is the new gap
+    /// between characters, and it is taken over at once instead of followed slowly.
+    fn tightened(&mut self) -> bool {
+        let mut v: Vec<f64> = self.intra_hist.iter().cloned().collect();
+        // Only a sender whose spacing was learned as clearly wide can have tightened it.
+        if v.len() < 6 || self.gap < 1.3 {
+            return false;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        // The widest step with at least three gaps below it and two above.
+        let Some(cut) = (3..=v.len() - 2).max_by(|a, b| (v[*a] / v[*a - 1]).partial_cmp(&(v[*b] / v[*b - 1])).unwrap()) else { return false };
+        let (low, high) = (v[cut / 2], v[cut + (v.len() - cut) / 2]);
+        if v[cut] / v[cut - 1] < 1.5 || high < 1.8 * low || 3.0 * self.gap < 1.5 * high {
+            return false;
+        }
+        self.spacing_changed = true;
+        self.gap = (high / 3.0).clamp(0.75, 3.5);
+        self.intra = low.clamp(0.8, 2.2);
+        self.gap_hist.clear();
+        self.gap_hist.extend(v[cut..].iter().cloned());
+        self.intra_hist.retain(|g| *g < v[cut]);
+        true
+    }
+
     /// Learns the sender's own style: dash length, weighting and spacing. `rate` is the share
     /// the new measurement gets.
     fn learn(&mut self, dots: &[usize], dashes: &[usize], intra: &[f64], inter: &[f64], rate: f64) {
@@ -864,6 +901,15 @@ impl Decoder {
             let ma = dashes.iter().sum::<usize>() as f64 / dashes.len() as f64;
             let ratio = (ma / md.max(1.0)).clamp(2.2, 4.6);
             self.dash = (1.0 - rate) * self.dash + rate * ratio;
+        }
+        for g in intra {
+            self.intra_hist.push_back(*g);
+        }
+        while self.intra_hist.len() > 16 {
+            self.intra_hist.pop_front();
+        }
+        if self.tightened() {
+            return;
         }
         if intra.len() >= 3 {
             // Weighting: the gap inside a character against the dot.

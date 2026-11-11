@@ -54,6 +54,8 @@ export interface AudioSettings {
   gain_db: number;
   /** Double filter bandwidth, for drifting or chirpy signals. */
   wide_filter: boolean;
+  /** Read weak dots and dashes in fast fading (QSB). */
+  fading: boolean;
   /** Slowest and fastest speed the decoder looks for (5 to 60 WPM). */
   min_wpm: number;
   max_wpm: number;
@@ -135,6 +137,67 @@ export interface Settings {
   practice: PracticeSettings;
   link: LinkSettings;
   lookup: LookupSettings;
+  cluster: ClusterSettings;
+}
+
+/** One DX cluster node. */
+export interface ClusterNode {
+  name: string;
+  host: string;
+  port: number;
+}
+
+/** DX cluster spots on the band scope (read only). Off by default. */
+export interface ClusterSettings {
+  /** Connect when the app starts. */
+  enabled: boolean;
+  nodes: ClusterNode[];
+  /** `auto` or `host:port` of one node. */
+  node: string;
+  /** Also ask for skimmer (RBN) spots. */
+  skimmer: boolean;
+  /** Show the spot labels on the band scope. */
+  show_labels: boolean;
+  /** A spot disappears after this many minutes (1 to 240). */
+  max_age_minutes: number;
+}
+
+export type ClusterState = 'off' | 'connecting' | 'online' | 'offline';
+
+export interface ClusterStatus {
+  state: ClusterState;
+  node: string;
+  software: string;
+  /** Why the last connection ended. */
+  reason: string;
+}
+
+/** `new`: not in the log. `other_band`: worked on another band. `worked`: worked on this band (a dupe in contest mode). */
+export type SpotStatus = 'new' | 'other_band' | 'worked';
+
+export interface ClusterSpot {
+  call: string;
+  freq_hz: number;
+  band: string;
+  spotter: string;
+  comment: string;
+  snr: number | null;
+  wpm: number | null;
+  skimmer: boolean;
+  /** Seconds since 1970 when the newest report arrived. */
+  ts: number;
+  hits: number;
+  status: SpotStatus;
+}
+
+export interface ClusterProbe {
+  node: string;
+  host: string;
+  port: number;
+  ok: boolean;
+  millis: number;
+  software: string;
+  error: string;
 }
 
 /** Sending logged QSOs over UDP to other programs. All off by default. */
@@ -367,7 +430,10 @@ export type CoreEvent =
   | { type: 'keying'; runs: [boolean, number][] }
   | { type: 'radio_quiet'; quiet: boolean }
   /** What the radio reports about its volume (0 to 255), squelch (0 open to 255 closed) and break-in. `null`: not reported. */
-  | { type: 'radio_controls'; controls: RadioControls };
+  | { type: 'radio_controls'; controls: RadioControls }
+  | { type: 'cluster_status'; status: ClusterStatus }
+  | { type: 'cluster_spots'; spots: ClusterSpot[] }
+  | { type: 'cluster_lines'; lines: string[] };
 
 export interface RadioControls {
   af_level: number | null;
@@ -513,6 +579,7 @@ export interface Api {
   /** Gain, filter width and speed range of the running decoder. */
   setTuning(t: Tuning): Promise<void>;
   setAfc(on: boolean): Promise<void>;
+  setFading(on: boolean): Promise<void>;
   /** Once: the decoder moves to the strongest keyed tone heard lately. */
   goStrongest(): Promise<void>;
   /** Returns the path of the new recording. */
@@ -550,6 +617,16 @@ export interface Api {
   activationEnd(): Promise<void>;
   activationCurrent(): Promise<Activation | null>;
   activationStats(id: number): Promise<ActivationStats>;
+  /** Connects to the DX cluster of the settings (needs an own callsign). */
+  clusterStart(): Promise<ClusterStatus>;
+  clusterStop(): Promise<ClusterStatus>;
+  clusterStatus(): Promise<ClusterStatus>;
+  /** A command typed in the cluster window. Only reading commands are accepted. */
+  clusterSend(line: string): Promise<void>;
+  /** All spots now, colored with the newest state of the logbook. */
+  clusterSpots(): Promise<ClusterSpot[]>;
+  /** Tries every node of the list. */
+  clusterProbe(): Promise<ClusterProbe[]>;
   /** True for the browser stand-in: the conversation starts with example text. */
   readonly demo: boolean;
   /** Poll for events (the Tauri shell pushes them, the mock generates them). */

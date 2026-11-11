@@ -1,5 +1,5 @@
 import type { RadioControls } from './types';
-import type { Activation, ActivationStats, Api, DupeInfo, LogQso, AudioStatus, Tuning, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
+import type { Activation, ActivationStats, Api, ClusterProbe, ClusterSettings, ClusterSpot, ClusterStatus, DupeInfo, LogQso, AudioStatus, Tuning, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
 import { i18n, t } from './i18n.svelte';
 import { activeProfile, activeSent, copyProfile as copyContestProfileData, cutNumber, isBuiltin, mergeImport, newProfileId, ownVars, parseImport, usesSerial, allProfiles, plain } from './contest';
 import { demoMessages, demoSignals, pileupChips, contestChips, type Message, type Signal } from './demo';
@@ -148,6 +148,14 @@ class AppState {
   scopeLo = $state(0);
   scopeHi = $state(0);
   scopeOutOfRange = $state(false);
+
+  // ---- DX cluster spots (read only) ----
+  clusterStatus = $state<ClusterStatus>({ state: 'off', node: '', software: '', reason: '' });
+  /** Spots of the cluster, colored by the logbook. Replaced as a whole, so the band scope redraws. */
+  clusterSpots = $state<ClusterSpot[]>([]);
+  /** Lines of the node that are no spots (welcome text, answers to commands), newest last. */
+  clusterLines = $state<string[]>([]);
+  clusterProbeResult = $state<{ busy: boolean; list: ClusterProbe[] }>({ busy: false, list: [] });
 
   /** True once real waterfall rows arrive (otherwise the waterfall shows the demo). */
   waterfallLive = $state(false);
@@ -442,6 +450,8 @@ class AppState {
     this.waterfallLive = false;
     this.scopeRows = [];
     this.scopeLive = false;
+    this.clusterSpots = [];
+    this.clusterLines = [];
     this.lastDecodeAt = { rx: 0, paddle: 0 };
     const earlier = api.demo ? [] : this.restore();
     for (const e of earlier) e.touched = Date.now();
@@ -457,6 +467,7 @@ class AppState {
     this.testMode = false;
     void this.refreshLog();
     void this.refreshActivation();
+    void this.clusterInit();
     this.updateState = 'idle';
     this.updateInfo = null;
     api.appVersion().then((v) => (this.version = v)).catch(() => {});
@@ -499,6 +510,18 @@ class AppState {
       }
       if (ev.type === 'decoder') {
         this.decoder = ev.stats;
+        continue;
+      }
+      if (ev.type === 'cluster_status') {
+        this.clusterStatus = ev.status;
+        continue;
+      }
+      if (ev.type === 'cluster_spots') {
+        this.mergeSpots(ev.spots);
+        continue;
+      }
+      if (ev.type === 'cluster_lines') {
+        this.clusterLines = [...this.clusterLines, ...ev.lines].slice(-200);
         continue;
       }
       if (ev.type === 'decode') {
@@ -1054,6 +1077,95 @@ class AppState {
     if (r > 0) await this.setFrequency(r);
   }
 
+  // ---- DX cluster ----
+
+  private async clusterInit() {
+    try {
+      this.clusterStatus = await this.api.clusterStatus();
+      if (this.clusterStatus.state !== 'off') this.clusterSpots = await this.api.clusterSpots();
+    } catch {
+      /* the cluster is optional */
+    }
+  }
+
+  /** Puts new or updated spots into the list: one per station, band and (about) frequency. */
+  private mergeSpots(incoming: ClusterSpot[]) {
+    const list = [...this.clusterSpots];
+    for (const s of incoming) {
+      const i = list.findIndex((x) => x.call === s.call && x.band === s.band && Math.abs(x.freq_hz - s.freq_hz) <= 300);
+      if (i >= 0) list[i] = s;
+      else list.push(s);
+    }
+    if (list.length > 800) list.splice(0, list.length - 800);
+    this.clusterSpots = list;
+  }
+
+  /** Asks the core for all spots again, with the colors of the logbook as it is now. */
+  async clusterRefresh() {
+    if (this.clusterStatus.state === 'off') return;
+    try {
+      this.clusterSpots = await this.api.clusterSpots();
+    } catch {
+      /* a failing refresh keeps the old colors */
+    }
+  }
+
+  /** Saves the cluster part (and the callsign) of the settings dialog, because the core reads them from the settings. Nothing else is touched. */
+  private async applyClusterEdit(e: { cluster: ClusterSettings; calls: string[] }) {
+    if (!this.settings) return;
+    const calls = e.calls.map((c) => c.trim().toUpperCase()).filter(Boolean);
+    const station = $state.snapshot(this.settings.station);
+    await this.patchSettings({ cluster: e.cluster, station: { ...station, calls: calls.length ? calls : station.calls } });
+  }
+
+  /** Connects with the settings as they are, or first saves what the dialog shows. */
+  async clusterConnect(edit?: { cluster: ClusterSettings; calls: string[] }) {
+    if (edit) await this.applyClusterEdit(edit);
+    this.clusterSpots = [];
+    this.clusterLines = [];
+    try {
+      this.clusterStatus = await this.api.clusterStart();
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async clusterDisconnect() {
+    try {
+      this.clusterStatus = await this.api.clusterStop();
+      this.clusterSpots = [];
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async clusterSendLine(line: string) {
+    const l = line.trim();
+    if (!l) return;
+    try {
+      await this.api.clusterSend(l);
+      this.clusterLines = [...this.clusterLines, `> ${l}`].slice(-200);
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async clusterTest(edit?: { cluster: ClusterSettings; calls: string[] }) {
+    if (edit) await this.applyClusterEdit(edit);
+    this.clusterProbeResult = { busy: true, list: [] };
+    try {
+      this.clusterProbeResult = { busy: false, list: await this.api.clusterProbe() };
+    } catch (e) {
+      this.clusterProbeResult = { busy: false, list: [] };
+      this.fail(e);
+    }
+  }
+
+  async setClusterLabels(on: boolean) {
+    if (!this.settings) return;
+    await this.patchSettings({ cluster: { ...$state.snapshot(this.settings.cluster), show_labels: on } });
+  }
+
   /** Shows or hides the band scope or the audio waterfall, and remembers it. */
   async setView(part: 'band_scope' | 'audio_waterfall', on: boolean) {
     if (!this.settings) return;
@@ -1197,6 +1309,16 @@ class AppState {
     }
   }
 
+  /** Reading weak dots and dashes in fast fading, on or off. */
+  async setFading(on: boolean) {
+    try {
+      await this.api.setFading(on);
+      if (this.settings) this.settings.audio.fading = on;
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
   /** Once: the decoder moves to the strongest keyed tone heard lately. */
   async goStrongest() {
     try {
@@ -1296,6 +1418,8 @@ class AppState {
     if (this.practiceRun) await this.stopExercise();
     this.listenStop();
     this.error = null;
+    // The trainer listens to the radio: start the audio when it is not running yet.
+    if (!this.audio?.running) await this.startAudio();
     try {
       await this.api.keyingCapture(true);
     } catch (e) {
@@ -1962,6 +2086,7 @@ class AppState {
       this.fail(e);
       return false;
     }
+    void this.clusterRefresh();
     this.cur.logged = true;
     void this.refreshActivation();
     this.sentPending = null;
@@ -1990,6 +2115,7 @@ class AppState {
       await this.api.logUpdate(q);
       this.editing = null;
       await this.refreshLog();
+      void this.clusterRefresh();
     } catch (e) {
       this.fail(e);
     }
@@ -1999,6 +2125,7 @@ class AppState {
     try {
       await this.api.logDelete(id);
       await this.refreshLog();
+      void this.clusterRefresh();
     } catch (e) {
       this.fail(e);
     }

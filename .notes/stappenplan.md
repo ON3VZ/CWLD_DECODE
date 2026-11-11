@@ -66,8 +66,20 @@ Ontwerpen: claude/ontwerp_architectuur.md (basis), claude/ontwerp_contest_profie
 - [x] Testbank: 14 slordige vuisten (`cwld_bench --fists`), `seekbench`, generator met aparte pauzes.
 - [x] Woordgrenzen per zender met woordkennis (`spacing.rs`), stijl van de zender leren (weging, spatiëring), herstel van gebroken en samengesmolten tekens, begin van een uitzending bij toon zoeken.
 - [x] Metingen in claude/meetresultaten_decoder.md. Zeven opnames van 10 november als vergelijking (tekst nog niet bevestigd, opnames staan niet in de repo).
+- [x] 0.15.1: één verloren element terugzetten (roepletters die net gehoord zijn, gewone woorden), Engelse woordenlijst, minder foute splitsingen. Opname 7026,8 kHz van 11 november als extra vergelijking.
+- [x] 0.16.0: zwakke elementen in snelle fading tellen mee (boven de ruis, hoogstens 12 dB onder het niveau, op de toon, niveau houdt). Gemengd resultaat, zie meetresultaten.
+- [x] 0.16.0: wens Kristof genoteerd en gebouwd: Koch ook voor zenden. Knoppen "Sein groepen" en "Sein woorden" in de Koch-kaart; paddle-oefening start zelf de audio.
+- [x] 0.16.1: schakelaar "Fading (QSB)" op het hoofdscherm (kaart Audio): Doorlezen of Streng, met uitleg en nadeel in beeld. Test A49.
 - [ ] A46 en A47. Juiste tekst van de zeven opnames van Kristof.
-- [ ] Open: element dat in een fade verdwijnt (ITT1QHB), zender die van tempo wisselt binnen een uitzending, cel 615 Hz bij +3 dB in seekbench, draaggolf 120 Hz (4,7 naar 6,1).
+- [ ] Open: -3 dB op 36 WPM werd slechter (66 naar 75), `THE SCREEN` in de opname van 7026,8 kHz, zender die van tempo wisselt binnen een uitzending, cel 615 Hz bij +3 dB in seekbench, draaggolf 120 Hz (4,7 naar 6,1).
+
+## Punt 4: decoderkwaliteit (keuze Kristof, 11 november)
+- [x] 4a (0.17.0): zender die van spatiëring wisselt. Beter op de testbank, geen verschil op de acht opnames.
+- [ ] 4b: roepletters uit eigen logboek en QSO-paneel meegeven (Sonnet). Daarna lijst van bekende roepletters, licentie eerst nakijken.
+- [ ] 4c: klein neuraal netwerk voor de zwakste signalen (Opus). Pas als er opnames met bevestigde tekst zijn.
+- [x] 4d-1 (0.18.0): clusterspots op de bandscoop. Telnet-client met inloggen, skimmer aan of uit, uitval naar de volgende node, lijst met acht clusters (ON0DXK eerst), label per station met kleur (nieuw, andere band, al gewerkt of dupe), klik stemt af, schakelaar tonen of verbergen, Test-knop, commandovenster dat alleen leest. Test A50 tot A52. Nog niet getest op de echte nodes.
+- [ ] 4d-2: eigen decoders per signaal in de doorlaat (Opus), later en optioneel. Eerst CPU meten. Schakelaar met belastingsbeveiliging: hoofdkanaal heeft voorrang, extra kanalen vallen weg bij te hoge belasting, belastingsindicator, standaard uit. Beperkt door het radiofilter. Labels uit 4d-1 krijgen dan een tweede bron.
+- [ ] Later, optioneel: een WebSDR of KiwiSDR als tweede ontvanger (alleen online). KiwiSDR heeft een open koppeling met ongeveer 12 kHz bandbreedte en tijdslimieten; WebSDR heeft voor zover bekend geen open koppeling. Eerst voorwaarden nakijken.
 
 ## Codesignatuur (onderzoek 10 november, wacht op GO)
 - Advies: SignPath Foundation (gratis voor open source, uitgever "SignPath Foundation", code signing policy-pagina en privacyverklaring nodig, MFA verplicht, elke release goedkeuren; vraag of één onderhouder mag). Reserve: Certum Open Source (25 of 49 euro per jaar, alleen particulieren, cloudvariant mogelijk niet onbeheerd in CI, was uitverkocht). Azure Artifact Signing: particulieren alleen VS en Canada.

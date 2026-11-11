@@ -38,13 +38,25 @@ pub struct FrontendConfig {
     pub rice: bool,
     /// Follow the key-down level quickly, so fading (QSB) does not look like key-up.
     pub track_fading: bool,
+    /// Key-down evidence for marks weaker than the followed level (a fade inside a word):
+    /// how many noise spreads above the noise a mark must stand to count (0 = off, the old
+    /// behaviour: only marks near the followed level count), and what every halving of the
+    /// level costs in nats.
+    pub weak_floor_sd: f64,
+    pub weak_cost: f64,
+    /// The deepest fade taken along, as a ratio of the followed level (4 = 12 dB).
+    pub weak_depth: f64,
+    /// A weak mark only counts within this many Hz of the tone.
+    pub weak_pitch_hz: f64,
+    /// A weak mark holds its level: nothing more than this many times stronger within half a unit.
+    pub weak_plateau: f64,
     /// Step of that level follower per key-down frame (0.03 is about 150 ms of key-down).
     pub fade_rate: f64,
 }
 
 impl FrontendConfig {
     pub fn new(sample_rate: u32, tone_hz: f64) -> Self {
-        FrontendConfig { sample_rate, tone_hz, bandwidth_hz: 40.0, afc: true, afc_range_hz: 60.0, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, fade_rate: 0.05 }
+        FrontendConfig { sample_rate, tone_hz, bandwidth_hz: 40.0, afc: true, afc_range_hz: 60.0, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, weak_floor_sd: 4.0, weak_cost: 0.5, weak_depth: 4.0, weak_pitch_hz: 15.0, weak_plateau: 2.0, fade_rate: 0.05 }
     }
 }
 
@@ -120,6 +132,10 @@ pub struct Frontend {
     have_levels: bool,
     prev_z: Option<(f64, f64)>,
     afc_acc: (f64, f64),
+    pitch_acc: (f64, f64),
+    weak_on: bool,
+    /// The last frames, held back half a unit (see `frame`): envelope, evidence without and with weak marks.
+    tail: std::collections::VecDeque<(f32, f32, f32)>,
     afc_frames: usize,
 }
 
@@ -150,6 +166,9 @@ impl Frontend {
             have_levels: false,
             prev_z: None,
             afc_acc: (0.0, 0.0),
+            pitch_acc: (0.0, 0.0),
+            weak_on: true,
+            tail: std::collections::VecDeque::new(),
             afc_frames: 0,
         };
         f.set_bandwidth(f.cfg.bandwidth_hz);
@@ -165,6 +184,15 @@ impl Frontend {
     }
 
     /// AFC on or off.
+    /// Weak marks in fading on or off (see `FrontendConfig::weak_floor_sd`). Off is the
+    /// behaviour before 0.16.0: only marks near the followed level count as key-down.
+    pub fn set_weak_marks(&mut self, on: bool) {
+        self.weak_on = on;
+        if !on {
+            self.tail.clear();
+        }
+    }
+
     pub fn set_afc(&mut self, on: bool) {
         self.cfg.afc = on;
     }
@@ -183,9 +211,19 @@ impl Frontend {
         self.cfg.tone_hz = hz;
         self.f_now = hz;
         self.reset_stats();
+        self.tail.clear();
+        self.pitch_acc = (0.0, 0.0);
         // The presence test starts again for the new pitch.
         self.frames_seen = 0;
         self.present = false;
+    }
+
+    /// Drops the frames still held back (see `frame`). For when the audio that follows is not
+    /// the continuation of what came before (the same seconds are heard again).
+    pub fn drop_held(&mut self) {
+        self.tail.clear();
+        self.pitch_acc = (0.0, 0.0);
+        self.prev_z = None;
     }
 
     /// True once after a notch was added or removed: evidence from before is suspect.
@@ -253,7 +291,7 @@ impl Frontend {
                 } else if !self.present && r > 1.3 {
                     self.present = true;
                 }
-                out.push(self.frame(i, q));
+                out.extend(self.frame(i, q));
             }
         }
         out
@@ -275,7 +313,7 @@ impl Frontend {
         self.present
     }
 
-    fn frame(&mut self, i: f64, q: f64) -> Frame {
+    fn frame(&mut self, i: f64, q: f64) -> Option<Frame> {
         let env = (i * i + q * q).sqrt() as f32;
         self.hist[self.hist_pos] = env;
         self.hist_pos = (self.hist_pos + 1) % STATS_FRAMES;
@@ -285,7 +323,19 @@ impl Frontend {
             self.since_stats = 0;
             self.update_levels();
         }
-        let llr = if self.have_levels { self.llr(env) } else { 0.0 };
+        // The pitch of this frame against the tuned tone, from the phase step over the last
+        // frames: a mark of this station sits on the tone, one of a station next door does not.
+        let on_pitch = match self.prev_z {
+            Some((pi, pq)) => {
+                let z = (i * pi + q * pq, q * pi - i * pq);
+                self.pitch_acc = (0.5 * self.pitch_acc.0 + z.0, 0.5 * self.pitch_acc.1 + z.1);
+                (self.pitch_acc.1.atan2(self.pitch_acc.0) * FRAME_RATE / (2.0 * PI)).abs() <= self.cfg.weak_pitch_hz
+            }
+            None => false,
+        };
+        let llr = if self.have_levels { self.llr_at(env, false) } else { 0.0 };
+        // Not in the first moments after tuning: the filter settling looks like a weak dot.
+        let llr_weak = if self.have_levels && on_pitch && self.weak_on && self.cfg.weak_floor_sd > 0.0 && self.frames_seen > 80 { self.llr_at(env, true) } else { llr };
         if !self.cfg.rice && self.have_levels && self.cfg.track_fading {
             // Follow the key-down level through fading. Only frames that are surely key-down
             // count, the floor keeps it above the noise.
@@ -336,7 +386,24 @@ impl Frontend {
             }
         }
         self.prev_z = Some((i, q));
-        Frame { env, llr }
+        if self.cfg.weak_floor_sd <= 0.0 || !self.weak_on {
+            return Some(Frame { env, llr });
+        }
+        // A weak mark is a level that holds, not the slope of a strong mark: between two full
+        // dots the filter never falls back to the noise, and those in-between frames must stay
+        // key-up or short gaps close. So every frame waits half a unit and counts as a weak
+        // mark only when nothing clearly stronger stands within half a unit on either side.
+        let half = ((120.0 / self.cfg.bandwidth_hz).round() as usize).clamp(1, 12);
+        self.tail.push_back((env, llr, llr_weak));
+        while self.tail.len() > 2 * half + 1 {
+            self.tail.pop_front();
+        }
+        if self.tail.len() < 2 * half + 1 {
+            return None;
+        }
+        let (e, strong, weak) = self.tail[half];
+        let top = self.tail.iter().map(|t| t.0).fold(0.0f32, f32::max);
+        Some(Frame { env: e, llr: if top <= self.cfg.weak_plateau as f32 * e { weak } else { strong } })
     }
 
     /// Evidence for an envelope value, with the levels known now. Used to re-score frames
@@ -363,6 +430,11 @@ impl Frontend {
     }
 
     fn llr(&self, env: f32) -> f32 {
+        // Without the pitch of the frame a weak mark is not taken along.
+        self.llr_at(env, false)
+    }
+
+    fn llr_at(&self, env: f32, on_pitch: bool) -> f32 {
         if self.cfg.rice && self.amp2 > 0.0 {
             if self.levels.separation < 1.5 {
                 return 0.0;
@@ -388,7 +460,28 @@ impl Frontend {
             (l.signal as f64, l.signal_sd as f64)
         };
         let (sn, ss) = ((l.noise_sd as f64).max(1e-9), ss.max(1e-9));
-        let on = -0.5 * ((e - s) / ss).powi(2) - ss.ln();
+        let mut on = -0.5 * ((e - s) / ss).powi(2) - ss.ln();
+        if self.cfg.weak_floor_sd > 0.0 && on_pitch && e < s {
+            // In fast fading the level of one dot says little about the next: a mark may be
+            // anywhere between the followed level and just above the noise. Such a mark is
+            // key-down too, at a price that grows with how far it has dropped. Without this a
+            // dot at a third of the level counted as silence, and the character lost it.
+            // The noise is measured beside the tone, where the keyed signal never comes: the
+            // lower cluster of the envelope holds the faded marks themselves in deep fading
+            // and would put the floor too high.
+            let sigma = self.noise_sigma2().sqrt();
+            let (rn, rsd) = (sigma * (PI / 2.0).sqrt(), sigma * 0.655);
+            // Not deeper than `weak_depth` below the level either: what is that much weaker is
+            // more likely another station close by than this one in a fade.
+            let floor = (rn + self.cfg.weak_floor_sd * rsd).max(s / self.cfg.weak_depth).min(s);
+            let at = e.max(floor);
+            let spread = (ss * at / s).max(rsd);
+            let mut weak = -spread.ln() - self.cfg.weak_cost * (s / at).ln() / std::f64::consts::LN_2;
+            if e < floor {
+                weak -= 0.5 * ((e - floor) / rsd).powi(2);
+            }
+            on = on.max(weak);
+        }
         let off = -0.5 * ((e - n) / sn).powi(2) - sn.ln();
         (on - off).clamp(-12.0, 12.0) as f32
     }
@@ -502,7 +595,8 @@ mod tests {
         let g = generate(&spec);
         let (frames, _) = run(&spec, 700.0);
         let expect = g.samples.len() as f64 / 8000.0 * FRAME_RATE;
-        assert!((frames.len() as f64 - expect).abs() < 3.0);
+        // Frames are held back half a unit (6 frames at the default bandwidth) to judge weak marks.
+        assert!((frames.len() as f64 - (expect - 6.0)).abs() < 3.0, "{} frames, {expect} expected", frames.len());
     }
 
     #[test]

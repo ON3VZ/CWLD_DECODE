@@ -241,3 +241,137 @@ Fout (ON3VZ, 0.14.0): de zijtoon was te zien en te horen, maar de oefening regis
 - Een punt of streep die in een fade verdwijnt (ITT1QHB).
 - Een zender die binnen één uitzending van spatiëring wisselt (traag spellen, daarna snel).
 - De vertraging: definitieve tekst komt nu ongeveer vijf tekens later, of na een stilte van ruim een woordpauze. De voorlopige tekst toont de tekens meteen.
+
+## Verloren punten en strepen, gewoon Engels (0.15.1)
+
+Aanleiding: `ITT1QHB` in de opname van 3552,1 kHz (de punt van de K verdween in een fade), en een nieuwe opname van ON3VZ van 11 november (7026,8 kHz, 65 s, toon 414 Hz, 25 dB boven de ruis): een QSO in gewoon Engels. Met 0.15.0 las de app daar onder meer `LAW TOP`, `G T NEW LAPTOP`, `WENTINTO NORWIFH TO GETIT CHECKED OUT BUT ONLYFIX WUD EE`.
+
+### Wat er veranderd is
+
+1. **Eén verloren element terugzetten.** Als wat gelezen is precies één punt of streep minder heeft dan een roepletterreeks die net gehoord is, of dan een gewoon CW-woord, en de stilte op die plaats is zo lang als het verloren element met de pauzes eromheen, dan wordt dat woord gekozen. Voor een roepletterreeks kost dat 2,0 nat, voor een woord 1,5, plus de afwijking van de verwachte lengte. Zonder passend gat verandert er niets: ON3VI wordt geen ON3VS en DL1AN geen DL1AD (tests `a_callsign_that_only_looks_like_one_heard_before_is_left_alone`). Het eerste en laatste element van een woord worden nooit teruggezet, want daar zegt de stilte niets.
+2. **Eigen roepletters** (en wat de app verder als woord doorgeeft) gelden vanaf het begin als "gehoord".
+3. **Gewoon Engels in de woordenlijst**: ongeveer 330 veel gebruikte woorden en gangbare QSO-onderwerpen (GET, IT, WENT, INTO, ONLY, FIX, LAPTOP, SCREEN, YESTERDAY). Ze dienen om woordgrenzen te kiezen waar de zender zelf geen duidelijke woordpauze liet.
+4. **Minder snel splitsen.** Een kort onbekend stukje (2 tot 4 tekens) kost nu 0,8, zodat BERLIN niet BE RLIN wordt. OP, DE en dergelijke tellen direct na een duidelijke tekenpauze als gewoon woord en niet als los woord (LAPTOP bleef anders LAPT OP). GM, GA, GE, GN, KN, SK, FB en HW zijn geen "altijd losse" woorden meer.
+5. **Plaatselijke drempel strenger.** Een kleine stap in de pauzes (1,4 tot 1,8 keer) telt alleen nog boven een strakke groep korte pauzes. Bij een zender wiens pauzes van 2 tot 6 eenheden lopen werd de drempel anders te hoog (ONLYFIX).
+
+### Metingen
+
+Nieuwe gevallen in `cwld_bench --fists` (20 WPM, 12 berichten): de generator laat een deel van de elementen helemaal wegvallen (`lost_elements`).
+
+| Geval | 0.15.0 | 0.15.1 |
+|---|---|---|
+| 3 op 100 punten en strepen verloren, +15 dB | 13,9 | 11,2 |
+| 6 op 100 verloren, +6 dB | 25,7 | 20,1 |
+
+De andere vuisten, 0.15.0 naar 0.15.1: zware weging 1,2 naar 0,0; op 35 WPM 0,6 naar 0,0; bug 0,3 naar 0,0; seinsleutel (30 en 15 procent) 21,8 naar 19,8; snelheid 25 procent 2,7 naar 2,4; woorden aan elkaar 1,8 naar 2,4 (slechter); ongelijke pauzes 15,9 naar 16,2 en bij +3 dB 15,3 naar 15,9 (binnen de meetonzekerheid). De rest is gelijk.
+
+Gewone testbank, 0.15.0 naar 0.15.1: 0 dB 20 WPM 0,7 naar 0,0; 0 dB 28 en 36 WPM 10,1 en 15,8 naar 9,5 en 12,7; -3 dB 20 WPM 38,0 naar 33,7; -3 dB 36 WPM 68,3 naar 66,2; -6 dB 12 WPM 62,9 naar 64,0; diepe QSB 34,5 naar 34,8 en bij +3 dB 43,6 naar 44,3. De rest is gelijk. Let op: de testberichten bestaan grotendeels uit woorden die in de woordenlijst staan, dus de winst bij verloren elementen is daar optimistisch.
+
+Opnames (tekst niet bevestigd):
+
+| Opname | 0.15.0 | 0.15.1 |
+|---|---|---|
+| 3552,1 kHz | `Q CQ CQ DE IK1QHB ITT1QHB IK1QHB PSE K ME` | `Q CQ CQ DE IK1QHB IK1QHB IK1QHB PSE K ME` |
+| 7011,7 kHz | `CQ CQ DE RM IM Y R M3Y CQ CQ CQ DE EN M3Y ENM MY U N K` | `CQ CQ DE RMIMY RM3Y CQ CQ CQ DE RM3Y ENM MY IT N K` |
+| 7026,8 kHz, toon vast op 416 Hz | `T NEW LAPT OP 9EE COS TS REEN RI + DI D / FAIA ED N TH OLD ONE = = WE DT A WENTINTO NORWICH TO GETIT CHECKED OUT BUT ONLYFIX WUD EE TO IUT` | `T NEW LAPTOP 9EE COS TS REEN RI + DID / FAIA ED N TH OLD ONE = = WE DT A WENT INTO NORWICH TO GET IT CHECKED OUT BUT ONLY FIX WUD EE TO IUT` |
+
+De andere opnames van 10 november zijn gelijk of verschillen één teken.
+
+### Wat niet opgelost is
+
+In de opname van 7026,8 kHz vallen op meerdere plaatsen twee of meer elementen na elkaar weg (`TS REEN` voor waarschijnlijk SCREEN, `FAIA ED` voor FAILED, `N TH` voor ON THE, `WUD EE` voor WUD BE). Er wordt maar één verloren element per woord teruggezet. Meer terugzetten zonder bewijs zou tekst verzinnen. Dit vraagt een andere aanpak: de decoder zelf laten weten waar het signaal even wegviel (het niveau van de toon volgen binnen een woord), zodat een gat als "onbekend" telt en niet als stilte.
+
+## Zwakke elementen in snelle fading (0.16.0)
+
+Aanleiding: in de opname van 7026,8 kHz (11 november) las de decoder `TS REEN`, `FAIA ED`, `N TH OLD ONE`. De omhullende van die opname toont wat er gebeurt: het niveau van de toon schommelt binnen een halve seconde tussen 27 en 17 dB boven de ruis (per halve seconde: 28 28 26 24 12 19 17 27 29 28 18 17 8 23 26). De punten en strepen in zo'n dal zijn er wel, op 14 tot 19 dB boven de ruis, maar ze telden als stilte omdat ze ver onder het gevolgde niveau zaten. Er zijn dus geen "gaten" zonder signaal: de decoder keek te hoog.
+
+Tegelijk zit er in die opname een tweede, zwakker station op 361 Hz (53 Hz lager, 10 tot 13 dB boven de ruis). Wie de drempel gewoon verlaagt, leest dat station mee.
+
+### Wat er veranderd is (voorverwerking, `frontend.rs`)
+
+Een frame telt nu ook als "sleutel neer" als het zwakker is dan het gevolgde niveau, op vier voorwaarden:
+
+1. Het staat minstens vier ruisspreidingen boven de ruis, gemeten naast de toon (niet uit de onderste groep van de omhullende, want daar zitten bij diepe fading de zwakke elementen zelf in).
+2. Het is niet meer dan 12 dB zwakker dan het gevolgde niveau. Elke halvering van het niveau kost 0,5 nat.
+3. Het zit binnen 15 Hz van de toon, gemeten uit de fasestap tussen frames. Een station ernaast valt hierdoor af.
+4. Het houdt zijn niveau: binnen een halve eenheid ervoor en erna staat niets dat meer dan twee keer zo sterk is. Zonder deze voorwaarde telden de flanken van sterke elementen mee en liepen korte pauzes dicht (lichte weging ging van 0 naar 6 procent fouten). Hiervoor wordt elk frame een halve eenheid vastgehouden (15 ms bij 20 WPM).
+
+Daarnaast: bij het opnieuw afspelen na een toonwissel worden de vastgehouden frames weggegooid (anders stond er een losse E voor de tekst).
+
+### Metingen (0.15.1 naar 0.16.0)
+
+Opname 7026,8 kHz, toon vast op 416 Hz:
+
+- 0.15.1: `T NEW LAPTOP 9EE COS TS REEN RI + DID / FAIA ED N TH OLD ONE = = WE DT A WENT INTO NORWICH TO GET IT CHECKED OUT BUT ONLY FIX WUD EE TO IUT`
+- 0.16.0: `T NEW LAPTOP 9EE COS TS I RREEN R I + FA DID / FAILED ON TH OLD ONE = = WE DT A WENT INTO N ORWICH TO GET IT CHECKED OUT BUT ONLY FIX WUD IE TO NUT`
+
+Beter: `FAILED`, `ON TH`. Niet beter: `TS I RREEN` (waarschijnlijk THE SCREEN), `WUD IE`. Slechter: `N ORWICH`.
+
+Opnames van 10 november: 7005,0 kHz leest nu `NICE TO MEET YOU MY FRIEND` (was `MEET YE U`), 3552,1 kHz eindigt op `PSE K` zonder losse tekens erna, 7009,0 kHz `LARRY LARRY`. 7011,7 kHz is iets slechter (`EN M3Y ENM3Y`, was `RM3Y`), 7008,9 kHz wisselt (`THORNY` goed, `S:RYLOTSOR` slechter).
+
+Testbank, cellen die veranderden:
+
+| Geval | 0.15.1 | 0.16.0 |
+|---|---|---|
+| Diepe QSB, +10 dB | 34,8 | 31,4 |
+| Diepe QSB, +3 dB | 44,3 | 43,2 |
+| 0 dB, 28 WPM | 9,5 | 6,8 |
+| 0 dB, 36 WPM | 12,7 | 9,2 |
+| 0 dB, 20 WPM | 0,0 | 1,0 |
+| +3 dB, 36 WPM | 0,7 | 1,4 |
+| -3 dB, 12 / 20 / 36 WPM | 13,6 / 33,7 / 66,2 | 12,5 / 36,3 / 75,0 |
+| -6 dB, 12 / 20 / 28 WPM | 64,0 / 90,1 / 94,6 | 68,8 / 86,1 / 92,3 |
+| 15 procent jitter | 2,4 | 1,7 |
+| Klikken 40 per s | 0,3 | 1,0 |
+| Draaggolf 120 Hz verder | 6,1 | 4,7 |
+| Draaggolf 50 Hz, start samen | 14,2 | 16,6 |
+| Seinsleutel (pauzes 30, elementen 15 procent) | 19,8 | 23,9 |
+| Ongelijke pauzes 30 procent bij +3 dB | 15,9 | 18,0 |
+| Tekens aan elkaar | 0,0 | 0,6 |
+
+Tweede station 60 Hz verder op gelijk niveau: 0,0 in beide (zonder voorwaarde 3 was dat 4,5 tot 16 procent). `seekbench` is gelijk aan 0.15.1.
+
+Eerlijk beeld: winst bij fading en bij 0 dB op hoge snelheid, verlies bij -3 dB op 36 WPM, bij -6 dB op 12 WPM en bij de slordigste vuisten. Het zijn geen grote verschuivingen, behalve -3 dB op 36 WPM (66 naar 75). Wie liever het oude gedrag heeft: `weak_floor_sd = 0` in `FrontendConfig` zet het uit (nog geen instelling in de app).
+
+### Paddle oefenen
+
+Vraag van ON3VZ: reageert de oefenmodus nu op de paddle? De fout uit 0.14.0 (detector luisterde op de decodertoon) is hersteld in 0.15.0 en getest op de testbank, nog niet bevestigd op de radio (test A46). In 0.16.0 start een paddle-oefening bovendien zelf het luisteren naar de radio als dat nog niet liep: stond de audio uit, dan kwam er alleen een melding en gebeurde er niets.
+
+## Schakelaar Fading (0.16.1)
+
+Op vraag van ON3VZ staat het gedrag van 0.16.0 achter een schakelaar op het hoofdscherm (kaart Audio): "Doorlezen" (standaard, zwakke elementen in een fade tellen mee) en "Streng" (zoals tot en met 0.15.1). De tabel in het vorige hoofdstuk is precies het verschil tussen beide standen: de kolom 0.15.1 is "Streng", de kolom 0.16.0 is "Doorlezen".
+
+Extra meting voor het geval waarvoor de schakelaar bedoeld is: een zuiver signaal (+25 dB) waarvan het niveau ongeveer één keer per seconde 10 dB zakt (`qsb_depth` 0,67, `qsb_hz` 1,1), 6 berichten van 22 tekens. "Doorlezen": 1 fout teken op 132. "Streng": 83 op 132. De trage fading in de gewone testbank (0,3 Hz) toont dit verschil veel minder (34,8 tegen 31,4 procent), omdat het signaal daar in de dalen echt in de ruis verdwijnt.
+
+## Zender die van tempo of spatiëring wisselt (0.17.0)
+
+Aanleiding: een zender die een naam traag spelt en daarna gewoon verder seint, of omgekeerd. De decoder volgde de spatiëring traag, zodat na de wissel tekens samensmolten of een gespeld woord als losse letters kwam.
+
+### Nieuwe gevallen in de testbank
+
+De generator kan na een deel van de tekst overschakelen op andere pauzes en een andere snelheid (`change_after`, `char_gap2`, `word_gap2`, `wpm2`). Voor deze gevallen worden drie berichten na elkaar geseind, zodat er na de wissel genoeg tekst volgt. 20 WPM, +15 dB, 12 uitzendingen per geval. CER in procent, 0.16.1 en 0.17.0:
+
+| Geval | 0.16.1 | 0.17.0 |
+|---|---|---|
+| Spelt traag (teken 8, woord 18), seint daarna gewoon | 3,1 | 2,6 |
+| Seint gewoon, spelt daarna traag (teken 8, woord 18) | 6,0 | 3,0 |
+| Ruim (teken 6, woord 13), daarna krap (teken 2,5, woord 5,5) | 10,5 | 5,1 |
+| Snelheid van 18 naar 28 WPM | 0,0 | 0,0 |
+| Snelheid van 30 naar 18 WPM | 0,0 | 0,0 |
+| Spelt traag op 25 WPM, daarna krap op 32 WPM | 19,9 | 8,3 |
+| Beginner met lange pauzes, Farnsworth | 2,4 | 0,9 |
+
+Een wissel van alleen de snelheid ging al goed. Het probleem zat bij de spatiëring.
+
+### Wat er veranderd is
+
+1. **Van ruim naar krap** (`Decoder::tightened`). Na ruim seinen ligt de grens tussen "pauze binnen een teken" en "pauze tussen tekens" hoog. Seint de zender dan krap, dan vallen zijn nieuwe tekenpauzes onder die grens en smelten tekens samen. Dat is te zien aan de pauzes zelf: ze vallen in twee groepen, rond één eenheid en een tweede groep duidelijk hoger. Als die tweede groep duidelijk korter is dan de tekenpauze die de decoder tot dan aannam, wordt ze meteen de nieuwe tekenpauze. Alleen bij een zender die als ruim geleerd was (factor 1,3 of meer), anders gaf het valse meldingen bij heel ongelijk seinen.
+2. **Woordgrenzen bij die wissel** (`spacing.rs`). Wat nog vastgehouden werd van voor de wissel wordt met de oude drempel afgehandeld, de rest met een drempel voor de nieuwe spatiëring.
+3. **Van gewoon naar traag spellen.** Vier of meer pauzes na elkaar van ongeveer dezelfde lengte zijn tekenpauzes, hoe lang ze ook zijn: niemand seint drie woorden van één letter na elkaar. Het eerste gespelde woord kwam anders als losse letters.
+
+### Controle
+
+De gewone testbank (alle cellen) is identiek aan 0.16.1. De andere vuisten zijn gelijk, behalve 6 op 100 elementen verloren (20,1 naar 20,6). `seekbench` is gelijk.
+
+De acht echte opnames lezen **precies hetzelfde** als met 0.16.1. Ook de opname van 7008,9 kHz, die de aanleiding was, werd dus niet beter: de fouten in het snelle stuk daar (`S:RY` voor SORRY) blijken niet van samengesmolten tekens door de wissel te komen. In die opname sloeg de nieuwe herkenning pas helemaal op het einde aan. Zonder de juiste tekst kan ik niet zeggen wat daar wel misgaat.
+

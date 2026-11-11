@@ -375,3 +375,62 @@ Wat nog fout kan gaan: een zender die midden in een uitzending van tempo wisselt
 
 Bij paddle oefenen (hoofdstuk 24) hoeft de decoder niet meer op je zijtoon te staan: CWLD zoekt de zijtoon zelf tussen 300 en 1200 Hz.
 
+## 29. Fading (QSB): Doorlezen of Streng (0.16.1)
+
+In de kaart Audio op het hoofdscherm, onder de piekmeter, staat de schakelaar "Fading (QSB)". Je hoeft er de instellingen niet voor te openen. Onder de schakelaar staat altijd in één regel wat de gekozen stand doet.
+
+| Stand | Wat het doet | Nadeel |
+|---|---|---|
+| **Doorlezen** (standaard) | Punten en strepen die in een fade tot 12 dB zwakker worden tellen mee, zolang ze op dezelfde toon zitten. | Iets meer foute tekens bij een heel zwak signaal (rond de ruis) en bij heel ongelijk handwerk. |
+| **Streng** | Alleen punten en strepen op bijna volle sterkte tellen. | Bij QSB verliezen tekens punten en breken woorden (FAILED wordt FAIA ED). |
+
+Wanneer welke stand:
+
+- Gaat het signaal hoorbaar op en neer en mis je stukken van woorden: **Doorlezen**.
+- Is het signaal stabiel maar heel zwak, of zie je extra punten en foute letters die er niet zijn: **Streng**.
+
+De keuze werkt meteen en wordt onthouden. Beweeg de muis over een stand voor de volledige uitleg.
+
+## 30. DX-cluster: spots op de bandscoop (0.18.0)
+
+Een DX-cluster is een dienst waar stations en skimmers (ontvangers die CW zelf decoderen) melden welk station op welke frequentie in de lucht is. CWLD leest die spots en zet ze als labels op de bandscoop. Je hebt internet nodig. CWLD **leest alleen**: er wordt nooit een spot of bericht geplaatst.
+
+**Aanzetten**
+
+1. Klik rechtsboven op het tandwiel (Instellingen). Kies links **Station** en vul bij "Je roepletters" je roepletters in. De cluster heeft ze nodig om aan te melden. Er is geen ingebouwde roepletter.
+2. Kies links **DX-cluster**.
+3. Laat "Cluster" op **Automatisch** staan. CWLD probeert dan ON0DXK (België) eerst en gaat naar de volgende als die niet antwoordt.
+4. Klik op **Verbinden**. Na een paar seconden staat er "Verbonden met ... (software). ... spots."
+5. Wil je dat CWLD dit bij elk opstarten doet, vink dan "Verbinden met de cluster als CWLD start" aan en klik **OK**. Standaard staat dit uit.
+
+Je kunt ook zonder instellingen verbinden: onder de bandscoop staat de knop **Clusterspots tonen**. Dat gebruikt de instellingen zoals ze zijn.
+
+**De labels lezen**
+
+| Kleur | Betekenis |
+|---|---|
+| Groen | Het station staat niet in je logboek |
+| Oranje | Je werkte het op een andere band |
+| Rood, doorgestreept | Al in je logboek op deze band. In contestmodus: een dupe in de lopende contest |
+
+- Klik op een label: de radio stemt af op die frequentie. Er wordt niets gezonden.
+- Houd de muis op een label voor de details: wie spotte het, sterkte, snelheid, hoe lang geleden.
+- Staan er te veel labels op elkaar, dan blijven de stations die nog niet in je logboek staan zichtbaar en staat in de balk "... verborgen". Maak de bandscoop breder of groter (Instellingen, Weergave) of wacht tot oude spots verdwijnen.
+- **Spots verbergen** in de balk onder de scoop zet de labels uit zonder te verbreken. **Verbreken** staat in Instellingen, DX-cluster.
+- Nadat je een QSO logt, springt het label van dat station meteen op rood (of oranje voor een andere band).
+
+**Skimmerspots**
+
+Met "Ook spots van skimmers tonen" aan zie je veel meer stations, volgens een schatting zo'n twintig keer zoveel, maar ook enkele foute roepletters die een skimmer verkeerd las. Zet het uit als je alleen spots van mensen wilt.
+
+**Welke cluster?**
+
+Klik op **Test de clusters**. CWLD maakt even verbinding met elke node van de lijst, zonder aan te melden, en toont welke antwoorden en hoe snel. Kies daarna er één, of laat het op Automatisch. Onder "Lijst met clusters" kun je er zelf een toevoegen (naam, adres, poort) of de standaardlijst herstellen.
+
+**Commando's typen (zoals in N1MM)**
+
+Open onderaan **Clustervenster (voor commando's)**. Hier zie je wat de node nog meer zegt (welkomsttekst, antwoorden). Typ een commando en klik **Verzenden**, bijvoorbeeld `sh/dx 10` voor de laatste tien spots, of `set/skimmer` om skimmerspots te vragen. Alleen commando's die lezen of je eigen filter instellen worden doorgelaten. Commando's die iets zouden plaatsen (`dx`, `announce`, `talk`, `wwv`, `wx`) worden geblokkeerd.
+
+**Wat het niet is**
+
+Een spot betekent dat een station ergens gehoord is, niet dat jij het nu hoort. De frequentie is ongeveer op 0,1 kHz nauwkeurig en spots lopen soms een paar minuten achter. Zonder internet zie je geen spots.

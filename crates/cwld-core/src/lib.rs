@@ -2,6 +2,7 @@
 //! (mode switching, the transmit path, validation) are testable without a window.
 
 pub mod audio;
+mod cluster;
 mod link;
 mod lookup;
 mod log;
@@ -25,6 +26,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use thiserror::Error;
+
+pub use cluster::{ClusterProbe, ClusterStatus, SpotOut};
 
 /// Frequency range accepted by the tuning command (Hz).
 pub const MIN_FREQ_HZ: u64 = 30_000;
@@ -115,6 +118,12 @@ pub const SWR_READINGS_TO_TRIP: u8 = 2;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CoreEvent {
+    /// The DX cluster connection changed.
+    ClusterStatus { status: cluster::ClusterStatus },
+    /// New or updated spots (colored by the logbook), newest data only.
+    ClusterSpots { spots: Vec<cluster::SpotOut> },
+    /// Lines of the cluster that are no spots (welcome text, answers to commands).
+    ClusterLines { lines: Vec<String> },
     SwrAlert { alert: SwrAlert },
     SwrCleared,
     Rig { event: RigEvent },
@@ -156,6 +165,7 @@ pub struct AppCore {
     logbook: Mutex<cwld_log::Logbook>,
     /// Callsign lookup (QRZ.com), with its own session and cache.
     lookup: cwld_lookup::Lookup,
+    cluster: Mutex<cluster::ClusterState>,
     /// The practice band while a practice exercise runs.
     practice: Mutex<Option<std::sync::Arc<Mutex<cwld_dsp::PracticeBand>>>>,
     /// Speaker volume and break-in as they were before practice mode turned them down.
@@ -229,6 +239,7 @@ impl AppCore {
             link: Mutex::new(LinkState::default()),
             logbook: Mutex::new(logbook),
             lookup: cwld_lookup::Lookup::new(env!("CARGO_PKG_VERSION")),
+            cluster: Mutex::new(cluster::ClusterState::default()),
         }
     }
 

@@ -43,6 +43,10 @@ pub struct PipelineConfig {
     pub cw_gate: bool,
     /// Do not decode while the audio looks like speech or another wide signal (see `voice`).
     pub voice_gate: bool,
+    /// Count weak marks in fast fading as key-down (see `FrontendConfig::weak_floor_sd`).
+    pub fading: bool,
+    /// See `FrontendConfig::weak_floor_sd` and `weak_cost`. `None` keeps the defaults.
+    pub weak_marks: Option<(f64, f64, f64)>,
     /// Decide the word gaps from the sender's own spacing and word knowledge (see `spacing`).
     pub spacing: bool,
     /// Keep the key down and up times (for the paddle trainer), see `take_keying`.
@@ -52,7 +56,7 @@ pub struct PipelineConfig {
 
 impl PipelineConfig {
     pub fn new(sample_rate: u32, tone_hz: f64) -> Self {
-        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, cw_gate: true, voice_gate: true, spacing: true, keying: false, decoder: DecoderConfig::default() }
+        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, cw_gate: true, voice_gate: true, fading: true, weak_marks: None, spacing: true, keying: false, decoder: DecoderConfig::default() }
     }
 }
 
@@ -245,6 +249,12 @@ impl Pipeline {
         fc.auto_notch = cfg.auto_notch;
         fc.rice = cfg.rice;
         fc.track_fading = cfg.track_fading;
+        if let Some((floor, cost, depth)) = cfg.weak_marks {
+            fc.weak_floor_sd = floor;
+            fc.weak_cost = cost;
+            fc.weak_depth = depth;
+        }
+        let cfg_fading = cfg.fading;
         let mut words = WordCorrector::new(cfg.language_model);
         words.junk_strength = cfg.junk_strength;
         let junk = cfg.junk_strength;
@@ -257,7 +267,7 @@ impl Pipeline {
             // A pipeline rebuilt during a paddle exercise (engine reset) keeps the speech check off.
             cfg.voice_gate = false;
         }
-        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0, voice: crate::voice::VoiceDetector::new(cfg_rate), voice_heard: false, voice_clear_evals: 0, last_voice_eval: 0, keying: KeyingRecorder::default(), spacer: { let mut sp = crate::spacing::Spacer::new(cfg_spacing); sp.junk_strength = junk; sp }, voice_gate_base: cfg_voice, replaying: false, frames_seen: 0, last_text_at: 0 }
+        Pipeline { front: { let mut f = Frontend::new(fc); f.set_weak_marks(cfg_fading); f }, dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0, voice: crate::voice::VoiceDetector::new(cfg_rate), voice_heard: false, voice_clear_evals: 0, last_voice_eval: 0, keying: KeyingRecorder::default(), spacer: { let mut sp = crate::spacing::Spacer::new(cfg_spacing); sp.junk_strength = junk; sp }, voice_gate_base: cfg_voice, replaying: false, frames_seen: 0, last_text_at: 0 }
     }
 
     /// Keyed CW is in the envelope (not just noise at this pitch).
@@ -337,6 +347,12 @@ impl Pipeline {
         self.cfg.auto_tone = on;
     }
 
+    /// Weak marks in fading on or off.
+    pub fn set_fading(&mut self, on: bool) {
+        self.cfg.fading = on;
+        self.front.set_weak_marks(on);
+    }
+
     /// AFC on or off (follows a drifting tone).
     pub fn set_afc(&mut self, on: bool) {
         self.cfg.afc = on;
@@ -413,6 +429,7 @@ impl Pipeline {
         self.words.discard();
         self.spacer.discard();
         self.flushed.clear();
+        self.front.drop_held();
         self.process(&replay);
         self.replaying = false;
     }
@@ -590,6 +607,7 @@ impl Pipeline {
             committed_intra: Vec::new(),
             silence_units: raw.silence_units,
             char_gap_units: raw.char_gap_units,
+            spacing_changed: false,
             tentative,
             wpm: raw.wpm,
             locked: raw.locked,

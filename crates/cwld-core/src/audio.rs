@@ -119,7 +119,7 @@ impl AppCore {
         let mut words: Vec<String> = s.station.calls.clone();
         words.extend(s.station.name.split_whitespace().map(|w| w.to_string()));
         words.extend(s.station.qth.split_whitespace().map(|w| w.to_string()));
-        let cfg = EngineConfig { tone_hz: s.audio.safe_tone() as f64, words, min_separation: s.audio.safe_squelch(), auto_tone: s.audio.auto_tone, afc: s.audio.afc, tuning: tuning_of(&s.audio), ..Default::default() };
+        let cfg = EngineConfig { tone_hz: s.audio.safe_tone() as f64, words, min_separation: s.audio.safe_squelch(), auto_tone: s.audio.auto_tone, afc: s.audio.afc, fading: s.audio.fading, tuning: tuning_of(&s.audio), ..Default::default() };
         let mut st = self.audio.lock().unwrap();
         match Engine::start(source, cfg) {
             Ok(e) => {
@@ -164,6 +164,15 @@ impl AppCore {
         self.settings.lock().unwrap().audio.squelch = v;
         if let Some(e) = &self.audio.lock().unwrap().engine {
             e.set_squelch(v);
+        }
+        Ok(())
+    }
+
+    /// Weak marks in fading on or off, remembered.
+    pub fn set_fading(&self, on: bool) -> Result<(), CoreError> {
+        self.settings.lock().unwrap().audio.fading = on;
+        if let Some(e) = &self.audio.lock().unwrap().engine {
+            e.set_fading(on);
         }
         Ok(())
     }

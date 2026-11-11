@@ -380,6 +380,18 @@ impl Logbook {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    /// Every (call, band) pair of the real log, for coloring spots. With `run` only the QSOs of
+    /// that contest and run count (a dupe only counts inside one run); without it the whole log.
+    pub fn worked_pairs(&self, run: Option<(&str, u32)>) -> Result<std::collections::HashSet<(String, String)>, LogError> {
+        let (sql, args): (&str, Vec<rusqlite::types::Value>) = match run {
+            Some((contest, session)) => ("SELECT DISTINCT call, band FROM qso WHERE deleted=0 AND test=0 AND contest=?1 AND session=?2", vec![contest.to_string().into(), (session as i64).into()]),
+            None => ("SELECT DISTINCT call, band FROM qso WHERE deleted=0 AND test=0", vec![]),
+        };
+        let mut st = self.conn.prepare(sql)?;
+        let rows = st.query_map(rusqlite::params_from_iter(args.iter()), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     /// The next serial number of the test log: one more than the highest used so far.
     pub fn next_test_serial(&self) -> Result<u32, LogError> {
         let n: i64 = self.conn.query_row("SELECT COALESCE(MAX(nr_sent),0) FROM qso WHERE test=1 AND deleted=0", [], |r| r.get(0))?;
@@ -477,6 +489,23 @@ mod tests {
         assert!(lb.dupe("PA3ABC", "40m", "CW", "uba-dx-cw", 2, false).unwrap().is_none(), "new contest run");
         assert!(lb.dupe("PA3ABC", "40m", "CW", "uba-dx-cw", 1, true).unwrap().is_none(), "test log is separate");
         assert_eq!(lb.worked_bands("PA3ABC", "uba-dx-cw", 1, false).unwrap(), vec!["40m".to_string()]);
+    }
+
+    #[test]
+    fn worked_pairs_follow_the_run_and_skip_test_and_deleted() {
+        let lb = Logbook::open_memory().unwrap();
+        lb.add(&q("PA3ABC", 1000, "40m")).unwrap();
+        let gone = lb.add(&q("DL1XYZ", 1001, "20m")).unwrap();
+        lb.delete(gone.id).unwrap();
+        lb.add(&Qso { test: true, ..q("TEST1", 1002, "40m") }).unwrap();
+        lb.add(&Qso { contest: String::new(), session: 0, ..q("ON4AA", 1003, "80m") }).unwrap();
+        let all = lb.worked_pairs(None).unwrap();
+        assert!(all.contains(&("PA3ABC".to_string(), "40m".to_string())));
+        assert!(all.contains(&("ON4AA".to_string(), "80m".to_string())));
+        assert_eq!(all.len(), 2, "no test QSO and no deleted one: {all:?}");
+        let run = lb.worked_pairs(Some(("uba-dx-cw", 1))).unwrap();
+        assert_eq!(run.len(), 1);
+        assert!(lb.worked_pairs(Some(("uba-dx-cw", 2))).unwrap().is_empty(), "a new run starts empty");
     }
 
     #[test]

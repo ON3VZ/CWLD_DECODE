@@ -1,3 +1,38 @@
+## 0.18.0 (DX cluster spots on the band scope)
+
+- New: spots of a DX cluster appear as labels on the band scope, at the frequency of the station. Green: not in your log. Amber: you worked the station on another band. Red with a line through it: already in your log on this band (in contest mode: a dupe of the active contest run). A click on a label tunes the radio there; the pin line under it runs down to the waterfall. "Hide spots" in the bar under the scope hides them, "Show cluster spots" connects.
+- New section "DX cluster" in Settings: connect at start (off by default), choice of cluster (Automatic or one node), skimmer spots on or off, how long a spot stays, an editable list of clusters, "Test the clusters" (connects to every node for a moment, without logging in, and shows which ones answer and how fast), and a small window for the node's own lines with a command box.
+- The standard list starts with the Belgian ON0DXK, followed by OE9, S50CLX, S50DXS, HamQTH, GB7DXG, VE7CC and DXSpots. Automatic moves on to the next node when one does not answer or drops the connection.
+- CWLD logs in with the first callsign of your station settings, never with a built-in one. It only reads: commands that would post a spot, a message or an announcement (dx, announce, talk, wwv, wx) are blocked, also when typed in the cluster window.
+- Only CW spots are shown (the comment says CW, or it says nothing and the frequency is in the CW part of the band). One label per station, band and frequency; a new report of the same station updates it. After you log a QSO the colors are refreshed at once.
+- Tested against a local imitation of a cluster node (login, Telnet negotiation, skimmer commands, spots, fail-over to the next node). The first test on the real nodes is test A50 in docs/testplan_radio.md.
+
+## 0.17.0 (a sender who changes his spacing)
+
+- Decoder: a sender who spells a word slowly and then keys on at his usual pace, or the other way round, is followed at once instead of slowly. Before, characters ran together after he tightened up, and the first slowly spelled word came out as loose letters.
+- Measured on new test cases (percent wrong characters): wide then tight 10.5 to 5.1, slow spelling then tight and faster 19.9 to 8.3, normal then slow spelling 6.0 to 3.0, Farnsworth 2.4 to 0.9. The standard grid is identical. The eight real recordings read exactly as before, so this has not been seen to help on the band yet.
+
+## 0.16.1 (fading switch on the main screen)
+
+- New in the Audio card on the main screen, always in sight: "Fading (QSB)" with two positions, and one line under it that says what the chosen position does and what it costs.
+  - "Read through" (default, the behaviour of 0.16.0): weak dots and dashes in a fade count too. Better with QSB, more wrong characters on very weak signals and very uneven keying.
+  - "Strict" (the behaviour up to 0.15.1): only dots and dashes near full strength count. Steadier on very weak signals, but in QSB characters lose dots and words break up.
+- The choice is remembered and works at once, without restarting the audio.
+- Measured: a clean signal that swings 10 dB about once a second gives 1 wrong character in 132 with "Read through" and 83 with "Strict" (test `fast_fading_is_read_better_with_the_fading_switch_on`).
+
+## 0.16.0 (weak dots in fast fading, sending with your Koch characters)
+
+- Decoder: in fast fading (the level swinging 10 dB within half a second) the dots and dashes in a dip counted as silence, because they stood far below the level the decoder followed. They now count as key-down when they stand clearly above the noise, are no more than 12 dB down, sit on the same pitch (a weaker station next door does not), and hold their level. On the recording of 7026.8 kHz: `FAILED` and `ON TH` instead of `FAIA ED` and `N TH`. Test bench: deep QSB 34.8 to 31.4 percent, 0 dB at 28 and 36 WPM 9.5 and 12.7 to 6.8 and 9.2. Worse: -3 dB at 36 WPM 66 to 75, straight key case 19.8 to 23.9. Full table in docs/meetresultaten_decoder.md.
+- Practice: the Koch card has a "Sending (paddle)" part with "Key groups" and "Key words", next to listening. They start the paddle exercises with your chosen characters.
+- Practice: starting a paddle exercise now starts listening to the radio by itself when the audio was not running.
+
+## 0.15.1 (a dot lost in a fade, plain English)
+
+- Decoder: one dot or dash lost in a short fade is put back when what was read is exactly one element short of a callsign heard a moment ago (IK1QHB read as ITT1QHB) or of a common word, and the silence at that place is as long as the lost element would need. Without such a hole nothing changes: a callsign that only looks like another one is left alone. Your own callsign counts as heard from the start.
+- Decoder: about 330 common English words and usual QSO subjects joined the word list, so a relaxed QSO in plain English gets its word gaps right (`WENT INTO`, `GET IT`, `ONLY FIX` where the sender left no clear gap).
+- Decoder: fewer wrong splits: a short unknown piece next to a known word (`BE RLIN`, `LAPT OP`) is no longer preferred.
+- Measured: 3 in 100 elements lost 13.9 to 11.2 percent wrong characters, 6 in 100 at +6 dB 25.7 to 20.1. Standard grid equal or better except three cells within one point. Not solved: fades that take two or more elements in a row. See docs/meetresultaten_decoder.md.
+
 ## 0.15.0 (decoder for sloppy keying, paddle practice hears any sidetone pitch)
 
 - Fixed: paddle practice registered nothing although the sidetone was visible and audible (ON3VZ). The key detector listened at the pitch the decoder happened to be on. With the decoder left on another signal and "Strongest" off, the sidetone was never seen. The detector now finds the tone itself anywhere between 300 and 1200 Hz, whatever the decoder is doing.

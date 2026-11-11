@@ -41,9 +41,14 @@ const SLOPE: f32 = 8.0;
 /// Below this share of the threshold a gap is never a word gap, above `SURE_WORD` always.
 const SURE_CHAR: f32 = 0.62;
 const SURE_WORD: f32 = 2.2;
+/// What it costs (nats) to assume that one dot or dash was lost in a fade.
+const LOST_ELEMENT: f32 = 2.0;
+/// The same towards a common CW word (CQ, 599, TNX): a little more, a word proves less than a
+/// callsign that was just heard.
+const LOST_IN_WORD: f32 = 1.5;
 
 /// Words that stand alone and are never the start or end of a longer word in a QSO.
-const STRONG: &[&str] = &["CQ", "DE", "PSE", "TU", "BK", "QTH", "QRZ", "QSL", "QSO", "RST", "UR", "NAME", "OP", "ES", "TNX", "73", "5NN", "599", "QRS", "QRL", "AGN", "HW", "CPY", "FB", "GM", "GA", "GE", "GN", "KN", "SK"];
+const STRONG: &[&str] = &["CQ", "DE", "PSE", "TU", "BK", "QTH", "QRZ", "QSL", "QSO", "RST", "UR", "NAME", "OP", "ES", "TNX", "73", "5NN", "599", "QRS", "QRL", "AGN", "CPY"];
 
 pub struct Spacer {
     pub enabled: bool,
@@ -122,6 +127,19 @@ impl Spacer {
             }
         }
         let mut out = DecodeUpdate { tentative: up.tentative.clone(), wpm: up.wpm, locked: up.locked, silence_units: up.silence_units, ..Default::default() };
+        // The decoder found that the sender went from wide to tight spacing (see
+        // `Decoder::tightened`). What is held from before the change is settled with the old
+        // threshold, the rest and all that follows with one for the new spacing. (Wider
+        // spacing needs no such signal: it shows in the gaps held here themselves.)
+        if up.spacing_changed && self.dec_char_gap > 0.0 {
+            if let Some(i) = (1..self.queue.len()).rev().find(|&i| self.queue[i].gap > 2.0 * self.dec_char_gap) {
+                let new = self.queue.split_off(i);
+                self.release(model, true, &mut out);
+                self.queue = new;
+            }
+            self.hist.clear();
+            self.thr = (1.55 * self.dec_char_gap).clamp(THR_MIN, THR_MAX);
+        }
         // A long silence ends the word: everything held is final.
         // Well beyond a word gap: a sender who spaces his letters far apart must not have every
         // letter made final as a word before his spacing is known.
@@ -252,7 +270,9 @@ impl Spacer {
         }
         match best {
             Some((ratio, mid)) if ratio >= 1.8 => mid.clamp(THR_MIN, THR_MAX),
-            Some((ratio, mid)) if ratio >= 1.4 => (mid * base).sqrt().clamp(THR_MIN, THR_MAX),
+            // A smaller step counts for half, and only above a tight group of short gaps: a
+            // sender whose gaps run from two to six units has no step there, just a spread.
+            Some((ratio, mid)) if ratio >= 1.4 && (mid * mid / g[0] / g[0]).sqrt() / ratio.sqrt() <= 1.6 => (mid * base).sqrt().clamp(THR_MIN, THR_MAX),
             _ => base,
         }
     }
@@ -290,8 +310,10 @@ impl Spacer {
         if rst || w.chars().all(|c| c.is_ascii_digit()) {
             return 1.5;
         }
-        if len == 2 {
-            return -0.4;
+        // A short unknown piece is more often the crumb of a wrong split (BE RLIN, LAPT OP)
+        // than a word of its own.
+        if (2..=4).contains(&len) {
+            return -0.8;
         }
         0.0
     }
@@ -299,13 +321,7 @@ impl Spacer {
     /// The boundary between a gap inside a character and a gap between characters for this
     /// sender, in units: the middle between his two usual gaps (1 and 3 by the book).
     fn element_threshold(&self) -> f32 {
-        let mut v: Vec<f32> = self.intra_hist.iter().cloned().collect();
-        let intra = if v.len() < 6 {
-            1.0
-        } else {
-            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            v[v.len() / 2].clamp(0.6, 2.2)
-        };
+        let intra = self.intra_gap();
         (intra * self.char_gap().max(1.6 * intra)).sqrt()
     }
 
@@ -313,7 +329,7 @@ impl Spacer {
     /// callsign heard before, when moving the boundaries costs less than the word is worth.
     /// A boundary that the timing shows clearly (a gap near one unit, or near three) is
     /// expensive to move, a gap of about two units is cheap.
-    fn mend(&self, model: &WordModel, i: usize, j: usize, text: &str, own: f32) -> Option<(String, f32)> {
+    fn mend(&self, model: &WordModel, i: usize, j: usize, text: &str, own: f32, word_thr: f32) -> Option<(String, f32)> {
         // The elements of the span and the gap after each one except the last.
         let mut el = String::new();
         let mut gaps: Vec<(f32, bool)> = Vec::new();
@@ -353,7 +369,69 @@ impl Spacer {
                 best = Some((w.to_string(), score));
             }
         }
+        // One dot or dash lost in a fade: K (dash dot dash) with its dot gone reads as T T.
+        // Only towards a callsign heard a moment ago or a common CW word, and only where the
+        // silence is as long as the lost element with the gaps around it would be. A callsign
+        // that merely looks like another one has no such hole and is left alone.
+        let intra = self.intra_gap();
+        let char_gap = self.char_gap().max(1.6 * intra);
+        let calls = model.recent_calls().map(|w| (w, LOST_ELEMENT));
+        let words = model.words_with_elements(el.len() + 1).map(|w| (w, LOST_IN_WORD));
+        for (w, cost) in calls.chain(words) {
+            let Some(wel) = crate::lang::elements(w) else { continue };
+            if w == text || wel.len() != el.len() + 1 {
+                continue;
+            }
+            let mut ends = std::collections::HashSet::new();
+            let mut at = 0;
+            for c in w.chars() {
+                at += cwld_types::morse::pattern(c).map_or(0, |p| p.len());
+                ends.insert(at);
+            }
+            let (wb, eb) = (wel.as_bytes(), el.as_bytes());
+            // The lost element is number p of the callsign. Not the first or the last one: there
+            // the silence next to it is a word gap and shows nothing.
+            for p in 1..eb.len() {
+                if wb[..p] != eb[..p] || wb[p + 1..] != eb[p..] {
+                    continue;
+                }
+                let lost = if wb[p] == b'-' { 3.0 } else { 1.0 };
+                let before = if ends.contains(&p) { char_gap } else { intra };
+                let after = if ends.contains(&(p + 1)) { char_gap } else { intra };
+                let (room, was_char) = gaps[p - 1];
+                let mut score = self.word_score(model, w) - cost - SLOPE * (room / (before + lost + after)).ln().abs();
+                if was_char {
+                    // The hole was read as a long gap between characters and charged as such
+                    // by the word split. It is no gap, so that charge is taken back.
+                    score += (SLOPE * (room.max(0.3) / word_thr).ln()).clamp(0.0, 8.0) / 2.0;
+                }
+                for (k, (g, was_char)) in gaps.iter().enumerate() {
+                    if k == p - 1 {
+                        continue;
+                    }
+                    // Gap k of what was read is gap k (before the hole) or k + 1 of the callsign.
+                    let is_char = ends.contains(&(if k < p - 1 { k + 1 } else { k + 2 }));
+                    if is_char != *was_char {
+                        let odds = (SLOPE * (g.max(0.2) / thr).ln()).clamp(-8.0, 8.0);
+                        score += if is_char { odds } else { -odds };
+                    }
+                }
+                if score > own && best.as_ref().map_or(true, |b| score > b.1) {
+                    best = Some((w.to_string(), score));
+                }
+            }
+        }
         best
+    }
+
+    /// This sender's usual gap inside a character, in units.
+    fn intra_gap(&self) -> f32 {
+        let mut v: Vec<f32> = self.intra_hist.iter().cloned().collect();
+        if v.len() < 6 {
+            return 1.0;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[v.len() / 2].clamp(0.6, 2.2)
     }
 
     /// The best split of the queue into words. `spaces[i]` is true when a word gap comes before
@@ -366,9 +444,33 @@ impl Spacer {
         let known = self.hist.iter().filter(|g| !g.1).count() >= 3 || self.dec_char_gap > 0.0;
         let sure_word = if known { SURE_WORD } else { 3.0 };
         let thr = self.local_threshold();
-        let odds: Vec<f32> = self.queue.iter().map(|t| (SLOPE * (t.gap.max(0.3) / thr).ln()).clamp(-8.0, 8.0)).collect();
+        let mut odds: Vec<f32> = self.queue.iter().map(|t| (SLOPE * (t.gap.max(0.3) / thr).ln()).clamp(-8.0, 8.0)).collect();
+        // Four or more gaps in a row of about the same length are gaps between characters,
+        // however long they are: nobody sends three one-letter words in a row, but anybody may
+        // start to spell a word slowly. Without this the first slowly spelled word after
+        // normal keying came out as loose letters.
+        let mut k = 1;
+        while k < n {
+            let (mut lo, mut hi, mut m) = (self.queue[k].gap, self.queue[k].gap, k);
+            while m + 1 < n {
+                let g = self.queue[m + 1].gap;
+                if lo.min(g) <= 0.0 || hi.max(g) / lo.min(g) > 1.45 {
+                    break;
+                }
+                lo = lo.min(g);
+                hi = hi.max(g);
+                m += 1;
+            }
+            if m - k + 1 >= 4 && lo > thr {
+                for o in &mut odds[k..=m] {
+                    *o = o.min(-2.0);
+                }
+            }
+            k = m + 1;
+        }
+        let odds = odds;
         let as_space = |k: usize| if self.queue[k].gap < SURE_CHAR * thr { NEG } else { odds[k] / 2.0 };
-        let as_char = |k: usize| if self.queue[k].gap >= sure_word * thr { NEG } else { -odds[k] / 2.0 };
+        let as_char = |k: usize| if self.queue[k].gap >= sure_word * thr && odds[k] > 0.0 { NEG } else { -odds[k] / 2.0 };
         let mut best = vec![NEG; n + 1];
         let mut from = vec![0usize; n + 1];
         let mut alt: Vec<Option<String>> = vec![None; n + 1];
@@ -395,11 +497,17 @@ impl Spacer {
                 // drop it, and never glued to the word next to it to avoid a lone letter.
                 let blip = j - i == 1 && self.queue[i].strength < self.junk_strength && matches!(self.queue[i].c, 'E' | 'T');
                 let mut word = if open || blip { 0.0 } else { self.word_score(model, &text) };
+                // A short word such as OP or DE right after a clear gap between characters is
+                // more likely the end of a longer word (LAPTOP): then it counts as an ordinary
+                // known word, not as one that always stands alone.
+                if i > 0 && odds[i] < -1.5 && j - i <= 2 && STRONG.contains(&text.as_str()) {
+                    word = word.min(0.8 + 0.35 * (j - i) as f32);
+                }
                 let mut other = None;
                 if !open && !model.known(&text) && !model.heard_before(&text) {
                     // A reading is not mended just because a lone letter or a short unknown word scores
                     // below nothing: the other word has to be worth it by itself.
-                    if let Some((w, sc)) = self.mend(model, i, j, &text, word.max(0.0)) {
+                    if let Some((w, sc)) = self.mend(model, i, j, &text, word.max(0.0), thr) {
                         word = sc;
                         other = Some(w);
                     }
@@ -503,10 +611,15 @@ mod tests {
 
     /// Characters with the gap before each and the gaps inside them, all in units.
     fn run_marks(tokens: &[(char, f32, &[f32])], model: &mut WordModel) -> String {
+        run_styled(tokens, model, 0.0)
+    }
+
+    /// The same, with the gap between characters the decoder measured for this sender.
+    fn run_styled(tokens: &[(char, f32, &[f32])], model: &mut WordModel, char_gap: f32) -> String {
         let mut sp = Spacer::new(true);
         let mut text = String::new();
         for (c, g, intra) in tokens {
-            let up = DecodeUpdate { committed: c.to_string(), committed_conf: vec![1.0], committed_alts: vec![vec![]], committed_strength: vec![99.0], committed_gap: vec![*g], committed_intra: vec![intra.to_vec()], ..Default::default() };
+            let up = DecodeUpdate { committed: c.to_string(), committed_conf: vec![1.0], committed_alts: vec![vec![]], committed_strength: vec![99.0], committed_gap: vec![*g], committed_intra: vec![intra.to_vec()], char_gap_units: char_gap, ..Default::default() };
             text.push_str(&sp.push(&up, model).committed);
         }
         text.push_str(&sp.flush(model).committed);
@@ -543,9 +656,9 @@ mod tests {
         t.extend(rest);
         let mut m = WordModel::default();
         // Not heard before: both stay as read.
-        assert_eq!(run_marks(&t, &mut m), "RM3Y ENM3Y");
+        assert_eq!(run_styled(&t, &mut m, 5.3), "RM3Y ENM3Y");
         m.heard("RM3Y");
-        assert_eq!(run_marks(&t, &mut m), "RM3Y RM3Y");
+        assert_eq!(run_styled(&t, &mut m, 5.3), "RM3Y RM3Y");
     }
 
     #[test]
@@ -554,6 +667,52 @@ mod tests {
         let mut m = WordModel::default();
         let t: &[(char, f32, &[f32])] = &[('H', 50.0, &[1.0; 3]), ('A', 3.0, &[1.0]), ('N', 3.0, &[1.0]), ('S', 3.0, &[1.0; 2])];
         assert_eq!(run_marks(t, &mut m), "HANS");
+    }
+
+    #[test]
+    fn a_dot_lost_in_a_fade_is_put_back_in_a_callsign_heard_before() {
+        // IK1QHB, then again with the dot of the K gone: dash, three units of silence, dash.
+        let call = |k: &[(char, f32, &'static [f32])]| -> Vec<(char, f32, &'static [f32])> {
+            let mut v: Vec<(char, f32, &'static [f32])> = vec![('I', 7.0, &[1.0])];
+            v.extend_from_slice(k);
+            v.extend_from_slice(&[('1', 3.0, &[1.0; 4]), ('Q', 3.0, &[1.0; 3]), ('H', 3.0, &[1.0; 3]), ('B', 3.0, &[1.0; 3])]);
+            v
+        };
+        let good = call(&[('K', 3.0, &[1.0, 1.0])]);
+        let faded = call(&[('T', 3.0, &[]), ('T', 3.0, &[])]);
+        let mut both = good.clone();
+        both.extend(faded.clone());
+        let mut m = WordModel::default();
+        // Not heard before: nothing to go by, it stays as read.
+        assert_eq!(run_marks(&faded, &mut m), "ITT1QHB");
+        m.heard("IK1QHB");
+        assert_eq!(run_marks(&both, &mut m), "IK1QHB IK1QHB");
+        // T T with a gap that is too long for one lost dot stays.
+        let wide = call(&[('T', 3.0, &[]), ('T', 4.3, &[])]);
+        assert!(!run_marks(&wide, &mut m).contains("IK1QHB"));
+    }
+
+    #[test]
+    fn a_callsign_that_only_looks_like_one_heard_before_is_left_alone() {
+        // ON3VS was heard, ON3VI calls: one dot fewer, but no hole where that dot could be.
+        let mut m = WordModel::default();
+        m.heard("ON3VS");
+        let t: &[(char, f32, &[f32])] = &[('O', 7.0, &[1.0; 2]), ('N', 3.0, &[1.0]), ('3', 3.0, &[1.0; 4]), ('V', 3.0, &[1.0; 3]), ('I', 3.0, &[1.0]), ('K', 7.0, &[1.0; 2])];
+        assert_eq!(run_marks(t, &mut m), "ON3VI K");
+        // DL1AD heard, DL1AN calls (D is dash dot dot, N is dash dot).
+        let mut m = WordModel::default();
+        m.heard("DL1AD");
+        let t: &[(char, f32, &[f32])] = &[('D', 7.0, &[1.0; 2]), ('L', 3.0, &[1.0; 3]), ('1', 3.0, &[1.0; 4]), ('A', 3.0, &[1.0]), ('N', 3.0, &[1.0])];
+        assert_eq!(run_marks(t, &mut m), "DL1AN");
+    }
+
+    #[test]
+    fn a_word_spelled_slowly_after_normal_keying_stays_one_word() {
+        let mut k = keyed("UR RST 599 IN", 3.0, 7.0);
+        k.extend(keyed("X HOBOKEN HW CPY", 8.0, 18.0).into_iter().skip(1));
+        assert_eq!(run(&k), "UR RST 599 IN HOBOKEN HW CPY");
+        // Three one-letter words in a row at normal spacing are still three words.
+        assert_eq!(run(&keyed("CQ CQ DE ON3VZ TEMP 4 C R TU", 3.0, 7.0)), "CQ CQ DE ON3VZ TEMP 4 C R TU");
     }
 
     #[test]

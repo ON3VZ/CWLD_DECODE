@@ -347,3 +347,38 @@ Bevindingen ON3VZ met 0.12.0 en 0.13.0: AF op 0 maakte de band stil, maar ook de
 3. Let op de vertraging: de lichtere voorlopige tekst komt meteen, de definitieve tekst ongeveer vijf tekens later. Meld als dat stoort.
 4. Leest CWLD iets fout dat jij wel kon volgen: druk OPNAME en stuur de opname met wat er gezonden werd. Ook voor de zeven opnames van 10 november is de juiste tekst nog welkom.
 
+## A48. Zenden oefenen vanuit de Koch-kaart (0.16.0)
+
+1. Zet OEFENEN aan. Kies in de kaart "Tekens leren (Koch)" je tekens (bijvoorbeeld de eerste 6).
+2. Klik onder "Zenden (paddle)" op "Sein groepen". Verwacht: een tabblad "Oefenen" met groepen uit alleen jouw tekens. Liep het luisteren nog niet, dan start het vanzelf.
+3. Sein de tekst met de paddle. Verwacht: "Gehoord" vult zich terwijl je seint en na twee seconden stilte komt de score.
+4. Werkt het niet, meld dan: beweegt het audiobalkje als je seint, wat staat er bij "Radio meldt", en welke versie staat er onderaan in Instellingen.
+
+## A49. Schakelaar Fading (0.16.1)
+
+1. Kijk in de kaart Audio op het hoofdscherm (rechts). Verwacht: onder de piekmeter "Fading (QSB)" met "Doorlezen" en "Streng", en een regel uitleg eronder.
+2. Zoek een station met duidelijke QSB. Laat een halve minuut op "Doorlezen" staan en zet dan op "Streng". Verwacht: bij "Streng" breken woorden vaker in stukken.
+3. Zoek een heel zwak, stabiel station. Vergelijk beide standen. Meld welke stand daar beter leest.
+4. Sluit CWLD en start opnieuw. Verwacht: de gekozen stand staat er nog.
+
+## A50. DX-cluster verbinden (0.18.0)
+
+1. Instellingen (tandwiel), Station: roepletters ingevuld? Ga naar DX-cluster en klik **Test de clusters**. Verwacht: een lijst met per node "antwoordt in ... ms" of "geen antwoord". Noteer welke antwoorden, vooral ON0DXK.
+2. Laat Cluster op Automatisch en klik **Verbinden**. Verwacht: "Verbonden met ... (CC Cluster of DX Spider)". Na een tot twee minuten staan er spots.
+3. Sluit de instellingen. Kijk naar de bandscoop op een CW-band. Verwacht: labels met roepletters, in de balk eronder "<node>: N spots".
+4. Meld: welke node werd gekozen, welke software er stond, en of de spots in de buurt van echte signalen op de scoop staan.
+5. Zet "Ook spots van skimmers tonen" uit, klik **Opnieuw verbinden**. Verwacht: veel minder spots. Zet het weer aan. Meld of het aantal spots verschilt.
+
+## A51. Kleuren en dupes (0.18.0)
+
+1. Log een QSO met een station dat als groen label op de scoop staat. Verwacht: het label wordt meteen rood en doorgestreept.
+2. Zoek een station dat je op een andere band werkte. Verwacht: oranje op een band waar je het nog niet werkte.
+3. Zet contestmodus aan met een lopende contest. Verwacht: alleen QSO's van deze contest (en dit nummer van de contest) maken labels rood.
+4. Klik op een label. Verwacht: de radio stemt af op die frequentie en er wordt niets gezonden.
+
+## A52. Cluster uitvallen en commando's (0.18.0)
+
+1. Zet tijdens verbinding het netwerk even uit (wifi uit). Verwacht: status "offline" met de reden, labels blijven staan tot ze verlopen. Zet het netwerk weer aan. Verwacht: CWLD verbindt vanzelf opnieuw, met de volgende node als je op Automatisch staat.
+2. Open in Instellingen, DX-cluster, onderaan het Clustervenster. Typ `sh/dx 5`. Verwacht: de laatste vijf spots verschijnen in het venster.
+3. Typ `dx 7030 TEST`. Verwacht: een melding dat het commando niet mag, en er gaat niets naar de cluster.
+4. Meld: werkt `set/skimmer` bij jouw node (komen er na het commando meer spots), en welke bijzonderheden de node meldt.

@@ -2,11 +2,15 @@
   import { onMount } from 'svelte';
   import { app } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
+  import type { ClusterSpot } from '../lib/types';
 
   let spectrum: HTMLCanvasElement;
   let fall: HTMLCanvasElement;
   let hoverHz = $state<number | null>(null);
   let hoverX = $state(0);
+  let areaW = $state(600);
+  /** Seconds since 1970, moved on every 15 s so old spots fade out without new data. */
+  let nowSec = $state(Math.floor(Date.now() / 1000));
 
   const lo = $derived(app.scopeLo);
   const hi = $derived(app.scopeHi);
@@ -90,10 +94,62 @@
       }
     };
     raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    const clock = setInterval(() => (nowSec = Math.floor(Date.now() / 1000)), 15_000);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearInterval(clock);
+    };
   });
   /** The chosen size: one setting outside contest mode and one in contest mode. */
   const size = $derived((app.settings?.contest_mode ? app.settings?.scope_size_contest : app.settings?.scope_size) ?? 'medium');
+
+  // ---- DX cluster labels ----
+  const ROW_PX = 13;
+  const PRIORITY = { new: 0, other_band: 1, worked: 2 } as const;
+  const rowsMax = $derived(size === 'small' ? 1 : size === 'large' ? 4 : 3);
+  const cluster = $derived(app.settings?.cluster);
+  const showLabels = $derived(!!cluster?.show_labels && app.clusterStatus.state !== 'off');
+  /** Spots in view with a row each. A crowded stretch shows the stations that are not in the log first. */
+  const placed = $derived.by(() => {
+    if (!app.scopeLive || !showLabels || !cluster) return { items: [] as Array<ClusterSpot & { x: number; row: number }>, hidden: 0 };
+    const maxAge = Math.max(1, cluster.max_age_minutes) * 60;
+    const inView = app.clusterSpots
+      .filter((s) => s.freq_hz >= lo && s.freq_hz <= hi && nowSec - s.ts <= maxAge)
+      .sort((a, b) => PRIORITY[a.status] - PRIORITY[b.status] || b.ts - a.ts);
+    const rows: Array<Array<[number, number]>> = Array.from({ length: rowsMax }, () => []);
+    const items: Array<ClusterSpot & { x: number; row: number }> = [];
+    for (const s of inView) {
+      const x = ((s.freq_hz - lo) / span) * areaW;
+      const end = x + s.call.length * 6.7 + 10;
+      const row = rows.findIndex((r) => r.every(([a, b]) => end + 3 <= a || x >= b + 3));
+      if (row < 0) continue;
+      rows[row].push([x, end]);
+      items.push({ ...s, x: (s.freq_hz - lo) / span, row });
+    }
+    return { items, hidden: inView.length - items.length };
+  });
+
+  function spotTitle(s: ClusterSpot): string {
+    const mins = Math.max(0, Math.round((nowSec - s.ts) / 60));
+    const extra = [s.snr !== null ? `${s.snr} dB` : '', s.wpm !== null ? `${s.wpm} WPM` : ''].filter(Boolean).join(', ');
+    return t('spot.title', { call: s.call, khz: (s.freq_hz / 1000).toFixed(1), spotter: s.spotter, extra: extra ? ` (${extra})` : '', mins, status: t(`spot.status.${s.status}`) });
+  }
+
+  function spotClick(e: MouseEvent, hz: number) {
+    e.stopPropagation();
+    app.tuneTo(hz);
+  }
+
+  const cs = $derived(app.clusterStatus);
+  const clusterText = $derived(
+    cs.state === 'online'
+      ? t('cluster.bar.online', { node: cs.node, n: placed.items.length + placed.hidden })
+      : cs.state === 'connecting'
+        ? t('cluster.bar.connecting', { node: cs.node })
+        : cs.state === 'offline'
+          ? t('cluster.bar.offline', { node: cs.node })
+          : '',
+  );
 </script>
 
 <section class="scope" aria-label={t('scope.title')}>
@@ -106,6 +162,7 @@
     onmousemove={move}
     onmouseleave={() => (hoverHz = null)}
     onclick={click}
+    bind:clientWidth={areaW}
     title={app.scopeLive ? t('scope.click') : ''}>
     <canvas class="spectrum" bind:this={spectrum} width="475" height="55"></canvas>
     <canvas class="fall" bind:this={fall} width="475" height="110"></canvas>
@@ -116,6 +173,10 @@
       {#each ticks as k (k.khz)}
         <span class="tick mono" style:left={`${k.x * 100}%`}>{k.khz}</span>
       {/each}
+      {#each placed.items as sp (`${sp.call}|${sp.band}|${sp.freq_hz}`)}
+        <div class="pin {sp.status}" style:left={`${sp.x * 100}%`} style:top={`${2 + sp.row * ROW_PX}px`}></div>
+        <button class="spot {sp.status}" style:left={`${sp.x * 100}%`} style:top={`${2 + sp.row * ROW_PX}px`} title={spotTitle(sp)} onclick={(e) => spotClick(e, sp.freq_hz)} onmousemove={(e) => e.stopPropagation()}>{sp.call}</button>
+      {/each}
       {#if hoverHz !== null}
         <div class="hover" style:left={`${hoverX * 100}%`}></div>
         <span class="hoverlabel mono" style:left={`${Math.min(88, Math.max(0, hoverX * 100 + 0.5))}%`}>{(hoverHz / 1000).toFixed(2)} kHz</span>
@@ -125,7 +186,13 @@
     {/if}
   </div>
   <div class="bar">
-    <span class="muted">{t('scope.title')}{#if app.scopeLive}: {t('scope.range', { lo: (lo / 1000).toFixed(1), hi: (hi / 1000).toFixed(1) })}{/if}</span>
+    <span class="left muted">{t('scope.title')}{#if app.scopeLive}: {t('scope.range', { lo: (lo / 1000).toFixed(1), hi: (hi / 1000).toFixed(1) })}{/if}</span>
+    {#if cs.state === 'off'}
+      <button class="link" title={t('cluster.scope.connect.help')} onclick={() => app.clusterConnect()}>{t('cluster.scope.connect')}</button>
+    {:else}
+      <span class="cl muted" title={cs.state === 'offline' && cs.reason ? cs.reason : cs.software}><i class="dot {cs.state}"></i>{clusterText}{#if placed.hidden > 0} · {t('cluster.hidden', { n: placed.hidden })}{/if}</span>
+      <button class="link" onclick={() => app.setClusterLabels(!cluster?.show_labels)}>{cluster?.show_labels ? t('cluster.labels.hide') : t('cluster.labels.show')}</button>
+    {/if}
     <button class="link" onclick={() => app.setView('band_scope', false)}>{t('scope.hide')}</button>
   </div>
 </section>
@@ -151,6 +218,18 @@
   .tick { position: absolute; top: 42px; font-size: 10px; color: rgba(190, 210, 230, 0.75); transform: translateX(-50%); pointer-events: none; text-shadow: 0 0 3px #000; }
   .off { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; padding: 0 16px; text-align: center; }
   .bar { display: flex; gap: 14px; align-items: center; padding: 3px 12px; font-size: 12px; border-top: 1px solid var(--line); }
-  .bar span { flex: 1; }
+  .bar .left { flex: 1; }
+  .cl { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #888; display: inline-block; flex: none; }
+  .dot.online { background: #4ade80; }
+  .dot.connecting { background: #fbbf24; }
+  .dot.offline { background: #f87171; }
+  .spot { position: absolute; z-index: 2; height: 12px; padding: 0 3px 0 4px; border: none; border-left: 2px solid currentColor; background: rgba(5, 8, 11, 0.74); font: 600 11px/12px var(--mono, ui-monospace, monospace); cursor: pointer; white-space: nowrap; }
+  .spot:hover { background: rgba(5, 8, 11, 0.95); outline: 1px solid currentColor; }
+  .pin { position: absolute; bottom: 0; width: 0; border-left: 1px solid currentColor; opacity: 0.45; pointer-events: none; z-index: 1; }
+  .new { color: #6ee7a0; }
+  .other_band { color: #fbbf24; }
+  .worked { color: #f87171; }
+  .spot.worked { text-decoration: line-through; opacity: 0.85; }
   .link { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }
 </style>

@@ -31,18 +31,45 @@ const WORDS: &[&str] = &[
     "AND", "THE", "TO", "FOR", "IN", "ON", "AT", "IS", "ME", "MY", "YOU", "YOUR", "WAS", "ALSO", "HERE", "THERE", "BUT",
     "NOT", "ALL", "GOOD", "VERY", "MANY", "THANKS", "BEST", "LUCK", "SEE", "AGAIN", "SOON", "NEXT", "TIME", "BAND",
     "CONDX", "CONDITIONS", "NOISE", "QRMS", "HOME", "OFFICE", "WORK", "OLD", "MAN", "DEAR", "FRIEND", "EYEBALL",
+    // Plain English of a relaxed QSO: the commonest words and the usual subjects.
+    "A", "I", "AM", "AN", "AS", "AT", "BE", "BY", "DO", "GO", "HE", "IF", "IN", "IS", "IT", "ME", "MY", "NO", "OF",
+    "ON", "OR", "SO", "TO", "UP", "US", "WE", "ALL", "AND", "ANY", "ARE", "BAD", "BIG", "BIT", "BUT", "CAN", "DAY",
+    "DID", "END", "FAR", "FEW", "FIX", "FOR", "GET", "GOT", "HAD", "HAS", "HER", "HIM", "HIS", "HOW", "ITS", "LET",
+    "LOT", "NEW", "NOT", "NOW", "OFF", "OLD", "ONE", "OUR", "OUT", "OWN", "PUT", "RAN", "RUN", "SAW", "SAY", "SEE",
+    "SET", "SHE", "THE", "TOO", "TRY", "TWO", "USE", "WAS", "WAY", "WHO", "WHY", "YES", "YET", "YOU", "ALSO", "AWAY",
+    "BACK", "BEEN", "BEST", "BOTH", "BUSY", "CAME", "COME", "DAYS", "DOES", "DONE", "DOWN", "EACH", "EVEN", "EVER",
+    "FEEL", "FIND", "FINE", "FROM", "GAVE", "GIVE", "GOES", "GONE", "GOOD", "HAVE", "HEAR", "HELP", "HERE", "HOME",
+    "HOPE", "INTO", "JUST", "KEEP", "KNOW", "LAST", "LATE", "LEFT", "LIFE", "LIKE", "LINE", "LONG", "LOOK", "MADE",
+    "MAKE", "MANY", "MORE", "MOST", "MUCH", "MUST", "NEAR", "NEED", "NEXT", "NICE", "ONLY", "OPEN", "OVER", "PART",
+    "SAID", "SAME", "SOME", "SOON", "SUCH", "SURE", "TAKE", "TELL", "THAN", "THAT", "THEM", "THEN", "THEY", "THIS",
+    "TIME", "TOLD", "TOOK", "USED", "VERY", "WANT", "WEEK", "WELL", "WENT", "WERE", "WHAT", "WHEN", "WILL", "WITH",
+    "WORK", "YEAR", "YOUR", "ABOUT", "AFTER", "AGAIN", "BEING", "COULD", "DIED", "EARLY", "EVERY", "FIRST", "GOING",
+    "GREAT", "HEARD", "HOURS", "LATER", "MIGHT", "MONTH", "NEVER", "NIGHT", "OTHER", "QUITE", "RIGHT", "SINCE",
+    "SMALL", "STILL", "THEIR", "THERE", "THESE", "THING", "THINK", "THOSE", "THREE", "TODAY", "UNDER", "UNTIL",
+    "WATCH", "WEEKS", "WHERE", "WHICH", "WHILE", "WORLD", "WOULD", "YEARS", "ALWAYS", "AROUND", "BEFORE", "BETTER",
+    "CALLED", "CHANGE", "COMING", "DURING", "ENOUGH", "FAILED", "FRIEND", "LITTLE", "PEOPLE", "REALLY", "SHOULD",
+    "THANKS", "THINGS", "TRYING", "ANOTHER", "BECAUSE", "BETWEEN", "EVENING", "MORNING", "NOTHING", "THROUGH",
+    "TONIGHT", "WEATHER", "WORKING", "WITHOUT", "TOMORROW", "YESTERDAY", "WEEKEND", "HOLIDAY", "GARDEN", "HOUSE",
+    "WIFE", "FAMILY", "RADIO", "STATION", "ANTENNA", "AERIAL", "TOWER", "MAST", "CABLE", "COAX", "TUNER", "KEYER",
+    "PADDLE", "SIGNAL", "SIGNALS", "STRONG", "WEAK", "COPY", "SORRY", "LOTS", "REPORT", "POWER", "RUNNING", "USING",
+    "SCREEN", "LAPTOP", "MEET", "COMPUTER", "CHECKED", "CHECK", "SHOP", "TOWN", "CITY", "MILES", "NORTH", "SOUTH", "EAST",
+    "WEST", "RETIRED", "LICENSED", "CLUB", "MEMBER", "CALLING", "CONTACT", "PLEASE", "REPEAT", "SLOW", "FAST",
+    "SPEED", "HEAVY", "WET", "DRY", "DEGREES", "FROST", "STORM", "CLEAR", "CLOUD", "WUD", "CUD", "SHUD", "ABT",
+    "BCNU", "BTU", "CONDX", "GUD", "HPE", "SEZ", "TMW", "TNX", "VY", "WL", "YR",
 ];
 
 pub struct WordModel {
     words: HashSet<String>,
     /// Callsigns heard a moment ago, newest last. A station repeats its call.
     recent: std::collections::VecDeque<String>,
+    /// Callsigns given by the operator (his own, those in the QSO panel): never forgotten.
+    pinned: Vec<String>,
     by_elements: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Default for WordModel {
     fn default() -> Self {
-        let mut m = WordModel { words: HashSet::new(), recent: std::collections::VecDeque::new(), by_elements: std::collections::HashMap::new() };
+        let mut m = WordModel { words: HashSet::new(), recent: std::collections::VecDeque::new(), pinned: Vec::new(), by_elements: std::collections::HashMap::new() };
         for w in WORDS {
             m.add(w);
         }
@@ -67,6 +94,9 @@ impl WordModel {
     /// Adds words (for example the operator's own callsign, name and QTH, or worked calls).
     pub fn add(&mut self, w: &str) {
         let w = w.trim().to_ascii_uppercase();
+        if looks_like_callsign(&w) && w.chars().count() >= 4 && !self.pinned.contains(&w) {
+            self.pinned.push(w.clone());
+        }
         if !w.is_empty() && self.words.insert(w.clone()) {
             if let Some(el) = elements(&w) {
                 self.by_elements.entry(el).or_default().push(w);
@@ -87,7 +117,7 @@ impl WordModel {
     }
 
     pub fn heard_before(&self, w: &str) -> bool {
-        self.recent.iter().any(|x| x == w)
+        self.recent.iter().any(|x| x == w) || self.pinned.iter().any(|x| x == w)
     }
 
     /// The known words and the callsigns heard before that are made of exactly this row of
@@ -99,6 +129,16 @@ impl WordModel {
             out.extend(v.iter().map(|w| w.as_str()));
         }
         out
+    }
+
+    /// Known words of at least two characters whose row of dots and dashes has this length.
+    pub fn words_with_elements(&self, n: usize) -> impl Iterator<Item = &str> {
+        self.by_elements.iter().filter(move |(el, _)| el.len() == n).flat_map(|(_, v)| v.iter()).filter(|w| w.chars().count() >= 2).map(|w| w.as_str())
+    }
+
+    /// The callsigns heard a moment ago, newest first.
+    pub fn recent_calls(&self) -> impl Iterator<Item = &str> {
+        self.recent.iter().rev().chain(self.pinned.iter()).map(|c| c.as_str())
     }
 
     /// Log bonus (nats) for a whole word.

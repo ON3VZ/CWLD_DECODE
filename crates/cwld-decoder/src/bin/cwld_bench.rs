@@ -20,6 +20,10 @@ fn main() {
         if std::env::var("CWLD_NOVOICE").is_ok() {
             p.voice_gate = false;
         }
+        if let Ok(w) = std::env::var("WEAK") {
+            let v: Vec<f64> = w.split(',').map(|x| x.parse().unwrap()).collect();
+            p.weak_marks = Some((v[0], v[1], v[2]));
+        }
         if plain {
             p.noise_blanker = false;
             p.auto_notch = false;
@@ -106,6 +110,14 @@ fn fists_only(trials: usize, pcfg: impl Fn(&CwSpec) -> PipelineConfig + Copy) {
         ("speed swings 25 percent, uneven gaps", CwSpec { speed_wobble: 0.25, gap_jitter: 0.2, ..base.clone() }),
         ("letters far apart at 30 WPM (char 6, word 13)", CwSpec { wpm: 30.0, char_gap: 6.0, word_gap: 13.0, gap_jitter: 0.1, ..base.clone() }),
         ("heavy weighting at 35 WPM, +6 dB", CwSpec { wpm: 35.0, snr_db: Some(6.0), intra_gap: 1.8, char_gap: 5.0, word_gap: 10.0, gap_jitter: 0.1, ..base.clone() }),
+        ("spells slowly (char 8, word 18), then keys normally", CwSpec { char_gap: 8.0, word_gap: 18.0, change_after: 0.34, char_gap2: 3.0, word_gap2: 7.0, gap_jitter: 0.1, ..base.clone() }),
+        ("keys normally, then spells slowly (char 8, word 18)", CwSpec { change_after: 0.34, char_gap2: 8.0, word_gap2: 18.0, gap_jitter: 0.1, ..base.clone() }),
+        ("wide (char 6, word 13), then tight (char 2.5, word 5.5)", CwSpec { char_gap: 6.0, word_gap: 13.0, change_after: 0.34, char_gap2: 2.5, word_gap2: 5.5, gap_jitter: 0.1, ..base.clone() }),
+        ("speed goes from 18 to 28 WPM", CwSpec { wpm: 18.0, change_after: 0.34, wpm2: 28.0, ..base.clone() }),
+        ("speed goes from 30 to 18 WPM", CwSpec { wpm: 30.0, change_after: 0.34, wpm2: 18.0, ..base.clone() }),
+        ("spells slowly at 25 WPM, then tight and 32 WPM", CwSpec { wpm: 25.0, char_gap: 8.0, word_gap: 18.0, change_after: 0.34, char_gap2: 2.8, word_gap2: 6.0, wpm2: 32.0, gap_jitter: 0.1, ..base.clone() }),
+        ("3 in 100 dots and dashes lost in short fades", CwSpec { lost_elements: 0.03, ..base.clone() }),
+        ("6 in 100 dots and dashes lost, +6 dB", CwSpec { lost_elements: 0.06, snr_db: Some(6.0), ..base.clone() }),
         ("uneven gaps 30 percent at +3 dB", CwSpec { gap_jitter: 0.3, snr_db: Some(3.0), ..base.clone() }),
     ];
     for (name, spec) in fists {

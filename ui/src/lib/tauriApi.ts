@@ -1,4 +1,4 @@
-import type { Activation, ActivationStats, Api, AudioStatus, CheckIssue, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
+import type { Activation, ActivationStats, Api, AudioStatus, CheckIssue, ClusterProbe, ClusterSpot, ClusterStatus, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -54,6 +54,7 @@ export async function createTauriApi(): Promise<Api> {
     setAutoTone: (on: boolean) => invoke<void>('set_auto_tone', { on }),
     setTuning: (t) => invoke<void>('set_tuning', { gainDb: t.gain_db, wideFilter: t.wide_filter, minWpm: t.min_wpm, maxWpm: t.max_wpm, lockWpm: t.lock_wpm }),
     setAfc: (on: boolean) => invoke<void>('set_afc', { on }),
+    setFading: (on: boolean) => invoke<void>('set_fading', { on }),
     goStrongest: () => invoke<void>('go_strongest'),
     startRecording: () => invoke<string>('start_recording'),
     stopRecording: () => invoke<void>('stop_recording'),
@@ -82,6 +83,12 @@ export async function createTauriApi(): Promise<Api> {
     activationEnd: () => invoke<void>('activation_end'),
     activationCurrent: () => invoke<Activation | null>('activation_current'),
     activationStats: (id: number) => invoke<ActivationStats>('activation_stats', { id }),
+    clusterStart: () => invoke<ClusterStatus>('cluster_start'),
+    clusterStop: () => invoke<ClusterStatus>('cluster_stop'),
+    clusterStatus: () => invoke<ClusterStatus>('cluster_status'),
+    clusterSend: (line: string) => invoke<void>('cluster_send', { line }),
+    clusterSpots: () => invoke<ClusterSpot[]>('cluster_spots'),
+    clusterProbe: () => invoke<ClusterProbe[]>('cluster_probe'),
     demo: false,
     onEvents(handler) {
       let off: (() => void) | null = null;

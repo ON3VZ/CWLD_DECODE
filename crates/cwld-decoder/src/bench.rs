@@ -69,8 +69,15 @@ pub fn run_cell(base: &CwSpec, trials: usize, seed: u64, pcfg: impl Fn(&CwSpec) 
     let mut rng = Rng::new(seed);
     let (mut chars, mut errors) = (0usize, 0usize);
     for t in 0..trials {
-        let text = TEXTS[rng.below(TEXTS.len())];
-        let spec = CwSpec { text: text.to_string(), seed: seed.wrapping_mul(1000).wrapping_add(t as u64), ..base.clone() };
+        let mut text = TEXTS[rng.below(TEXTS.len())].to_string();
+        if base.change_after > 0.0 {
+            // A sender who changes his ways needs a longer transmission: three messages in a row.
+            for _ in 0..2 {
+                text.push(' ');
+                text.push_str(TEXTS[rng.below(TEXTS.len())]);
+            }
+        }
+        let spec = CwSpec { text, seed: seed.wrapping_mul(1000).wrapping_add(t as u64), ..base.clone() };
         let g = generate(&spec);
         let decoded = decode_samples(&g.samples, pcfg(&spec));
         if std::env::var("CWLD_SHOW").is_ok() {

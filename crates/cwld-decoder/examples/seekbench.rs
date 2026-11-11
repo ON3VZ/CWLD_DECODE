@@ -13,6 +13,8 @@ fn main() {
                 let mut p = PipelineConfig::new(8000, 700.0);
                 p.auto_tone = true;
                 p.min_separation = 3.5;
+                if std::env::var("NOWEAK").is_ok() { p.weak_marks = Some((0.0, 1.0, 4.0)); }
+                if std::env::var("NOSPACE").is_ok() { p.spacing = false; }
                 p
             });
             row += &format!(" {:5.1}", c.cer * 100.0);

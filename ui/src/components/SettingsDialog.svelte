@@ -3,7 +3,8 @@
   import { tick } from 'svelte';
   import { app, PRESETS } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
-  import type { Settings } from '../lib/types';
+  import { DEFAULT_CLUSTER_NODES } from '../lib/cluster';
+  import type { ClusterSettings, Settings } from '../lib/types';
 
   const original = $state.snapshot(app.settings) as Settings;
   let draft = $state<Settings>(structuredClone(original));
@@ -12,9 +13,9 @@
   let problem = $state<string | null>(null);
   let addressText = $state(original.radio.civ_address.toString(16).toUpperCase().padStart(2, '0'));
   let showAdvanced = $state(false);
-  type Section = 'station' | 'radio' | 'audio' | 'decoder' | 'send' | 'view' | 'contest' | 'log' | 'updates';
+  type Section = 'station' | 'radio' | 'audio' | 'decoder' | 'send' | 'view' | 'contest' | 'log' | 'cluster' | 'updates';
   let section = $state<Section>('station');
-  const sections: Section[] = ['station', 'radio', 'audio', 'decoder', 'send', 'view', 'contest', 'log', 'updates'];
+  const sections: Section[] = ['station', 'radio', 'audio', 'decoder', 'send', 'view', 'contest', 'log', 'cluster', 'updates'];
 
   /** A slider or switch of the decoder acts at once, and the draft keeps the same values. */
   function tune() {
@@ -33,6 +34,27 @@
     app.lookupRefresh();
   });
   let wavPath = $state('');
+  let clusterCommand = $state('');
+  /** The callsign used to log in: the first one of the station field. */
+  const clusterCall = $derived(callsText.split(',')[0].trim().toUpperCase());
+  /** What the cluster section shows, to be saved before connecting or testing. */
+  const clusterEdit = () => ({ cluster: $state.snapshot(draft.cluster) as ClusterSettings, calls: callsText.split(',') });
+  function addNode() {
+    draft.cluster.nodes = [...draft.cluster.nodes, { name: '', host: '', port: 7300 }];
+  }
+  function removeNode(i: number) {
+    draft.cluster.nodes = draft.cluster.nodes.filter((_, k) => k !== i);
+    if (!draft.cluster.nodes.some((n) => `${n.host.trim()}:${n.port}` === draft.cluster.node)) draft.cluster.node = 'auto';
+  }
+  function resetNodes() {
+    draft.cluster.nodes = DEFAULT_CLUSTER_NODES.map((n) => ({ ...n }));
+    draft.cluster.node = 'auto';
+  }
+  async function sendCommand() {
+    const c = clusterCommand;
+    clusterCommand = '';
+    await app.clusterSendLine(c);
+  }
   // Input level as a bar: -60 dBFS empty, 0 dBFS full.
   const levelPct = $derived(app.audioLevel === null ? 0 : Math.max(0, Math.min(100, ((app.audioLevel + 60) / 60) * 100)));
   const levelHint = $derived(app.audioLevel === null ? '' : app.audioLevel > -6 ? 'audio.level.high' : app.audioLevel < -45 ? 'audio.level.low' : 'audio.level.ok');
@@ -449,6 +471,79 @@
           <small class="muted">{t('lookup.privacy')}</small>
         {/if}
 
+        {#if section === 'cluster'}
+          <h3>{t('cluster.title')}</h3>
+          <p class="muted">{t('cluster.intro')}</p>
+          <label class="check"><input type="checkbox" bind:checked={draft.cluster.enabled} /> {t('cluster.on')}</label>
+          <small class="muted">{t('cluster.on.help')}</small>
+          <p class="small">{#if clusterCall}{t('cluster.login', { call: clusterCall })}{:else}<span class="warn" role="alert">{t('cluster.login.none')}</span>{/if}</p>
+          <label>{t('cluster.node')}
+            <select bind:value={draft.cluster.node}>
+              <option value="auto">{t('cluster.node.auto')}</option>
+              {#each draft.cluster.nodes as n (`${n.host}:${n.port}:${n.name}`)}<option value={`${n.host.trim()}:${n.port}`}>{n.name || n.host}</option>{/each}
+            </select>
+          </label>
+          <small class="muted">{t('cluster.node.help')}</small>
+          <label class="check"><input type="checkbox" bind:checked={draft.cluster.skimmer} /> {t('cluster.skimmer')}</label>
+          <small class="muted">{t('cluster.skimmer.help')}</small>
+          <label class="check"><input type="checkbox" bind:checked={draft.cluster.show_labels} /> {t('cluster.labels')}</label>
+          <label>{t('cluster.age')}
+            <input class="mono short" type="number" min="1" max="240" bind:value={draft.cluster.max_age_minutes} />
+            <small class="muted">{t('cluster.age.help')}</small>
+          </label>
+          <p role="status">
+            <i class="cdot {app.clusterStatus.state}"></i>
+            {#if app.clusterStatus.state === 'online'}{t('cluster.state.online', { node: app.clusterStatus.node, software: app.clusterStatus.software || '?' , n: app.clusterSpots.length })}
+            {:else if app.clusterStatus.state === 'connecting'}{t('cluster.state.connecting', { node: app.clusterStatus.node || '...' })}
+            {:else if app.clusterStatus.state === 'offline'}{t('cluster.state.offline', { node: app.clusterStatus.node, reason: app.clusterStatus.reason })}
+            {:else}{t('cluster.state.off')}{/if}
+          </p>
+          <div class="row">
+            <button class="btn primary" type="button" disabled={!clusterCall} onclick={() => app.clusterConnect(clusterEdit())}>{app.clusterStatus.state === 'off' ? t('cluster.connect') : t('cluster.reconnect')}</button>
+            <button class="btn" type="button" disabled={app.clusterStatus.state === 'off'} onclick={() => app.clusterDisconnect()}>{t('cluster.disconnect')}</button>
+            <button class="btn" type="button" disabled={app.clusterProbeResult.busy} onclick={() => app.clusterTest(clusterEdit())}>{app.clusterProbeResult.busy ? t('cluster.testing') : t('cluster.test')}</button>
+          </div>
+          <small class="muted">{t('cluster.test.help')}</small>
+          {#if app.clusterProbeResult.list.length}
+            <table class="small probe">
+              <tbody>
+                {#each app.clusterProbeResult.list as r (`${r.host}:${r.port}`)}
+                  <tr class:bad={!r.ok}>
+                    <td>{r.node}</td>
+                    <td class="mono">{r.host}:{r.port}</td>
+                    <td>{r.ok ? t('cluster.test.ok', { ms: r.millis, software: r.software }) : t('cluster.test.fail', { reason: r.error })}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+
+          <h3>{t('cluster.nodes')}</h3>
+          <small class="muted">{t('cluster.nodes.help')}</small>
+          {#each draft.cluster.nodes as n, i (i)}
+            <div class="nodes">
+              <input type="text" aria-label={t('cluster.nodes.name')} placeholder={t('cluster.nodes.name')} bind:value={n.name} />
+              <input type="text" aria-label={t('cluster.nodes.host')} placeholder={t('cluster.nodes.host')} bind:value={n.host} />
+              <input class="mono short" type="number" min="1" max="65535" aria-label={t('cluster.nodes.port')} bind:value={n.port} />
+              <button class="link" type="button" onclick={() => removeNode(i)}>{t('cluster.nodes.remove')}</button>
+            </div>
+          {/each}
+          <div class="row">
+            <button class="btn" type="button" onclick={addNode}>{t('cluster.nodes.add')}</button>
+            <button class="btn" type="button" onclick={resetNodes}>{t('cluster.nodes.reset')}</button>
+          </div>
+
+          <details>
+            <summary>{t('cluster.raw')}</summary>
+            <small class="muted">{t('cluster.raw.help')}</small>
+            <pre class="raw mono">{app.clusterLines.join('\n')}</pre>
+            <form onsubmit={(e) => { e.preventDefault(); sendCommand(); }}>
+              <input type="text" class="mono" autocomplete="off" spellcheck="false" placeholder="sh/dx 10" aria-label={t('cluster.raw.input')} bind:value={clusterCommand} disabled={app.clusterStatus.state !== 'online'} />
+              <button class="btn" type="submit" disabled={app.clusterStatus.state !== 'online' || !clusterCommand.trim()}>{t('cluster.raw.send')}</button>
+            </form>
+          </details>
+        {/if}
+
         {#if section === 'updates'}
           <h3>{t('update.title')}</h3>
           <p class="muted">{t('update.version', { version: app.version })}</p>
@@ -518,4 +613,13 @@
   .level { display: flex; gap: 8px; align-items: center; font-size: 13px; }
   .level .bar { flex: 1; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
   .level .fill { display: block; height: 100%; background: linear-gradient(90deg, #2e9e5b 70%, #d98e04 90%, #c0392b); }
+  .cdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #888; margin-right: 6px; }
+  .cdot.online { background: #4ade80; }
+  .cdot.connecting { background: #fbbf24; }
+  .cdot.offline { background: #f87171; }
+  .nodes { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.6fr) 90px auto; gap: 6px; align-items: center; margin-bottom: 4px; }
+  .probe { border-collapse: collapse; width: 100%; }
+  .probe td { padding: 2px 8px 2px 0; border-bottom: 1px solid var(--line); }
+  .probe tr.bad td { color: var(--bad, #c0392b); }
+  .raw { max-height: 200px; overflow: auto; white-space: pre-wrap; font-size: 12px; background: rgba(0, 0, 0, 0.18); padding: 6px; border-radius: 4px; }
 </style>

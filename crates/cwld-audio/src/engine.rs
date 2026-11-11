@@ -63,12 +63,14 @@ pub struct EngineConfig {
     /// Move to the strongest keyed tone by itself when the current pitch is quiet.
     pub auto_tone: bool,
     pub afc: bool,
+    /// Count weak marks in fast fading as key-down.
+    pub fading: bool,
     pub tuning: Tuning,
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
-        EngineConfig { tone_hz: 700.0, words: Vec::new(), waterfall_lo_hz: 200.0, waterfall_hi_hz: 1400.0, min_separation: 3.5, auto_tone: true, afc: true, tuning: Tuning::default() }
+        EngineConfig { tone_hz: 700.0, words: Vec::new(), waterfall_lo_hz: 200.0, waterfall_hi_hz: 1400.0, min_separation: 3.5, auto_tone: true, afc: true, fading: true, tuning: Tuning::default() }
     }
 }
 
@@ -113,6 +115,7 @@ enum Command {
     Squelch(f32),
     AutoTone(bool),
     Afc(bool),
+    Fading(bool),
     GoStrongest,
     Reset { flush: bool },
     StartRecording(PathBuf),
@@ -171,6 +174,10 @@ impl Engine {
 
     pub fn set_squelch(&self, v: f32) {
         let _ = self.cmd.send(Command::Squelch(v));
+    }
+
+    pub fn set_fading(&self, on: bool) {
+        let _ = self.cmd.send(Command::Fading(on));
     }
 
     pub fn set_afc(&self, on: bool) {
@@ -448,6 +455,10 @@ impl Worker {
                 self.pcfg.auto_tone = on;
                 self.pipe.set_auto_tone(on);
             }
+            Command::Fading(on) => {
+                self.pcfg.fading = on;
+                self.pipe.set_fading(on);
+            }
             Command::Afc(on) => {
                 self.pcfg.afc = on;
                 self.pipe.set_afc(on);
@@ -513,6 +524,7 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
     pcfg.auto_tone = cfg.auto_tone;
     pcfg.min_separation = cfg.min_separation;
     pcfg.afc = cfg.afc;
+    pcfg.fading = cfg.fading;
     pcfg.bandwidth_factor = if cfg.tuning.wide { 2.4 } else { 1.2 };
     pcfg.decoder.wpm_min = cfg.tuning.wpm_min as f64;
     pcfg.decoder.wpm_max = cfg.tuning.wpm_max as f64;
