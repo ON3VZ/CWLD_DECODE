@@ -35,12 +35,28 @@ const WORDS: &[&str] = &[
 
 pub struct WordModel {
     words: HashSet<String>,
+    /// Callsigns heard a moment ago, newest last. A station repeats its call.
+    recent: std::collections::VecDeque<String>,
+    by_elements: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Default for WordModel {
     fn default() -> Self {
-        WordModel { words: WORDS.iter().map(|w| w.to_string()).collect() }
+        let mut m = WordModel { words: HashSet::new(), recent: std::collections::VecDeque::new(), by_elements: std::collections::HashMap::new() };
+        for w in WORDS {
+            m.add(w);
+        }
+        m
     }
+}
+
+/// The dots and dashes of a word in one row, without the gaps between the characters.
+pub fn elements(w: &str) -> Option<String> {
+    let mut out = String::new();
+    for c in w.chars() {
+        out.push_str(cwld_types::morse::pattern(c)?);
+    }
+    Some(out)
 }
 
 impl WordModel {
@@ -51,9 +67,38 @@ impl WordModel {
     /// Adds words (for example the operator's own callsign, name and QTH, or worked calls).
     pub fn add(&mut self, w: &str) {
         let w = w.trim().to_ascii_uppercase();
-        if !w.is_empty() {
-            self.words.insert(w);
+        if !w.is_empty() && self.words.insert(w.clone()) {
+            if let Some(el) = elements(&w) {
+                self.by_elements.entry(el).or_default().push(w);
+            }
         }
+    }
+
+    /// Remembers a callsign that came through clearly.
+    pub fn heard(&mut self, w: &str) {
+        if !looks_like_callsign(w) || w.chars().count() < 4 {
+            return;
+        }
+        self.recent.retain(|x| x != w);
+        self.recent.push_back(w.to_string());
+        while self.recent.len() > 12 {
+            self.recent.pop_front();
+        }
+    }
+
+    pub fn heard_before(&self, w: &str) -> bool {
+        self.recent.iter().any(|x| x == w)
+    }
+
+    /// The known words and the callsigns heard before that are made of exactly this row of
+    /// dots and dashes (see `elements`). Used to mend a character that a pause cut in two, or
+    /// two characters that ran together: the elements are right, only a boundary is wrong.
+    pub fn same_elements(&self, el: &str) -> Vec<&str> {
+        let mut out: Vec<&str> = self.recent.iter().filter(|c| elements(c).as_deref() == Some(el)).map(|c| c.as_str()).collect();
+        if let Some(v) = self.by_elements.get(el) {
+            out.extend(v.iter().map(|w| w.as_str()));
+        }
+        out
     }
 
     /// Log bonus (nats) for a whole word.
@@ -208,6 +253,9 @@ impl WordCorrector {
         }
         let chosen = best.map(|b| b.1).unwrap_or_default();
         let text: String = chosen.iter().map(|x| x.0).collect();
+        if chosen.iter().all(|x| x.1 >= 0.3) {
+            self.model.heard(&text);
+        }
         // Junk: one or two single-mark characters that hardly stood out of the noise.
         let single_mark = |c: char| matches!(c, 'E' | 'T');
         let short_marks = |c: char| matches!(c, 'E' | 'T' | 'I' | 'M' | 'N' | 'A');
@@ -281,5 +329,12 @@ mod tests {
         let mut wc = WordCorrector::new(false);
         let out: String = wc.push(&up("QTI ", &[1.0, 1.0, 0.55, 1.0], vec![vec![], vec![], vec![('H', 0.4)], vec![]], 1.0)).iter().map(|x| x.0).collect();
         assert_eq!(out, "QTI ");
+    }
+
+    #[test]
+    fn known_words_numbers_and_unrelated_words_are_left_alone() {
+        let mut w = WordCorrector::new(true);
+        let out: String = w.push(&up("IS 55 HANS TEST ", &[1.0; 16], vec![vec![]; 16], 99.0)).iter().map(|x| x.0).collect();
+        assert_eq!(out, "IS 55 HANS TEST ");
     }
 }

@@ -25,6 +25,8 @@ fn main() {
             p.auto_notch = false;
             p.track_fading = false;
             p.language_model = false;
+            p.spacing = false;
+            p.decoder.learn_style = false;
         }
         p
     };
@@ -32,6 +34,10 @@ fn main() {
         println!("PLAIN: noise blanker, notch, fading follower and word model off\n");
     }
 
+    if std::env::args().any(|a| a == "--fists") {
+        fists_only(trials, pcfg);
+        return;
+    }
     println!("Character error rate (%), SNR in 500 Hz, {trials} messages per cell\n");
     let wpms = [12.0, 20.0, 28.0, 36.0];
     print!("| SNR dB |");
@@ -75,6 +81,35 @@ fn main() {
     ];
     for (name, spec) in cases {
         let c = run_cell(&spec, trials, 777, pcfg);
+        println!("| {name} | {:.1} |", c.cer * 100.0);
+    }
+
+    fists_only(trials, pcfg);
+}
+
+fn fists_only(trials: usize, pcfg: impl Fn(&CwSpec) -> PipelineConfig + Copy) {
+    println!("\nSloppy fists, 20 WPM, SNR +15 dB unless noted\n");
+    println!("| Case | CER % |");
+    println!("|---|---|");
+    let base = CwSpec { wpm: 20.0, snr_db: Some(15.0), jitter: 0.03, ..Default::default() };
+    let fists: Vec<(&str, CwSpec)> = vec![
+        ("letters far apart (char 6, word 14), like spelling a name", CwSpec { char_gap: 6.0, word_gap: 14.0, gap_jitter: 0.1, ..base.clone() }),
+        ("Farnsworth learner (char 9, word 21)", CwSpec { char_gap: 9.0, word_gap: 21.0, gap_jitter: 0.1, ..base.clone() }),
+        ("words run together (word gap 4.5)", CwSpec { word_gap: 4.5, gap_jitter: 0.08, ..base.clone() }),
+        ("characters run together (char gap 2.2)", CwSpec { char_gap: 2.2, gap_jitter: 0.08, ..base.clone() }),
+        ("heavy weighting (gap inside a character 1.8, char 5, word 10)", CwSpec { intra_gap: 1.8, char_gap: 5.0, word_gap: 10.0, gap_jitter: 0.1, ..base.clone() }),
+        ("light weighting (gap inside a character 0.6)", CwSpec { intra_gap: 0.6, gap_jitter: 0.1, ..base.clone() }),
+        ("uneven gaps, 30 percent spread", CwSpec { gap_jitter: 0.3, ..base.clone() }),
+        ("uneven gaps 30 percent and elements 15 percent (straight key)", CwSpec { gap_jitter: 0.3, jitter: 0.15, ..base.clone() }),
+        ("bug: long dashes (4.2) and tight dots, char 4", CwSpec { dash_ratio: 4.2, intra_gap: 0.8, char_gap: 4.0, word_gap: 9.0, gap_jitter: 0.15, ..base.clone() }),
+        ("speed swings 15 percent", CwSpec { speed_wobble: 0.15, gap_jitter: 0.1, ..base.clone() }),
+        ("speed swings 25 percent, uneven gaps", CwSpec { speed_wobble: 0.25, gap_jitter: 0.2, ..base.clone() }),
+        ("letters far apart at 30 WPM (char 6, word 13)", CwSpec { wpm: 30.0, char_gap: 6.0, word_gap: 13.0, gap_jitter: 0.1, ..base.clone() }),
+        ("heavy weighting at 35 WPM, +6 dB", CwSpec { wpm: 35.0, snr_db: Some(6.0), intra_gap: 1.8, char_gap: 5.0, word_gap: 10.0, gap_jitter: 0.1, ..base.clone() }),
+        ("uneven gaps 30 percent at +3 dB", CwSpec { gap_jitter: 0.3, snr_db: Some(3.0), ..base.clone() }),
+    ];
+    for (name, spec) in fists {
+        let c = run_cell(&spec, trials, 4242, pcfg);
         println!("| {name} | {:.1} |", c.cer * 100.0);
     }
 }

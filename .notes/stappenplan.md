@@ -61,6 +61,14 @@ Ontwerpen: claude/ontwerp_architectuur.md (basis), claude/ontwerp_contest_profie
 - [x] Luisteroefening via de pc met Farnsworth, typen, fouten per teken, 90 procent-voorstel (nooit automatisch).
 - [ ] Test A45. Later: kopieerreeksen met echte roepletters, voortgangsgrafiek.
 
+## D2: decoder voor slordige morse (0.15.0)
+- [x] Paddle oefenen: sleuteldetector zoekt de zijtoon zelf (300 tot 1200 Hz), los van de decodertoon.
+- [x] Testbank: 14 slordige vuisten (`cwld_bench --fists`), `seekbench`, generator met aparte pauzes.
+- [x] Woordgrenzen per zender met woordkennis (`spacing.rs`), stijl van de zender leren (weging, spatiëring), herstel van gebroken en samengesmolten tekens, begin van een uitzending bij toon zoeken.
+- [x] Metingen in claude/meetresultaten_decoder.md. Zeven opnames van 10 november als vergelijking (tekst nog niet bevestigd, opnames staan niet in de repo).
+- [ ] A46 en A47. Juiste tekst van de zeven opnames van Kristof.
+- [ ] Open: element dat in een fade verdwijnt (ITT1QHB), zender die van tempo wisselt binnen een uitzending, cel 615 Hz bij +3 dB in seekbench, draaggolf 120 Hz (4,7 naar 6,1).
+
 ## Codesignatuur (onderzoek 10 november, wacht op GO)
 - Advies: SignPath Foundation (gratis voor open source, uitgever "SignPath Foundation", code signing policy-pagina en privacyverklaring nodig, MFA verplicht, elke release goedkeuren; vraag of één onderhouder mag). Reserve: Certum Open Source (25 of 49 euro per jaar, alleen particulieren, cloudvariant mogelijk niet onbeheerd in CI, was uitverkocht). Azure Artifact Signing: particulieren alleen VS en Canada.
 - Geen enkele optie haalt SmartScreen meteen weg; reputatie bouwt op.

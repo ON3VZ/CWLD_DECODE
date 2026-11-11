@@ -176,3 +176,68 @@ Sleuteltijden (aantal key-downs, PARIS KMRSU heeft er 28):
 
 Elke key-down valt binnen 15 ms van 60 ms (punt) of 180 ms (streep). Met de squelch dicht (de standaard in OEFENEN) is er geen ruis, dus dit is het gewone geval.
 
+## Slordige vuisten en echte opnames van 10 november (0.15.0)
+
+Aanleiding: ON3VZ meldde dat het decoderen beter kan bij zwakke en vooral slordige morse, en stuurde zeven opnames (7 en 3,5 MHz, 15 tot 43 s). In alle zeven steekt de toon 25 tot 32 dB boven de ruis uit. De fouten kwamen dus van de spatiëring en het ritme, niet van ruis. De juiste tekst van de opnames is niet bekend: wat hieronder staat is een vergelijking op herkenbare woorden, geen foutpercentage.
+
+### Nieuwe gevallen in de testbank
+
+`cwld_bench` heeft een derde tabel "Sloppy fists" (alleen die tabel: `cwld_bench --fists`). De generator kan nu de pauze binnen een teken, tussen tekens en tussen woorden apart instellen, de pauzes apart laten spreiden en de snelheid laten schommelen. 20 WPM, +15 dB, 12 berichten per geval, tenzij vermeld. CER in procent, voor (0.14.0) en na (0.15.0):
+
+| Geval | Voor | Na |
+|---|---|---|
+| Letters ver uit elkaar (teken 6, woord 14 eenheden), zoals een naam spellen | 43,4 | 0,0 |
+| Beginner met lange pauzes, Farnsworth (teken 9, woord 21) | 52,8 | 2,4 |
+| Woorden aan elkaar (woordpauze 4,5) | 21,5 | 1,8 |
+| Tekens aan elkaar (tekenpauze 2,2) | 0,6 | 0,0 |
+| Zware weging (pauze binnen een teken 1,8, teken 5, woord 10) | 56,9 | 1,2 |
+| Lichte weging (pauze binnen een teken 0,6) | 0,0 | 0,0 |
+| Ongelijke pauzes, 30 procent spreiding | 22,4 | 15,9 |
+| Ongelijke pauzes 30 procent en elementen 15 procent (seinsleutel) | 28,0 | 21,8 |
+| Bug: lange strepen (4,2) en strakke punten, teken 4 | 2,7 | 0,3 |
+| Snelheid schommelt 15 procent | 0,3 | 0,0 |
+| Snelheid schommelt 25 procent, ongelijke pauzes | 5,6 | 2,7 |
+| Letters ver uit elkaar op 30 WPM (teken 6, woord 13) | 44,8 | 0,0 |
+| Zware weging op 35 WPM, +6 dB | 70,5 | 0,6 |
+| Ongelijke pauzes 30 procent bij +3 dB | 24,2 | 15,3 |
+
+Zeer ongelijke pauzes blijven moeilijk: bij 30 procent spreiding overlappen de pauze binnen een teken en de pauze tussen tekens echt, en dan helpt alleen woordkennis.
+
+### De gewone testbank (zelfde signalen als hierboven, 12 berichten per cel)
+
+Niets werd duidelijk slechter. Verschillen voor en na: 0 dB 20 WPM 5,0 naar 0,7; 0 dB 36 WPM 18,0 naar 15,8; -3 dB 12 WPM 19,1 naar 14,3; -3 dB overige snelheden 1 tot 3 punten beter; -6 dB 12 WPM 70,2 naar 62,9; klikstoring 40 per s 2,4 naar 0,3; 15 procent jitter 3,0 naar 2,4; diepe QSB 33,8 naar 34,5 en bij +3 dB 44,6 naar 43,6 (binnen de meetonzekerheid); draaggolf 120 Hz verder 4,7 naar 6,1 (één tot twee tekens, niet verklaard). Alle andere cellen zijn gelijk, de cellen vanaf +6 dB blijven 0,0.
+
+### De zeven opnames, decoder start op 700 Hz met "Sterkste" aan
+
+| Opname | Voor (0.14.0) | Na (0.15.0) |
+|---|---|---|
+| 7009,0 kHz | `YNAN E LARRY LARRY LARR` | `YNAN E WNAG NAG LARRY LARRY LARAE` |
+| 7011,7 kHz | `IMY RM3Y CQ NNQ CQDE EN M3Y ENME TT ET N K` | `CQ CQ DE RM IM Y R M3Y CQ CQ CQ DE EN M3Y ENM MY U N K` |
+| 7008,9 kHz | `E T E OR N Y T H O I N Y I OR N 0 S M IEE T H OR N Y BK BKOKDRTS@NYFB RB ==SORRYLOTSOF?M` | `K TEORNY THOINY IOENN2 IEE M IEE THORNY BK BK O?RTS@-FBRB ==S:?LOTSOF?M` |
+| 7005,0 kHz | `IUKT E SUKY GM MOT W 559 55N QSB NICE TO MEET YE EU MY FRIEND MO T T` | `IUKT UKY JI UKY GM MOT M 559 55N QSB NICE TO MEET YE EU MY FRIEND MO TT` |
+| 3552,1 kHz | `Q CQ CQ DE IK1QHB ITT1QHB IK1QHB PSE K E KE` | `Q CQ CQ DE IK1QHB ITT1QHB IK1QHB PSE K ME` |
+| 3535,1 kHz | `OPIS A L D O A L D O ALD OESQTH IS P ORE C P M` | `OP IS ALDO ALDO ALDOESQTHIS POREC PM` |
+| 3535,0 kHz | `LLW I DE9A2NB K GBDE M0PKD GE.N` | `LL CPI?+ DE 9A2NB K RBDE M0PKD GE.N` |
+
+Wat beter is: gespelde namen blijven één woord (ALDO, THORNY), `CQ DE` wordt gesplitst, het begin van een uitzending gaat niet meer verloren als de decoder eerst de toon moet zoeken (7011,7 kHz: `CQ CQ DE RM...` staat er nu). Wat niet beter of slechter is: in 7009,0 kHz staat het begin nu dubbel (eerst gelezen naast de toon, daarna opnieuw op de toon); in 7008,9 kHz is `SORRY` nu `S:?` (de snelle staart van een zender die eerst traag spelde); `ITT1QHB` (een punt verdween in een fade, K werd TT) blijft; `ALDOESQTHIS` blijft aan elkaar omdat de zender daar zelf geen woordpauze liet.
+
+### Wat er veranderd is
+
+1. **Woordgrenzen** (`spacing.rs`, nieuw). De decoder geeft per teken de stilte ervoor door, en een aparte stap beslist wat een woordpauze is. De drempel volgt de zender (het midden tussen zijn gewone tekenpauze en woordpauze), vijf tekens worden vastgehouden zodat een pauze ook beoordeeld wordt met wat erna komt, en woordkennis beslist bij twijfel: `CQ DE` is twee woorden, vier losse letters zijn bijna nooit vier woorden. Duidelijke timing wint altijd.
+2. **Stijl van de zender** (`decoder.rs`). De pauze binnen een teken (weging) en de pauze tussen tekens worden per zender geleerd, uit zijn eerste acht elementen meteen, en daarmee worden die eerste tekens opnieuw gelezen voor er iets getoond wordt. Daarna volgt de decoder de stijl, eerst snel en dan traag.
+3. **Te snelle snelheid herkennen.** Een snelheid waarbij bijna elk element een los teken is (alleen E en T) is de verkeerde snelheid: zo'n lezing krijgt strafpunten. Dit loste het geval op waarbij zware weging als een rij E's en T's gelezen werd.
+4. **Zelfde punten en strepen, andere grenzen.** Een teken dat door een aarzeling in tweeën brak (5 als S I, R als E N) of twee tekens die samensmolten (T N als G) worden hersteld als dezelfde rij punten en strepen een bekend CW-woord of een pas gehoorde roepletterreeks vormt, en alleen als de pauze op die plaats twijfelachtig was. HANS wordt nooit SIGS, al zijn de elementen gelijk.
+5. **Toon zoeken.** Na een toonwissel wordt de audio twee keer afgespeeld: de eerste keer alleen om niveaus en toon te vinden, de tweede keer om te lezen. Een kleine stap terwijl er al tekst uitkomt wordt overgeslagen (de AFC doet dat), anders stond het einde er dubbel. En de eigen toonhoogte telt niet als bezet als het alleen de flank van een veel sterkere toon ernaast is: op een stille band (squelch dicht) bleef de decoder anders 100 Hz naast de zijtoon staan.
+
+Signaal naast de decodertoon (`seekbench`, 10 berichten per cel, CER bij +15, +6 en +3 dB), met één keer afspelen zoals vroeger tegenover de nieuwe aanpak (beide met de rest van 0.15.0, dus dit meet alleen punt 5): 615 Hz op 20 WPM 5,8 2,7 5,8 naar 5,8 2,2 10,6; 520 Hz op 28 WPM 1,8 6,2 11,9 naar 0,0 0,0 6,6; 850 Hz op 16 WPM 1,3 3,5 5,8 naar 0,0 0,0 1,8. De cel 615 Hz bij +3 dB is slechter geworden en niet verklaard.
+
+### Paddle oefenen: zijtoon los van de decodertoon
+
+Fout (ON3VZ, 0.14.0): de zijtoon was te zien en te horen, maar de oefening registreerde niets. Nagebootst: de sleuteldetector las de omhullende op de toon van de decoder. Stond die elders (een eerder aangeklikt signaal, "Sterkste" uit), dan kwam er niets of onzin: decoder op 450 Hz, zijtoon op 600 Hz gaf 10 key-downs in plaats van 21. De detector heeft nu een eigen rij van tien filters van 300 tot 1200 Hz (10 ms venster) en neemt de sterkste. Test `key_times_do_not_depend_on_the_decoder_pitch`: decoder op 450, 500, 600, 700 en 1000 Hz, zijtoon op 400, 600 en 800 Hz, met en zonder ruis: telkens exact 21 key-downs binnen 15 ms. Ruis alleen geeft nog steeds 0. Daarnaast leest de decoder zelf de zijtoon nu ook goed: `PARIS KMRSU PARIS` in plaats van `NARIS KMRSU PARIS`.
+
+### Nog niet gedaan
+
+- De juiste tekst bij de opnames (van ON3VZ), zodat er een foutpercentage op echte signalen komt.
+- Een punt of streep die in een fade verdwijnt (ITT1QHB).
+- Een zender die binnen één uitzending van spatiëring wisselt (traag spellen, daarna snel).
+- De vertraging: definitieve tekst komt nu ongeveer vijf tekens later, of na een stilte van ruim een woordpauze. De voorlopige tekst toont de tekens meteen.

@@ -15,6 +15,8 @@ fn main() {
         "int2" => CwSpec { interferer: Some(cwld_dsp::gen::Interferer { offset_hz: 120.0, rel_db: 10.0, wpm: 24.0 }), ..base },
         "imp2" => CwSpec { impulses_per_s: 40.0, impulse_db: 40.0, snr_db: Some(6.0), ..base },
         "imp3" => CwSpec { impulses_per_s: 15.0, impulse_db: 46.0, snr_db: Some(10.0), ..base },
+        "farn" => CwSpec { snr_db: Some(15.0), jitter: 0.03, char_gap: 9.0, word_gap: 21.0, gap_jitter: 0.1, ..base },
+        "uneven" => CwSpec { snr_db: Some(15.0), jitter: 0.03, gap_jitter: 0.3, ..base },
         _ => base,
     };
     let (mut e, mut n) = (0, 0);
@@ -26,6 +28,8 @@ fn main() {
         if std::env::args().any(|a| a == "rice") { cfg.rice = true; }
         if std::env::args().any(|a| a == "notrack") { cfg.track_fading = false; }
         if std::env::args().any(|a| a == "nolm") { cfg.language_model = false; }
+        if std::env::args().any(|a| a == "nospace") { cfg.spacing = false; }
+        if std::env::args().any(|a| a == "nostyle") { cfg.decoder.learn_style = false; }
         for a in std::env::args() {
             if let Some(v) = a.strip_prefix("es=") { cfg.decoder.evidence_scale = v.parse().unwrap(); }
             if let Some(v) = a.strip_prefix("junk=") { cfg.junk_strength = v.parse().unwrap(); }

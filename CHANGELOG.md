@@ -1,3 +1,13 @@
+## 0.15.0 (decoder for sloppy keying, paddle practice hears any sidetone pitch)
+
+- Fixed: paddle practice registered nothing although the sidetone was visible and audible (ON3VZ). The key detector listened at the pitch the decoder happened to be on. With the decoder left on another signal and "Strongest" off, the sidetone was never seen. The detector now finds the tone itself anywhere between 300 and 1200 Hz, whatever the decoder is doing.
+- Decoder: word gaps are decided from the sender's own spacing. A name spelled with the letters far apart stays one word, `CQ DE` keyed as one becomes two words, and a learner with long pauses (Farnsworth) no longer comes out as loose letters. Final text arrives about five characters later for this; the tentative text still shows every character at once.
+- Decoder: the sender's weighting (the gap inside a character) and spacing are taken from his first marks at once and followed after that. Heavy weighting was read as rows of E and T before.
+- Decoder: a character cut in two by a hesitation (5 as S I, R as E N), or two characters run together (T N as G), are mended when the same dots and dashes spell a common CW word or a callsign heard a moment ago, and only where the timing was doubtful.
+- Decoder: when it has to find the pitch first, the start of the transmission is no longer lost, and on a silent band (squelch closed) it no longer stays 100 Hz beside the tone.
+- Measured on the test bench (strong signals, percent wrong characters, before and after): letters far apart 43 to 0, Farnsworth 53 to 2, words run together 21 to 2, heavy weighting 57 to 1, at 35 WPM 70 to 1, very uneven gaps 22 to 16. The standard grid is equal or better. Details and what is still wrong in docs/meetresultaten_decoder.md.
+- Test bench: 14 "sloppy fist" cases (`cwld_bench --fists`), a seek test (`seekbench`), and the generator can set the gaps inside characters, between characters and between words separately.
+
 ## 0.14.0 (Koch method: choose your characters, copy by ear)
 
 - New card "Characters to learn (Koch)" in the practice panel: all 40 characters in Koch order (K M R S U A P T L O W I N J E F 0 Y V G 5 / Q 9 Z H 3 8 B ? 4 2 7 C 1 D 6 X). A slider takes the first N characters, and you can switch single characters on or off. At least two stay. The choice is saved. Default: all characters, so nothing changes until you narrow it down.

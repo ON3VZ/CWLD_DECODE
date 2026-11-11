@@ -12,6 +12,7 @@ pub mod decoder;
 pub mod gate;
 pub mod lang;
 pub mod pipeline;
+pub mod spacing;
 pub mod voice;
 
 pub use decoder::{DecodeUpdate, Decoder, DecoderConfig, TentativeChar};

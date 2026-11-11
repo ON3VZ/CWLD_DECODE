@@ -333,3 +333,17 @@ Bevindingen ON3VZ met 0.12.0 en 0.13.0: AF op 0 maakte de band stil, maar ook de
 9. Kies "Roepletters" met alleen letters. Verwacht: melding dat er te weinig echte roepletters passen, en tekengroepen.
 10. Meld: is 20 en 12 WPM prettig als begin, en klopt de toon qua volume?
 
+## A46. Paddle oefenen met de decoder op een andere toon (0.15.0)
+
+1. LUISTEREN: klik in de waterfall op een signaal dat duidelijk niet op 600 Hz zit (bijvoorbeeld 450 of 800 Hz) en zet "Sterkste" uit.
+2. Zet OEFENEN aan en start een paddle-oefening (radio zoals in A40: AF ongeveer 20 procent, AF Beep/Speech Output ON).
+3. Sein de tekst. Verwacht: "Gehoord" vult zich en de oefening wordt gescoord, ook al staat de decoder niet op je zijtoon.
+4. Meld als het toch niet werkt: staat er een balkje in de audio, wat is de CW-pitch van de radio (MENU, SET, of de PITCH-knop), en wat toont de regel "Radio meldt".
+
+## A47. Decoder op slordige morse (0.15.0)
+
+1. Zoek een QSO waar iemand zijn naam of QTH spelt met de letters ver uit elkaar. Verwacht: de naam komt als één woord, niet als losse letters.
+2. Zoek een station dat CQ en DE aan elkaar seint. Verwacht: `CQ DE` als twee woorden.
+3. Let op de vertraging: de lichtere voorlopige tekst komt meteen, de definitieve tekst ongeveer vijf tekens later. Meld als dat stoort.
+4. Leest CWLD iets fout dat jij wel kon volgen: druk OPNAME en stuur de opname met wat er gezonden werd. Ook voor de zeven opnames van 10 november is de juiste tekst nog welkom.
+

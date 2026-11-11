@@ -134,16 +134,28 @@ mod tests {
 
     #[test]
     fn a_speed_range_keeps_the_decoder_inside_it() {
-        // Fast keying at 40 WPM, decoder told to look only between 5 and 25 WPM: it must not
-        // report the right text (it cannot see 40), and with the full range it must.
+        // Fast keying at 40 WPM, decoder told to look only between 5 and 25 WPM: the speed it
+        // works with never leaves that range. (Since the decoder follows the sender's style it
+        // may still read such text, as very light keying at 25 WPM.) With the full range it
+        // finds 40 WPM.
         let g = generate(&CwSpec { text: "CQ CQ DE ON3VZ ON3VZ K".into(), wpm: 40.0, snr_db: Some(20.0), lead_s: 1.0, trail_s: 2.0, ..Default::default() });
-        let mut cfg = PipelineConfig::new(g.sample_rate, 700.0);
-        cfg.decoder.wpm_min = 5.0;
-        cfg.decoder.wpm_max = 25.0;
-        let narrow = decode_samples(&g.samples, cfg);
-        let full = decode_samples(&g.samples, PipelineConfig::new(g.sample_rate, 700.0));
+        let run = |max: f64| {
+            let mut cfg = PipelineConfig::new(g.sample_rate, 700.0);
+            cfg.decoder.wpm_max = max;
+            let mut p = crate::Pipeline::new(cfg);
+            let (mut text, mut top) = (String::new(), 0.0f64);
+            for c in g.samples.chunks(200) {
+                p.push(c);
+                text.push_str(&p.poll().committed);
+                top = top.max(p.wpm().unwrap_or(0.0));
+            }
+            (text, top)
+        };
+        let (_, top) = run(25.0);
+        assert!(top <= 25.5, "narrow: {top}");
+        let (full, top) = run(50.0);
         assert!(full.contains("ON3VZ"), "full: {full:?}");
-        assert!(!narrow.contains("CQ CQ DE ON3VZ ON3VZ K"), "narrow: {narrow:?}");
+        assert!((34.0..=46.0).contains(&top), "full: {top}");
     }
 }
 

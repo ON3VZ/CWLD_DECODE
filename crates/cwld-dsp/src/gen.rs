@@ -37,6 +37,15 @@ pub struct CwSpec {
     pub gap_scale: f64,
     /// Relative standard deviation of every element and gap (0.0 = machine, 0.1 = hand keying).
     pub jitter: f64,
+    /// The sender's own spacing, in units: inside a character (1), between characters (3) and
+    /// between words (7). `gap_scale` multiplies the last two on top of this.
+    pub intra_gap: f64,
+    pub char_gap: f64,
+    pub word_gap: f64,
+    /// Extra relative spread of the gaps only (a keyer makes even elements, the operator the gaps).
+    pub gap_jitter: f64,
+    /// The speed swings slowly by this share around `wpm` (0.15 = 15 percent up and down).
+    pub speed_wobble: f64,
     /// Key rise and fall time in milliseconds.
     pub rise_ms: f64,
     pub lead_s: f64,
@@ -66,6 +75,11 @@ impl Default for CwSpec {
             dash_ratio: 3.0,
             gap_scale: 1.0,
             jitter: 0.0,
+            intra_gap: 1.0,
+            char_gap: 3.0,
+            word_gap: 7.0,
+            gap_jitter: 0.0,
+            speed_wobble: 0.0,
             rise_ms: 5.0,
             lead_s: 0.5,
             trail_s: 1.5,
@@ -87,26 +101,34 @@ pub struct Generated {
 
 /// Key-down timeline as (down?, seconds) pairs.
 pub(crate) fn timeline(spec: &CwSpec, text: &str, rng: &mut Rng) -> Vec<(bool, f64)> {
-    let unit = 1.2 / spec.wpm;
+    let base = 1.2 / spec.wpm;
     let jit = |x: f64, rng: &mut Rng| (x * (1.0 + spec.jitter * rng.gauss())).max(x * 0.4);
+    let gsd = (spec.jitter * spec.jitter + spec.gap_jitter * spec.gap_jitter).sqrt();
+    let gjit = |x: f64, rng: &mut Rng| (x * (1.0 + gsd * rng.gauss())).max(x * 0.4);
     let mut out: Vec<(bool, f64)> = Vec::new();
+    let mut n = 0usize;
+    // One swing of the speed takes about 40 elements and gaps (a few words).
+    let unit = |n: &mut usize| {
+        *n += 1;
+        base * (1.0 + spec.speed_wobble * (2.0 * std::f64::consts::PI * *n as f64 / 40.0).sin())
+    };
     let words: Vec<&str> = text.split_whitespace().collect();
     for (wi, word) in words.iter().enumerate() {
         if wi > 0 {
-            out.push((false, jit(7.0 * unit * spec.gap_scale, rng)));
+            out.push((false, gjit(spec.word_gap * unit(&mut n) * spec.gap_scale, rng)));
         }
         let chars: Vec<char> = word.chars().collect();
         for (ci, c) in chars.iter().enumerate() {
             if ci > 0 {
-                out.push((false, jit(3.0 * unit * spec.gap_scale, rng)));
+                out.push((false, gjit(spec.char_gap * unit(&mut n) * spec.gap_scale, rng)));
             }
             let pat = morse::pattern(*c).unwrap_or("");
             for (ei, e) in pat.chars().enumerate() {
                 if ei > 0 {
-                    out.push((false, jit(unit, rng)));
+                    out.push((false, gjit(spec.intra_gap * unit(&mut n), rng)));
                 }
                 let len = if e == '-' { spec.dash_ratio } else { 1.0 };
-                out.push((true, jit(len * unit, rng)));
+                out.push((true, jit(len * unit(&mut n), rng)));
             }
         }
     }

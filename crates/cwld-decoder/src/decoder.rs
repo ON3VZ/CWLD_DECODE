@@ -20,11 +20,14 @@ pub struct DecoderConfig {
     pub mark_penalty: f64,
     /// A fixed speed in WPM: the decoder does not look for another one.
     pub fixed_wpm: Option<f64>,
+    /// Follow the sender's own style: weighting (gap inside a character) and spacing, taken
+    /// from his first marks at once and followed after that.
+    pub learn_style: bool,
 }
 
 impl Default for DecoderConfig {
     fn default() -> Self {
-        DecoderConfig { wpm_min: 5.0, wpm_max: 50.0, evidence_scale: 0.1, mark_sigma: 0.28, gap_sigma: 0.30, tentative_below: 0.9, mark_penalty: 0.0, fixed_wpm: None }
+        DecoderConfig { wpm_min: 5.0, wpm_max: 50.0, evidence_scale: 0.1, mark_sigma: 0.28, gap_sigma: 0.30, tentative_below: 0.9, mark_penalty: 0.0, fixed_wpm: None, learn_style: true }
     }
 }
 
@@ -47,6 +50,15 @@ pub struct DecodeUpdate {
     /// Per character: how strongly the key-down frames of its weakest mark stood out of the
     /// noise (mean evidence). Low values mean the character may be a noise blip. Spaces: 99.
     pub committed_strength: Vec<f32>,
+    /// Per character: the silence before it in units (dot lengths). Spaces: 0.
+    pub committed_gap: Vec<f32>,
+    /// Per character: the gaps between its own elements, in units (one fewer than elements).
+    pub committed_intra: Vec<Vec<f32>>,
+    /// Silence since the last character, in units, when nothing is waiting in the decoder.
+    pub silence_units: f32,
+    /// This sender's usual gap between characters in units as measured so far (3 by the book),
+    /// 0 while no signal is locked.
+    pub char_gap_units: f32,
     /// Not final yet: the characters of the last stretch with their alternatives.
     pub tentative: Vec<TentativeChar>,
     pub wpm: f32,
@@ -77,6 +89,8 @@ struct Timing {
     u: f64,
     dash: f64,
     gap: f64,
+    /// Gap inside a character in units (1 by the book, up to 2 with heavy weighting).
+    intra: f64,
 }
 
 struct Path {
@@ -107,6 +121,16 @@ pub struct Decoder {
     u: Option<f64>,
     dash: f64,
     gap: f64,
+    intra: f64,
+    /// The last gaps between characters and words, in units: the sender's spacing.
+    gap_hist: std::collections::VecDeque<f64>,
+    /// Marks learned from so far: the style is followed fast at first, then slowly.
+    learned: usize,
+    gaps: Vec<f32>,
+    intras: Vec<Vec<f32>>,
+    /// Silence after the last committed character (frames), for the gap before the next one.
+    gap_carry: usize,
+    trail: usize,
     locked: bool,
     force_lock: bool,
     since_step: usize,
@@ -142,6 +166,13 @@ impl Decoder {
             u: None,
             dash: 3.0,
             gap: 1.0,
+            intra: 1.0,
+            gap_hist: std::collections::VecDeque::new(),
+            learned: 0,
+            gaps: Vec::new(),
+            intras: Vec::new(),
+            gap_carry: 0,
+            trail: 0,
             locked: false,
             force_lock: false,
             since_step: 0,
@@ -170,6 +201,11 @@ impl Decoder {
         if let (Some(w), true) = (fixed, self.u.is_some()) {
             self.u = Some(240.0 / w);
         }
+    }
+
+    /// Nothing is being read right now: silence of at least a word gap since the last character.
+    pub fn idle(&self) -> bool {
+        self.trail as f64 >= 5.0 * self.u.unwrap_or(12.0)
     }
 
     pub fn is_locked(&self) -> bool {
@@ -215,6 +251,10 @@ impl Decoder {
         up.committed_conf = std::mem::take(&mut self.conf);
         up.committed_alts = std::mem::take(&mut self.alts);
         up.committed_strength = std::mem::take(&mut self.strength);
+        up.committed_gap = std::mem::take(&mut self.gaps);
+        up.committed_intra = std::mem::take(&mut self.intras);
+        up.silence_units = self.trail as f32 / self.u.unwrap_or(12.0) as f32;
+        up.char_gap_units = if self.locked { (3.0 * self.gap) as f32 } else { 0.0 };
         up.tentative = self.tentative.clone();
         up.wpm = self.wpm().unwrap_or(0.0) as f32;
         up.locked = self.locked;
@@ -225,7 +265,8 @@ impl Decoder {
 
     fn exp_dur(t: &Timing, l: Label) -> f64 {
         match l {
-            Label::Dot | Label::Intra => t.u,
+            Label::Dot => t.u,
+            Label::Intra => t.intra * t.u,
             Label::Dash => t.dash * t.u,
             Label::Char => 3.0 * t.u * t.gap,
             Label::Word => 7.0 * t.u * t.gap,
@@ -438,7 +479,7 @@ impl Decoder {
     }
 
     fn timing(&self, u: f64) -> Timing {
-        Timing { u, dash: self.dash, gap: self.gap }
+        Timing { u, dash: self.dash, gap: self.gap, intra: self.intra }
     }
 
     fn candidate_units(&self, around: Option<f64>) -> Vec<f64> {
@@ -446,7 +487,13 @@ impl Decoder {
             return vec![240.0 / w];
         }
         match around {
-            Some(u) => [0.84, 0.92, 1.0, 1.09, 1.19].iter().map(|f| u * f).collect(),
+            Some(u) => {
+                // Never outside the speed range the operator set.
+                let (lo, hi) = (240.0 / self.cfg.wpm_max, 240.0 / self.cfg.wpm_min);
+                let mut v: Vec<f64> = [0.84, 0.92, 1.0, 1.09, 1.19].iter().map(|f| (u * f).clamp(lo, hi)).collect();
+                v.dedup();
+                v
+            }
             None => {
                 let (lo, hi) = (self.cfg.wpm_min, self.cfg.wpm_max);
                 let steps = 34;
@@ -461,13 +508,39 @@ impl Decoder {
             if u < 2.0 {
                 continue;
             }
-            if let Some(p) = self.viterbi(buf, &self.timing(u)) {
+            if let Some(mut p) = self.viterbi(buf, &self.timing(u)) {
+                p.score += Self::plausibility(&p.segs);
                 if best.as_ref().map_or(true, |b| p.score > b.1.score) {
                     best = Some((u, p));
                 }
             }
         }
         best
+    }
+
+    /// Morse text is not made of E and T only. A speed at which nearly every mark stands
+    /// alone as a character is the wrong speed (too fast by half: the gaps inside characters
+    /// are then read as gaps between them). About a fifth of real text is E or T; beyond
+    /// 45 percent every further lone mark costs one nat.
+    fn plausibility(segs: &[Seg]) -> f64 {
+        let (mut groups, mut singles, mut in_group) = (0usize, 0usize, 0usize);
+        for sg in segs {
+            match sg.label {
+                Label::Dot | Label::Dash => in_group += 1,
+                Label::Char | Label::Word => {
+                    if in_group > 0 {
+                        groups += 1;
+                        singles += usize::from(in_group == 1);
+                    }
+                    in_group = 0;
+                }
+                _ => {}
+            }
+        }
+        if groups < 6 {
+            return 0.0;
+        }
+        -(singles as f64 - 0.45 * groups as f64).max(0.0)
     }
 
     // ---------- characters ----------
@@ -505,10 +578,10 @@ impl Decoder {
     }
 
     fn emit(&mut self, c: char, conf: f32) {
-        self.emit_with(c, conf, Vec::new(), 99.0);
+        self.emit_with(c, conf, Vec::new(), 99.0, 0.0, Vec::new());
     }
 
-    fn emit_with(&mut self, c: char, conf: f32, alts: Vec<(char, f32)>, strength: f32) {
+    fn emit_with(&mut self, c: char, conf: f32, alts: Vec<(char, f32)>, strength: f32, gap: f32, intra: Vec<f32>) {
         if c == ' ' {
             if !self.emitted_any || self.space_done {
                 return;
@@ -522,6 +595,8 @@ impl Decoder {
         self.conf.push(conf);
         self.alts.push(alts);
         self.strength.push(strength);
+        self.gaps.push(gap);
+        self.intras.push(intra);
     }
 
     // ---------- the streaming step ----------
@@ -583,7 +658,7 @@ impl Decoder {
                 }
             }
         }
-        let (u, path) = chosen?;
+        let (mut u, mut path) = chosen?;
         let marks = path.segs.iter().filter(|s| matches!(s.label, Label::Dot | Label::Dash) && !s.open).count();
         if !self.locked {
             // With only a few marks the speed is a guess, and the first characters would be
@@ -592,6 +667,20 @@ impl Decoder {
                 return None;
             }
             self.locked = true;
+            if self.cfg.learn_style && marks >= 8 {
+                // A new sender: take his style (dash length, weighting, spacing) from these first
+                // marks at once and read them again with it, before anything is shown. Without
+                // this the start of every transmission was read with the textbook style.
+                for _ in 0..2 {
+                    let (d, a, i, g) = Self::style_of(&path.segs, u, path.segs.len());
+                    self.learn(&d, &a, &i, &g, 0.7);
+                    match self.best_path(window, &self.candidate_units(Some(u))) {
+                        Some(b) => (u, path) = b,
+                        None => break,
+                    }
+                }
+                self.learned = 0;
+            }
         }
         // The speed only follows real marks. In a silence (or with one lonely blip) every
         // search ends a little faster than the last, and the estimate ran away to 100 WPM
@@ -631,18 +720,29 @@ impl Decoder {
             }
             // Keep memory of the silence but do not keep the frames.
             self.carry = run.min(100_000);
+            self.trail = self.carry.max(self.gap_carry);
             self.refresh_tentative(&[], &t);
             return Some(offset + n);
         }
 
-        let upto_idx = if tail_cut { segs.len() - 1 } else { cut_seg.map(|i| i)? + 0 };
+        let upto_idx = if tail_cut {
+            segs.len() - 1
+        } else {
+            match cut_seg {
+                Some(i) => i,
+                None => {
+                    self.trail = 0;
+                    return None;
+                }
+            }
+        };
+        // Silence before the next character to come out, in frames.
+        let mut gap_before = self.carry.max(self.gap_carry) + segs.first().filter(|s| s.label == Label::Lead).map_or(0, |s| s.end - s.start);
         // Emit the characters of segs[0..=upto_idx].
         let mut group: Vec<usize> = Vec::new();
+        let mut group_intra: Vec<f32> = Vec::new();
         let mut group_strength = f32::MAX;
         let mut first_mark_start: Option<usize> = None;
-        let mut dot_d: Vec<usize> = Vec::new();
-        let mut dash_d: Vec<usize> = Vec::new();
-        let mut gap_ratio: Vec<f64> = Vec::new();
         let lead_len = segs.first().filter(|s| s.label == Label::Lead).map_or(0, |s| s.end - s.start);
         let mut emitted_for_first = false;
         for (i, sg) in segs.iter().enumerate().take(upto_idx + 1) {
@@ -655,11 +755,6 @@ impl Decoder {
                     let fr = &window[sg.start..sg.end];
                     let mean = fr.iter().sum::<f32>() / fr.len().max(1) as f32;
                     group_strength = group_strength.min(mean);
-                    if sg.label == Label::Dot {
-                        dot_d.push(sg.end - sg.start);
-                    } else {
-                        dash_d.push(sg.end - sg.start);
-                    }
                 }
                 Label::Char | Label::Word => {
                     if !group.is_empty() {
@@ -672,29 +767,37 @@ impl Decoder {
                             }
                         }
                         let tc = self.group_to_char(&group, &t);
-                        self.emit_with(tc.best, tc.confidence, tc.alts.clone(), group_strength);
+                        self.emit_with(tc.best, tc.confidence, tc.alts.clone(), group_strength, (gap_before as f64 / t.u).min(99.0) as f32, std::mem::take(&mut group_intra));
                         group.clear();
                         group_strength = f32::MAX;
                     }
                     if sg.label == Label::Word {
                         self.emit(' ', 1.0);
                     }
-                    if sg.label == Label::Char && !sg.open {
-                        gap_ratio.push((sg.end - sg.start) as f64 / (3.0 * t.u));
-                    }
+                    gap_before = sg.end - sg.start;
                     let _ = i;
                 }
+                Label::Intra => group_intra.push(((sg.end - sg.start) as f64 / t.u) as f32),
                 _ => {}
             }
         }
-        self.learn(&dot_d, &dash_d, &gap_ratio);
+        if self.cfg.learn_style {
+            let (d, a, i, g) = Self::style_of(segs, t.u, upto_idx + 1);
+            // Fast while the sender is new, slowly once his style is known.
+            let rate = if self.learned < 40 { 0.3 } else { 0.12 };
+            self.learn(&d, &a, &i, &g, rate);
+        }
 
         let cut_frames = if tail_cut {
             let last = segs.last().unwrap();
             self.carry = last.end - last.start;
+            self.gap_carry = 0;
+            self.trail = self.carry;
             n
         } else {
             self.carry = 0;
+            self.gap_carry = segs[upto_idx].end - segs[upto_idx].start;
+            self.trail = 0;
             segs[upto_idx].end
         };
         // The not yet final rest, shown as tentative text.
@@ -730,20 +833,72 @@ impl Decoder {
         self.tentative = out;
     }
 
-    /// Learns the sender's own style: dash length and spacing, slowly.
-    fn learn(&mut self, dots: &[usize], dashes: &[usize], gaps: &[f64]) {
-        let u = self.u.unwrap_or(12.0);
+    /// The measured style in the first `upto` segments of a path: dot and dash lengths in
+    /// frames, gaps inside characters and gaps between characters or words in units.
+    fn style_of(segs: &[Seg], u: f64, upto: usize) -> (Vec<usize>, Vec<usize>, Vec<f64>, Vec<f64>) {
+        let (mut dots, mut dashes, mut intra, mut inter) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for sg in segs.iter().take(upto).filter(|s| !s.open) {
+            let d = sg.end - sg.start;
+            match sg.label {
+                Label::Dot => dots.push(d),
+                Label::Dash => dashes.push(d),
+                Label::Intra => intra.push(d as f64 / u),
+                Label::Char | Label::Word => inter.push(d as f64 / u),
+                Label::Lead => {}
+            }
+        }
+        (dots, dashes, intra, inter)
+    }
+
+    /// Learns the sender's own style: dash length, weighting and spacing. `rate` is the share
+    /// the new measurement gets.
+    fn learn(&mut self, dots: &[usize], dashes: &[usize], intra: &[f64], inter: &[f64], rate: f64) {
+        let median = |v: &[f64]| {
+            let mut s = v.to_vec();
+            s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            s[s.len() / 2]
+        };
+        self.learned += dots.len() + dashes.len();
         if !dots.is_empty() && !dashes.is_empty() {
             let md = dots.iter().sum::<usize>() as f64 / dots.len() as f64;
             let ma = dashes.iter().sum::<usize>() as f64 / dashes.len() as f64;
-            let ratio = (ma / md.max(1.0)).clamp(2.2, 4.2);
-            self.dash = 0.9 * self.dash + 0.1 * ratio;
+            let ratio = (ma / md.max(1.0)).clamp(2.2, 4.6);
+            self.dash = (1.0 - rate) * self.dash + rate * ratio;
         }
-        let _ = u;
-        if !gaps.is_empty() {
-            let mg = gaps.iter().sum::<f64>() / gaps.len() as f64;
-            // Word gaps pull this up, so only trust it within sane bounds.
-            self.gap = (0.92 * self.gap + 0.08 * mg).clamp(0.8, 2.0);
+        if intra.len() >= 3 {
+            // Weighting: the gap inside a character against the dot.
+            let m = median(intra).clamp(0.8, 2.2);
+            self.intra = (1.0 - rate) * self.intra + rate * m;
+        }
+        for g in inter {
+            self.gap_hist.push_back(g.min(20.0));
+        }
+        while self.gap_hist.len() > 24 {
+            self.gap_hist.pop_front();
+        }
+        if !inter.is_empty() && self.gap_hist.len() >= 4 {
+            // The usual gap between characters is the lower of two groups (word gaps are the
+            // upper one). With one group only, all of them are gaps between characters.
+            let v: Vec<f64> = self.gap_hist.iter().map(|g| g.ln()).collect();
+            let (mut lo, mut hi) = (v.iter().cloned().fold(f64::MAX, f64::min), v.iter().cloned().fold(f64::MIN, f64::max));
+            let mut center = median(&self.gap_hist.iter().cloned().collect::<Vec<f64>>());
+            if hi - lo > (1.6f64).ln() {
+                for _ in 0..12 {
+                    let cut = (lo + hi) / 2.0;
+                    let a: Vec<f64> = v.iter().cloned().filter(|x| *x <= cut).collect();
+                    let b: Vec<f64> = v.iter().cloned().filter(|x| *x > cut).collect();
+                    if a.is_empty() || b.is_empty() {
+                        break;
+                    }
+                    lo = a.iter().sum::<f64>() / a.len() as f64;
+                    hi = b.iter().sum::<f64>() / b.len() as f64;
+                }
+                if hi - lo > (1.5f64).ln() {
+                    center = lo.exp();
+                }
+            }
+            let target = (center / 3.0).clamp(0.75, 3.5);
+            self.gap = (1.0 - rate) * self.gap + rate * target;
         }
     }
 }

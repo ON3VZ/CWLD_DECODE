@@ -43,6 +43,8 @@ pub struct PipelineConfig {
     pub cw_gate: bool,
     /// Do not decode while the audio looks like speech or another wide signal (see `voice`).
     pub voice_gate: bool,
+    /// Decide the word gaps from the sender's own spacing and word knowledge (see `spacing`).
+    pub spacing: bool,
     /// Keep the key down and up times (for the paddle trainer), see `take_keying`.
     pub keying: bool,
     pub decoder: DecoderConfig,
@@ -50,7 +52,7 @@ pub struct PipelineConfig {
 
 impl PipelineConfig {
     pub fn new(sample_rate: u32, tone_hz: f64) -> Self {
-        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, cw_gate: true, voice_gate: true, keying: false, decoder: DecoderConfig::default() }
+        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, cw_gate: true, voice_gate: true, spacing: true, keying: false, decoder: DecoderConfig::default() }
     }
 }
 
@@ -85,6 +87,10 @@ pub struct Pipeline {
     voice_clear_evals: u32,
     last_voice_eval: u64,
     keying: KeyingRecorder,
+    spacer: crate::spacing::Spacer,
+    /// Frames processed so far, and the count when text last came out of the decoder.
+    frames_seen: u64,
+    last_text_at: u64,
     /// The speech check as configured, restored when the paddle trainer stops.
     voice_gate_base: bool,
     /// Audio of the last seconds is processed again after a pitch move.
@@ -102,6 +108,61 @@ struct KeyingRecorder {
     /// Recent peak (key down level), decays slowly.
     peak: f32,
     frames: u32,
+    /// Own tone detector over the whole audio passband, see `KeyTone`.
+    tone: Option<KeyTone>,
+}
+
+/// Finds a keyed tone anywhere between 300 and 1200 Hz without knowing its pitch: every 5 ms the
+/// level of the strongest of a row of overlapping 10 ms filters. The paddle trainer listens to
+/// the radio's own sidetone, whose pitch is the radio's CW pitch setting, not the pitch the
+/// decoder happens to be tuned to (a signal clicked before, with "Strongest" off).
+struct KeyTone {
+    /// One Hann-windowed quadrature pair per filter: (cos, sin) coefficients for the window.
+    bank: Vec<(Vec<f32>, Vec<f32>)>,
+    buf: std::collections::VecDeque<f32>,
+    hop: usize,
+    win: usize,
+    since: usize,
+}
+
+impl KeyTone {
+    fn new(sample_rate: u32) -> Self {
+        let hop = (sample_rate as f64 / FRAME_RATE).round() as usize;
+        let win = 2 * hop;
+        let bank = (0..=9)
+            .map(|k| {
+                let hz = 300.0 + 100.0 * k as f64;
+                let w = 2.0 * std::f64::consts::PI * hz / sample_rate as f64;
+                let hann = |i: usize| 0.5 - 0.5 * (2.0 * std::f64::consts::PI * (i as f64 + 0.5) / win as f64).cos();
+                ((0..win).map(|i| (hann(i) * (w * i as f64).cos()) as f32).collect(), (0..win).map(|i| (hann(i) * (w * i as f64).sin()) as f32).collect())
+            })
+            .collect();
+        KeyTone { bank, buf: std::collections::VecDeque::with_capacity(win), hop, win, since: 0 }
+    }
+
+    /// Takes samples and gives one level per 5 ms frame.
+    fn push(&mut self, samples: &[f32], out: &mut Vec<f32>) {
+        for &x in samples {
+            if self.buf.len() == self.win {
+                self.buf.pop_front();
+            }
+            self.buf.push_back(x);
+            self.since += 1;
+            if self.since >= self.hop && self.buf.len() == self.win {
+                self.since = 0;
+                let mut best = 0.0f32;
+                for (c, s) in &self.bank {
+                    let (mut re, mut im) = (0.0f32, 0.0f32);
+                    for (i, v) in self.buf.iter().enumerate() {
+                        re += v * c[i];
+                        im += v * s[i];
+                    }
+                    best = best.max(re * re + im * im);
+                }
+                out.push(best.sqrt());
+            }
+        }
+    }
 }
 
 /// The key state for the paddle trainer comes from the envelope at the sidetone pitch, not from the
@@ -120,6 +181,15 @@ const KEY_WARMUP_FRAMES: u32 = 100;
 const KEYING_MIN_FRAMES: u32 = 2;
 
 impl KeyingRecorder {
+    /// Audio samples: the key state follows from the strongest tone in the passband.
+    fn push_samples(&mut self, samples: &[f32], sample_rate: u32) {
+        let mut envs = Vec::new();
+        self.tone.get_or_insert_with(|| KeyTone::new(sample_rate)).push(samples, &mut envs);
+        for e in envs {
+            self.push_env(e);
+        }
+    }
+
     /// One frame of envelope: updates floor and peak and records the key state.
     fn push_env(&mut self, env: f32) {
         let env = env.max(0.0);
@@ -177,15 +247,17 @@ impl Pipeline {
         fc.track_fading = cfg.track_fading;
         let mut words = WordCorrector::new(cfg.language_model);
         words.junk_strength = cfg.junk_strength;
+        let junk = cfg.junk_strength;
         let cfg_gate = cfg.cw_gate;
         let cfg_rate = cfg.sample_rate;
         let cfg_voice = cfg.voice_gate;
+        let cfg_spacing = cfg.spacing;
         let mut cfg = cfg;
         if cfg.keying {
             // A pipeline rebuilt during a paddle exercise (engine reset) keeps the speech check off.
             cfg.voice_gate = false;
         }
-        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0, voice: crate::voice::VoiceDetector::new(cfg_rate), voice_heard: false, voice_clear_evals: 0, last_voice_eval: 0, keying: KeyingRecorder::default(), voice_gate_base: cfg_voice, replaying: false }
+        Pipeline { front: Frontend::new(fc), dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0, voice: crate::voice::VoiceDetector::new(cfg_rate), voice_heard: false, voice_clear_evals: 0, last_voice_eval: 0, keying: KeyingRecorder::default(), spacer: { let mut sp = crate::spacing::Spacer::new(cfg_spacing); sp.junk_strength = junk; sp }, voice_gate_base: cfg_voice, replaying: false, frames_seen: 0, last_text_at: 0 }
     }
 
     /// Keyed CW is in the envelope (not just noise at this pitch).
@@ -282,6 +354,7 @@ impl Pipeline {
         self.pending.clear();
         self.dec = Decoder::new(self.cfg.decoder.clone());
         self.words.discard();
+        self.spacer.discard();
         self.front.retune(c.hz);
         self.quiet_updates = 0;
         self.hold_frames = (MANUAL_HOLD_S * FRAME_RATE) as usize;
@@ -299,12 +372,24 @@ impl Pipeline {
         // decoder can still use.
         let here = sk.recent_score_at(cur).unwrap_or(0.0);
         let busy = here >= self.cfg.seek_db || (self.last_usable && here >= QUIET_BELOW_DB);
+        // What is heard at this pitch may be the skirt of a much stronger tone next to it.
+        // On a silent band (squelch closed, only the sidetone) that skirt stands far above
+        // the floor, and the decoder stayed 100 Hz off the tone for good.
+        let skirt = sk.best().is_some_and(|c| (c.hz - cur).abs() >= 20.0 && here < c.score_db - 10.0);
+        let busy = busy && !skirt;
         self.quiet_updates = if busy { 0 } else { self.quiet_updates + 1 };
         let Some(c) = sk.best() else { return };
+
         if self.hold_frames > 0 || c.score_db < self.cfg.seek_db || c.steady < 3 || (c.hz - cur).abs() < 20.0 {
             return;
         }
         if (self.quiet_updates as f64) * 0.25 < self.cfg.seek_quiet_s {
+            return;
+        }
+        // A small step while text came out in the last seconds: the decoder is already reading
+        // this station a little off pitch and the AFC is pulling it in. Starting again would
+        // lose what is being read, and hearing the audio again would give the end twice.
+        if (c.hz - cur).abs() < 60.0 && self.frames_seen.saturating_sub(self.last_text_at) < (RAW_SECONDS * FRAME_RATE) as u64 {
             return;
         }
         // A new signal: what the decoder held of the old pitch is noise, and the last seconds
@@ -312,13 +397,22 @@ impl Pipeline {
         self.pending.clear();
         self.dec = Decoder::new(self.cfg.decoder.clone());
         self.words.discard();
+        self.spacer.discard();
         self.front.retune(c.hz);
         let end = self.raw.len() - incoming;
         let replay: Vec<f32> = self.raw.range(..end).cloned().collect();
         self.quiet_updates = 0;
         self.hold_frames = (AUTO_HOLD_S * FRAME_RATE) as usize;
-        // The key times of this audio were already recorded once: not again.
+        // Twice: the first pass only lets the filter find the levels and the exact pitch of the
+        // new signal, the second one reads it. Read in one pass, the first characters after a
+        // move came out wrong because the levels were still those of the old pitch.
         self.replaying = true;
+        self.process(&replay);
+        self.pending.clear();
+        self.dec = Decoder::new(self.cfg.decoder.clone());
+        self.words.discard();
+        self.spacer.discard();
+        self.flushed.clear();
         self.process(&replay);
         self.replaying = false;
     }
@@ -349,6 +443,11 @@ impl Pipeline {
     }
 
     pub fn push(&mut self, samples: &[f32]) {
+        if self.cfg.keying {
+            // Before anything else and from the audio itself: a pitch move replays old audio
+            // through `process`, which must not be counted twice.
+            self.keying.push_samples(samples, self.cfg.sample_rate);
+        }
         self.raw.extend(samples.iter().cloned());
         let max = (RAW_SECONDS * self.cfg.sample_rate as f64) as usize;
         if self.raw.len() > max {
@@ -374,6 +473,7 @@ impl Pipeline {
                         self.pending.clear();
                         self.dec = Decoder::new(self.cfg.decoder.clone());
                         self.words.discard();
+        self.spacer.discard();
                     }
                     self.voice_heard = true;
                     self.voice_clear_evals = 0;
@@ -386,17 +486,15 @@ impl Pipeline {
             }
         }
         let frames = self.front.push(samples);
+        if !self.replaying {
+            self.frames_seen += frames.len() as u64;
+        }
         if self.front.take_notch_changed() && !self.pending.is_empty() {
             // Kept frames were measured with the carrier still in: they are worthless, but
             // they still count as time.
             let n = self.pending.len();
             self.pending.clear();
             self.dec.push_llr(&vec![0.0; n]);
-        }
-        if self.cfg.keying && !self.replaying {
-            for f in &frames {
-                self.keying.push_env(f.env);
-            }
         }
         let envs: Vec<f32> = frames.iter().map(|f| f.env).collect();
         self.gate.push(&envs, self.front.bandwidth_hz());
@@ -465,7 +563,8 @@ impl Pipeline {
     pub fn flush(&mut self) {
         self.dec.flush();
         let up = self.dec.poll();
-        let mut out = self.words.push(&up);
+        let mut out = self.words.push(&self.spacer.push(&up, &self.words.model));
+        out.extend(self.words.push(&self.spacer.flush(&self.words.model)));
         out.extend(self.words.flush());
         self.flushed.extend(out);
     }
@@ -473,15 +572,24 @@ impl Pipeline {
     /// New final text (whole words once the word model is on) and the tentative rest.
     pub fn poll(&mut self) -> DecodeUpdate {
         let raw = self.dec.poll();
+        if raw.committed.chars().any(|c| c != ' ') {
+            self.last_text_at = self.frames_seen;
+        }
         let mut done = std::mem::take(&mut self.flushed);
-        done.extend(self.words.push(&raw));
+        let spaced = self.spacer.push(&raw, &self.words.model);
+        done.extend(self.words.push(&spaced));
         let mut tentative = self.words.held();
+        tentative.extend(self.spacer.held());
         tentative.extend(raw.tentative.iter().cloned());
         DecodeUpdate {
             committed: done.iter().map(|x| x.0).collect(),
             committed_conf: done.iter().map(|x| x.1).collect(),
             committed_alts: Vec::new(),
             committed_strength: Vec::new(),
+            committed_gap: Vec::new(),
+            committed_intra: Vec::new(),
+            silence_units: raw.silence_units,
+            char_gap_units: raw.char_gap_units,
             tentative,
             wpm: raw.wpm,
             locked: raw.locked,
@@ -548,6 +656,10 @@ mod paddle_keying {
     }
 
     fn keyed(spec: CwSpec, overtones: bool) -> (Vec<(bool, f32)>, String) {
+        keyed_at(spec, overtones, true, 700.0)
+    }
+
+    fn keyed_at(spec: CwSpec, overtones: bool, auto_tone: bool, decoder_hz: f64) -> (Vec<(bool, f32)>, String) {
         let mut env = 0.0f32;
         let samples: Vec<f32> = generate(&spec)
             .samples
@@ -562,8 +674,8 @@ mod paddle_keying {
                 (x + env.min(1.0) * (0.33 * (3.0 * w).sin() + 0.2 * (5.0 * w).sin()) as f32).clamp(-0.6, 0.6)
             })
             .collect();
-        let mut cfg = PipelineConfig::new(8000, 700.0);
-        cfg.auto_tone = true;
+        let mut cfg = PipelineConfig::new(8000, decoder_hz);
+        cfg.auto_tone = auto_tone;
         cfg.min_separation = 3.5;
         let mut p = Pipeline::new(cfg);
         p.set_keying(true);
@@ -600,5 +712,18 @@ mod paddle_keying {
         let (runs, _) = keyed(CwSpec { text: "".into(), snr_db: Some(20.0), lead_s: 8.0, trail_s: 0.0, ..Default::default() }, false);
         assert_eq!(runs.iter().filter(|r| r.0).count(), 0, "{runs:?}");
     }
-}
 
+    #[test]
+    fn key_times_do_not_depend_on_the_decoder_pitch() {
+        // Found with ON3VZ (0.14.0): with "Strongest" off and the decoder left on another pitch
+        // (a signal clicked earlier), the sidetone was in the audio but never registered.
+        for (auto, hz, tone) in [(false, 700.0, 600.0), (false, 450.0, 600.0), (false, 500.0, 800.0), (true, 1000.0, 400.0), (false, 600.0, 600.0)] {
+            for snr in [None, Some(30.0)] {
+                let (runs, _) = keyed_at(CwSpec { text: "PARIS KMRSU".into(), tone_hz: tone, snr_db: snr, lead_s: 6.0, trail_s: 3.0, ..Default::default() }, false, auto, hz);
+                let downs: Vec<f32> = runs.iter().filter(|r| r.0).map(|r| r.1).collect();
+                assert_eq!(downs.len(), elements("PARIS KMRSU"), "auto {auto} decoder {hz} sidetone {tone} snr {snr:?}: {downs:?}");
+                assert!(downs.iter().all(|d| (*d - 60.0).abs() <= 15.0 || (*d - 180.0).abs() <= 15.0), "{downs:?}");
+            }
+        }
+    }
+}

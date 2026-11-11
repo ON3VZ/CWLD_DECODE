@@ -360,3 +360,18 @@ De paddle-oefeningen (kaart "Paddle oefenen") gebruiken alleen je gekozen tekens
 CWLD telt de laatste drie rondes met dezelfde tekens. Zijn ze samen minstens 90 procent juist (en minstens 30 tekens), dan verschijnt een voorstel om het volgende Koch-teken toe te voegen. Je klikt zelf op "Voeg ... toe"; CWLD doet het nooit vanzelf.
 
 Onder de kaart staan de tekens waar je het vaakst fout op zat en je laatste vijf rondes. "Vergeet mijn resultaten" wist ze.
+
+## 28. Slordige morse en woordgrenzen (0.15.0)
+
+Niet iedereen seint volgens het boekje. De een spelt zijn naam met de letters ver uit elkaar, de ander plakt CQ en DE aan elkaar, een derde laat lange pauzes binnen een teken. CWLD leert daarom per zender hoe hij spatieert, uit zijn eerste tekens, en beslist daarmee waar een woord eindigt.
+
+Wat je daarvan merkt:
+
+- **Definitieve tekst komt iets later.** CWLD houdt ongeveer vijf tekens vast om een pauze te kunnen beoordelen met wat erna komt. Je ziet die tekens wel meteen, in de lichtere voorlopige tekst. Na een stilte van ruim een woordpauze wordt alles definitief.
+- **Bekende woorden helpen.** Twijfelt de timing, dan kiest CWLD de lezing die een gewoon CW-woord geeft (CQ, DE, 599, UR, TNX), of een roepletterreeks die net voorbijkwam. Is de timing duidelijk, dan wint altijd de timing.
+- **Nieuwe zender, nieuwe stijl.** Bij een andere toon of na een lange stilte begint het leren opnieuw.
+
+Wat nog fout kan gaan: een zender die midden in een uitzending van tempo wisselt (traag spellen en daarna snel), en een punt of streep die in een fade verdwijnt. Stuur in zo'n geval een opname (knop OPNAME) met wat er volgens jou gezonden werd.
+
+Bij paddle oefenen (hoofdstuk 24) hoeft de decoder niet meer op je zijtoon te staan: CWLD zoekt de zijtoon zelf tussen 300 en 1200 Hz.
+

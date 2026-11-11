@@ -73,6 +73,9 @@ pub fn run_cell(base: &CwSpec, trials: usize, seed: u64, pcfg: impl Fn(&CwSpec) 
         let spec = CwSpec { text: text.to_string(), seed: seed.wrapping_mul(1000).wrapping_add(t as u64), ..base.clone() };
         let g = generate(&spec);
         let decoded = decode_samples(&g.samples, pcfg(&spec));
+        if std::env::var("CWLD_SHOW").is_ok() {
+            println!("    truth   {}\n    decoded {}", g.truth, decoded);
+        }
         chars += g.truth.chars().count();
         errors += levenshtein(&g.truth, &decoded);
     }
