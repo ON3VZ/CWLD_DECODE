@@ -431,6 +431,8 @@ export type CoreEvent =
   | { type: 'radio_quiet'; quiet: boolean }
   /** What the radio reports about its volume (0 to 255), squelch (0 open to 255 closed) and break-in. `null`: not reported. */
   | { type: 'radio_controls'; controls: RadioControls }
+  /** A hole in the audio around this pitch (a notch on the radio?). `null`: gone. */
+  | { type: 'audio_hole'; hz: number | null }
   | { type: 'cluster_status'; status: ClusterStatus }
   | { type: 'cluster_spots'; spots: ClusterSpot[] }
   | { type: 'cluster_lines'; lines: string[] };

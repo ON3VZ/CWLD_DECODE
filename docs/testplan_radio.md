@@ -382,3 +382,25 @@ Bevindingen ON3VZ met 0.12.0 en 0.13.0: AF op 0 maakte de band stil, maar ook de
 2. Open in Instellingen, DX-cluster, onderaan het Clustervenster. Typ `sh/dx 5`. Verwacht: de laatste vijf spots verschijnen in het venster.
 3. Typ `dx 7030 TEST`. Verwacht: een melding dat het commando niet mag, en er gaat niets naar de cluster.
 4. Meld: werkt `set/skimmer` bij jouw node (komen er na het commando meer spots), en welke bijzonderheden de node meldt.
+
+## A53. Rustige labels en spots als hint (0.18.1)
+
+1. Verbind met de cluster en kijk naar de bandscoop. Verwacht: kleine afgeronde labels in grijs met een gekleurd bolletje, geen felgroene tekst meer. Meld of de labels zo goed leesbaar zijn, of nog te druk of juist te flets.
+2. Log een station dat een groen bolletje heeft. Verwacht: het label vervaagt en het bolletje wordt grijs.
+3. Stem af op een CW-station dat als label op de scoop staat (klik op het label) en laat CWLD een paar minuten meelezen. Meld of de roepletters van dat station goed doorkomen, ook bij QSB.
+4. Zie je dat CWLD een roepletter "verbetert" naar die van een spot terwijl er iets anders gezonden werd: druk OPNAME, noteer de roepletters van de spot en wat er echt gezonden werd, en stuur de opname.
+
+## A54. Nieuwe bandscoop (0.18.2)
+
+1. Verbind de radio en kijk naar de bandscoop met jouw gewone breedte (bijvoorbeeld 200 kHz). Verwacht: bovenaan de labels, daaronder een duidelijk spectrum met pieken, dan de frequentieschaal en een waterval die de rest vult.
+2. Verwacht: de ruis ligt onderaan het spectrum en het sterkste signaal komt bijna tot boven. Zwakke signalen zijn als piekjes te zien en als lichtere strepen in de waterval.
+3. Draai aan de VFO of wissel van band. Verwacht: de waterval schuift mee of begint opnieuw, zonder oude strepen op de verkeerde plaats.
+4. Meld: is de waterval nog te donker of te fel, wil je een andere hoogte (Instellingen, Weergave: klein, middel, groot), en klopt de plaats van de labels met de pieken.
+
+## A55. Notch en het gat in het geluid (0.18.4)
+
+1. Kijk op de radio of "MN" of "AN" op het scherm staat. Noteer wat er stond.
+2. Staat de notch aan: kijk in CWLD in de kaart Audio. Verwacht: binnen enkele seconden de oranje melding "Een gat in het geluid rond ... Hz".
+3. Druk op NOTCH tot de aanduiding weg is. Verwacht: de melding in CWLD verdwijnt binnen enkele seconden.
+4. Maak één opname van een CW-station met de notch uit en stuur die. Meld ook of CWLD nu beter leest.
+5. Stond er geen notch aan en komt de melding toch: meld welk filter (FIL1, 2 of 3), welke bandbreedte en of Twin PBT verdraaid is.

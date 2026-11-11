@@ -407,17 +407,19 @@ Je kunt ook zonder instellingen verbinden: onder de bandscoop staat de knop **Cl
 
 **De labels lezen**
 
-| Kleur | Betekenis |
+De labels zijn rustige vakjes met de roepletters in lichtgrijs. Alleen het bolletje links heeft een kleur (sinds 0.18.1):
+
+| Bolletje | Betekenis |
 |---|---|
 | Groen | Het station staat niet in je logboek |
 | Oranje | Je werkte het op een andere band |
-| Rood, doorgestreept | Al in je logboek op deze band. In contestmodus: een dupe in de lopende contest |
+| Grijs, label vervaagd | Al in je logboek op deze band. In contestmodus: een dupe in de lopende contest |
 
 - Klik op een label: de radio stemt af op die frequentie. Er wordt niets gezonden.
 - Houd de muis op een label voor de details: wie spotte het, sterkte, snelheid, hoe lang geleden.
 - Staan er te veel labels op elkaar, dan blijven de stations die nog niet in je logboek staan zichtbaar en staat in de balk "... verborgen". Maak de bandscoop breder of groter (Instellingen, Weergave) of wacht tot oude spots verdwijnen.
 - **Spots verbergen** in de balk onder de scoop zet de labels uit zonder te verbreken. **Verbreken** staat in Instellingen, DX-cluster.
-- Nadat je een QSO logt, springt het label van dat station meteen op rood (of oranje voor een andere band).
+- Nadat je een QSO logt, vervaagt het label van dat station meteen (of het bolletje wordt oranje voor een andere band).
 
 **Skimmerspots**
 
@@ -434,3 +436,20 @@ Open onderaan **Clustervenster (voor commando's)**. Hier zie je wat de node nog 
 **Wat het niet is**
 
 Een spot betekent dat een station ergens gehoord is, niet dat jij het nu hoort. De frequentie is ongeveer op 0,1 kHz nauwkeurig en spots lopen soms een paar minuten achter. Zonder internet zie je geen spots.
+
+**Spots helpen de decoder (0.18.1)**
+
+Staat er een spot binnen 700 Hz van je frequentie, dan krijgt de decoder die roepletters als hint. Hij gebruikt een hint alleen waar hij zelf twijfelt, bijvoorbeeld als een punt of streep in een fade wegviel. Je hoeft er niets voor in te stellen: het werkt zolang de cluster verbonden is, ook als de labels verborgen zijn. Stem je weg, dan vervallen de hints. Op de testbank kwam een roepletter met weggevallen punten vaker goed door (60 naar 85 procent), en een foute spot veranderde de tekst niet. Op de band is dit nog niet gemeten.
+
+## 31. Waarschuwing: een gat in het geluid (0.18.4)
+
+Staat er in de kaart Audio een oranje melding "Een gat in het geluid rond ... Hz", dan is het geluid van de radio in het midden veel stiller dan aan beide kanten. Dat doet een notchfilter. Het gevolg: een station dat je netjes op je CW-toon afstemt wordt weggefilterd, en je hoort alleen stations die er een paar honderd Hz naast zitten.
+
+Zo los je het op:
+
+1. Kijk op het scherm van de radio of er "MN" (handmatige notch) of "AN" (automatische notch) staat.
+2. Druk op de knop NOTCH tot die aanduiding verdwijnt.
+3. Staat er geen notch aan, zet dan Twin PBT in het midden: houd PBT-CLR één seconde ingedrukt.
+4. De melding in CWLD verdwijnt vanzelf na een paar seconden.
+
+CWLD schakelt de notch zelf nooit. De melding komt alleen bij een gat van minstens 20 dB dat drie seconden blijft.

@@ -113,6 +113,8 @@ class AppState {
   qOpen = $state(false);
   /** Highest sample in the last tenth of a second, 0 to 1 and above (after the gain). */
   audioPeak = $state(0);
+  /** The middle of a hole in the audio (Hz), as a notch filter on the radio leaves behind. */
+  audioHole = $state<number | null>(null);
   /** The decoder filter bandwidth in Hz, for the lines in the audio waterfall. */
   bandwidthHz = $state<number | null>(null);
   /** Why the decoder shows nothing now: the radio is on a phone mode, or speech is heard. */
@@ -510,6 +512,10 @@ class AppState {
       }
       if (ev.type === 'decoder') {
         this.decoder = ev.stats;
+        continue;
+      }
+      if (ev.type === 'audio_hole') {
+        this.audioHole = ev.hz;
         continue;
       }
       if (ev.type === 'cluster_status') {

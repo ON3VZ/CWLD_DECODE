@@ -827,5 +827,8 @@
   "error.cluster_no_nodes": "The cluster list is empty. Add a cluster or restore the standard list.",
   "error.cluster_not_connected": "Not connected to a cluster.",
   "error.cluster_command_not_allowed": "That command is not allowed. CWLD only reads from the cluster, so commands that post something are blocked.",
-  "error.cluster_network": "The clusters could not be tested."
+  "error.cluster_network": "The clusters could not be tested.",
+  "audio.hole": "A hole in the audio around {hz} Hz.",
+  "audio.hole.do": "Stations tuned onto your CW pitch are cut away. Is the notch filter on the radio on? Check the display for MN or AN and press NOTCH until it is gone.",
+  "audio.hole.help": "The audio from the radio is far quieter in a stretch in the middle than on both sides of it. A receiver filter does not do that; a notch filter does. CWLD does not switch the notch itself."
 }

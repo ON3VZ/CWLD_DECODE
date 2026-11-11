@@ -4,9 +4,14 @@
 //! Every quarter second the last 1024 samples are measured at fixed pitches (Goertzel, one bin
 //! every 7.8 Hz at 8 kHz). Each bin keeps a running mean of its power (about 1.7 s), which
 //! smooths the noise a lot while a keyed tone keeps about half its power. The score of a bin is
-//! its mean over the median of its neighbourhood (30 to 160 Hz away on both sides), in dB. The
-//! neighbourhood follows the shape of the radio's filter, so coloured noise does not look like
-//! a signal. White or coloured noise scores up to about 8 dB, a keyed tone at 0 dB SNR about 12.
+//! its mean over the noise next to it, in dB: the median of the bins 30 to 160 Hz away on both
+//! sides. On a slope (the edge of the radio's filter or of a notch) the louder side decides: a
+//! tone stands above the noise on both sides, an edge only above one, so an edge does not look
+//! like a signal. White or coloured noise scores up to about 8 dB, a keyed tone
+//! at 0 dB SNR about 12.
+//!
+//! The seeker also notices a hole in the audio (see `hole`): a stretch in the middle of the
+//! passband that is far quieter than both sides, as a notch filter on the radio makes.
 
 use std::f64::consts::PI;
 
@@ -44,15 +49,38 @@ pub struct ToneSeeker {
     noise: f64,
     updates: u32,
     best: Option<Candidate>,
+    /// Bins `first..=last` are inside the range asked for; the ones outside only serve as
+    /// neighbourhood, so the edges of the range are judged against noise on both sides too.
+    first: usize,
+    last: usize,
+    /// Updates in a row with a hole in the audio, and where it was.
+    hole_updates: u32,
+    hole_hz: f64,
 }
+
+/// Bins measured outside the range on each side, as neighbourhood (about 160 Hz at 8 kHz).
+const MARGIN_BINS: f64 = 21.0;
+/// A hole: the quietest stretch is this much below the noise on both sides (20 dB).
+const HOLE_RATIO: f64 = 100.0;
+/// Updates in a row before a hole is reported (3 s) .
+const HOLE_UPDATES: u32 = 12;
 
 impl ToneSeeker {
     pub fn new(sample_rate: u32, lo_hz: f64, hi_hz: f64) -> Self {
         let fs = sample_rate as f64;
         let res = fs / SIZE as f64;
         let mut freqs = Vec::new();
-        let mut f = (lo_hz / res).ceil() * res;
-        while f <= hi_hz {
+        let start = (lo_hz / res).ceil() * res;
+        let mut f = (start - MARGIN_BINS * res).max(res * 2.0);
+        f = (f / res).round() * res;
+        let (mut first, mut last) = (0usize, 0usize);
+        while f <= hi_hz + MARGIN_BINS * res && f < fs / 2.0 - res {
+            if f < lo_hz - 1e-6 {
+                first = freqs.len() + 1;
+            }
+            if f <= hi_hz + 1e-6 {
+                last = freqs.len();
+            }
             freqs.push(f);
             f += res;
         }
@@ -76,6 +104,10 @@ impl ToneSeeker {
             noise: 0.0,
             updates: 0,
             best: None,
+            first,
+            last,
+            hole_updates: 0,
+            hole_hz: 0.0,
         }
     }
 
@@ -120,7 +152,8 @@ impl ToneSeeker {
             self.recent.pop_front();
         }
         self.noise = 1.0;
-        let (k, _) = self.score.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap();
+        self.look_for_hole();
+        let (k, _) = self.score.iter().enumerate().filter(|(k, _)| *k >= self.first && *k <= self.last).max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap();
         let pk = self.score[k];
         // Parabolic interpolation between the neighbouring bins for a finer pitch.
         let hz = if k > 0 && k + 1 < self.peak.len() {
@@ -142,6 +175,50 @@ impl ToneSeeker {
             _ => 1,
         };
         self.best = Some(Candidate { hz, score_db, steady });
+    }
+
+    /// Is there a stretch between 400 and 1000 Hz that is far quieter than the audio 200 to
+    /// 350 Hz below it and above it? That is not what a receiver filter looks like: it is what a
+    /// notch filter leaves behind.
+    fn look_for_hole(&mut self) {
+        let res = self.sample_rate / SIZE as f64;
+        let n = self.peak.len();
+        let med = |a: usize, b: usize, p: &[f64]| -> Option<f64> {
+            if a > b || b >= p.len() {
+                return None;
+            }
+            let mut v: Vec<f64> = p[a..=b].to_vec();
+            v.sort_by(|x, y| x.partial_cmp(y).unwrap());
+            Some(v[v.len() / 2])
+        };
+        let near = (40.0 / res).round() as usize;
+        let (d1, d2) = ((200.0 / res).round() as usize, (350.0 / res).round() as usize);
+        let mut found: Option<(f64, f64)> = None;
+        for k in 0..n {
+            let f = self.freqs[k];
+            if !(400.0..=1000.0).contains(&f) || k < d2 || k + d2 >= n || k < near || k + near >= n {
+                continue;
+            }
+            let (Some(mid), Some(left), Some(right)) = (med(k - near, k + near, &self.peak), med(k - d2, k - d1, &self.peak), med(k + d1, k + d2, &self.peak)) else {
+                continue;
+            };
+            let depth = left.min(right) / mid.max(1e-30);
+            if depth >= HOLE_RATIO && found.map_or(true, |(_, d)| depth > d) {
+                found = Some((f, depth));
+            }
+        }
+        match found {
+            Some((f, _)) => {
+                self.hole_updates += 1;
+                self.hole_hz = f;
+            }
+            None => self.hole_updates = 0,
+        }
+    }
+
+    /// The middle of a hole in the audio (Hz), once it has been there for a few seconds.
+    pub fn hole(&self) -> Option<f64> {
+        (self.hole_updates >= HOLE_UPDATES).then_some(self.hole_hz)
     }
 
     /// The strongest tone right now, if any measurement was made yet.
@@ -183,22 +260,38 @@ impl ToneSeeker {
 /// How many measurements `recent_score_at` looks back over (1 s).
 const RECENT: usize = 4;
 
-/// Median of the bins 4 to 20 places away from `k` (about 30 to 160 Hz), on both sides.
+/// The noise next to bin `k`, from the bins 4 to 20 places below and above it (about 30 to
+/// 160 Hz away). Normally the median of all of them. When the two sides differ by more than
+/// 6 dB, the bin sits on a slope (the edge of the radio's filter or of a notch): then the louder
+/// side decides, because a tone has to stand above the noise on both sides.
 fn local_median(p: &[f64], k: usize) -> f64 {
-    let mut v: Vec<f64> = Vec::with_capacity(34);
+    let (mut lo, mut hi): (Vec<f64>, Vec<f64>) = (Vec::with_capacity(17), Vec::with_capacity(17));
     for d in 4..=20usize {
         if k >= d {
-            v.push(p[k - d]);
+            lo.push(p[k - d]);
         }
         if k + d < p.len() {
-            v.push(p[k + d]);
+            hi.push(p[k + d]);
         }
     }
-    if v.is_empty() {
+    let median = |v: &mut Vec<f64>| -> f64 {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[v.len() / 2]
+    };
+    let mut all: Vec<f64> = lo.iter().chain(hi.iter()).cloned().collect();
+    if all.is_empty() {
         return 0.0;
     }
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    v[v.len() / 2]
+    let both = median(&mut all);
+    if lo.len() < 6 || hi.len() < 6 {
+        return both;
+    }
+    let (a, b) = (median(&mut lo), median(&mut hi));
+    if a.max(b) > 4.0 * a.min(b) {
+        a.max(b)
+    } else {
+        both
+    }
 }
 
 #[cfg(test)]
@@ -236,5 +329,80 @@ mod tests {
             }
         }
         assert!(worst < 10.0, "{worst}");
+    }
+
+    /// Noise with the middle of the passband taken out, as a notch on the radio does: loud below
+    /// 420 Hz and above 860 Hz, 40 dB down in between. `tone`: a keyed station at that pitch.
+    fn notched(seconds: f64, tone: Option<f64>, seed: u64) -> Vec<f32> {
+        let fs = 8000.0;
+        let n = (seconds * fs) as usize;
+        let mut rng = crate::Rng::new(seed);
+        let mut out = vec![0f32; n];
+        // Many sines with random phases make noise with exactly the wanted shape.
+        let mut f = 150.0;
+        while f < 1500.0 {
+            let in_hole = f > 430.0 && f < 850.0;
+            let amp = if in_hole { 0.00008 } else { 0.008 };
+            let ph = rng.uniform() * 2.0 * PI;
+            let df = f + rng.uniform() * 3.0;
+            for (i, o) in out.iter_mut().enumerate() {
+                *o += (amp * (2.0 * PI * df * i as f64 / fs + ph).sin()) as f32;
+            }
+            f += 3.7;
+        }
+        if let Some(t) = tone {
+            let g = generate(&CwSpec { text: "CQ CQ DE ON3VZ ON3VZ K CQ CQ DE ON3VZ ON3VZ K CQ CQ DE ON3VZ K".into(), tone_hz: t, snr_db: None, lead_s: 0.5, ..Default::default() });
+            for (o, s) in out.iter_mut().zip(g.samples.iter()) {
+                *o += s * 0.5;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn the_edge_of_a_notch_is_not_a_signal() {
+        let mut s = ToneSeeker::new(8000, 300.0, 1200.0);
+        let mut worst: Option<Candidate> = None;
+        for c in notched(12.0, None, 5).chunks(2000) {
+            if s.push(c) {
+                let b = s.best().unwrap();
+                if worst.map_or(true, |w| b.score_db > w.score_db) {
+                    worst = Some(b);
+                }
+            }
+        }
+        assert!(worst.unwrap().score_db < 12.0, "an edge scored like a station: {worst:?}");
+    }
+
+    #[test]
+    fn a_station_next_to_the_notch_wins_from_the_edges() {
+        let mut s = ToneSeeker::new(8000, 300.0, 1200.0);
+        let mut last = None;
+        for c in notched(12.0, Some(891.0), 6).chunks(2000) {
+            if s.push(c) {
+                last = s.best();
+            }
+        }
+        let b = last.unwrap();
+        assert!((b.hz - 891.0).abs() < 8.0, "{b:?}");
+        assert!(b.score_db > 14.0, "{b:?}");
+    }
+
+    #[test]
+    fn a_hole_in_the_audio_is_noticed_and_normal_audio_is_not() {
+        let mut s = ToneSeeker::new(8000, 300.0, 1200.0);
+        for c in notched(8.0, Some(891.0), 7).chunks(2000) {
+            s.push(c);
+        }
+        let h = s.hole().expect("the hole must be reported");
+        assert!((500.0..=800.0).contains(&h), "{h}");
+        // Plain noise, and a normal CW signal in noise: no hole.
+        for spec in [CwSpec { text: "".into(), snr_db: Some(0.0), lead_s: 10.0, trail_s: 0.0, ..Default::default() }, CwSpec { text: "CQ CQ CQ DE ON3VZ ON3VZ ON3VZ K".into(), snr_db: Some(10.0), ..Default::default() }] {
+            let mut s = ToneSeeker::new(8000, 300.0, 1200.0);
+            for c in generate(&spec).samples.chunks(2000) {
+                s.push(c);
+                assert!(s.hole().is_none());
+            }
+        }
     }
 }

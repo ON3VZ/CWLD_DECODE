@@ -11,6 +11,9 @@ pub mod bench;
 pub mod decoder;
 pub mod gate;
 pub mod lang;
+pub mod neural;
+#[rustfmt::skip]
+mod neural_weights;
 pub mod pipeline;
 pub mod spacing;
 pub mod voice;

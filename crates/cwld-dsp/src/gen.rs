@@ -112,6 +112,9 @@ pub struct Generated {
     pub sample_rate: u32,
     /// The text that was actually keyed (unsupported characters removed, upper case).
     pub truth: String,
+    /// The key as it sounded: (down?, seconds) pairs, starting `lead_s` into the samples.
+    pub keying: Vec<(bool, f64)>,
+    pub lead_s: f64,
 }
 
 /// Key-down timeline as (down?, seconds) pairs.
@@ -288,7 +291,7 @@ pub fn generate(spec: &CwSpec) -> Generated {
             *s += (sigma * rng.gauss()) as f32;
         }
     }
-    Generated { samples, sample_rate: spec.sample_rate, truth }
+    Generated { samples, sample_rate: spec.sample_rate, truth, keying: tl, lead_s: spec.lead_s }
 }
 
 #[cfg(test)]

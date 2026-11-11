@@ -94,7 +94,8 @@ pub enum EngineEvent {
     /// Mean confidence of the last characters, the signal to noise ratio in the filter, and the
     /// filter bandwidth in Hz.
     /// `voice`: the audio looks like speech or another wide signal, so nothing is decoded.
-    Stats { confidence: Option<f32>, snr_db: Option<f32>, bandwidth_hz: f32, voice: bool },
+    /// `hole_hz`: the middle of a hole in the audio, as a notch filter on the radio leaves behind.
+    Stats { confidence: Option<f32>, snr_db: Option<f32>, bandwidth_hz: f32, voice: bool, hole_hz: Option<f32> },
     Tone { hz: f64 },
     /// Sent after a `reset`: everything decoded before this event belongs to the time before
     /// the reset.
@@ -121,6 +122,7 @@ enum Command {
     StartRecording(PathBuf),
     StopRecording,
     AddWords(Vec<String>),
+    Hints(Vec<String>),
     Tuning(Tuning),
     Volume(f32),
     Keying(bool),
@@ -220,6 +222,11 @@ impl Engine {
         let _ = self.cmd.send(Command::AddWords(words));
     }
 
+    /// Callsigns expected on this frequency (cluster spots next to the VFO). Replaces the old ones.
+    pub fn set_hints(&self, calls: Vec<String>) {
+        let _ = self.cmd.send(Command::Hints(calls));
+    }
+
     /// Hands out the key down and up times (`EngineEvent::Keying`) or stops doing so.
     pub fn set_keying(&self, on: bool) {
         let _ = self.cmd.send(Command::Keying(on));
@@ -301,6 +308,8 @@ struct Worker {
     /// The pipeline settings, to start it afresh after a reset.
     pcfg: PipelineConfig,
     words: Vec<String>,
+    /// Callsigns expected on this frequency, kept so a rebuilt pipeline gets them again.
+    hints: Vec<String>,
     /// The pitch last reported to the owner.
     reported_tone: f64,
     wf: Waterfall,
@@ -416,7 +425,7 @@ impl Worker {
             self.conf_window.clear();
         }
         let present = self.pipe.cw_present();
-        self.send(EngineEvent::Stats { confidence: if present { cwld_types::mean_confidence(&self.conf_window) } else { None }, snr_db: if present { self.pipe.snr_db() } else { None }, bandwidth_hz: self.pipe.bandwidth_hz() as f32, voice: self.pipe.voice_heard() });
+        self.send(EngineEvent::Stats { confidence: if present { cwld_types::mean_confidence(&self.conf_window) } else { None }, snr_db: if present { self.pipe.snr_db() } else { None }, bandwidth_hz: self.pipe.bandwidth_hz() as f32, voice: self.pipe.voice_heard(), hole_hz: self.pipe.hole_hz().map(|h| h as f32) });
     }
 
     fn stop_recording(&mut self) {
@@ -479,6 +488,8 @@ impl Worker {
                 self.pipe = Pipeline::new(cfg);
                 let refs: Vec<&str> = self.words.iter().map(|s| s.as_str()).collect();
                 self.pipe.add_words(&refs);
+                let refs: Vec<&str> = self.hints.iter().map(|s| s.as_str()).collect();
+                self.pipe.set_hints(&refs);
                 self.last_tentative.clear();
                 self.send(EngineEvent::Decode { text: String::new(), conf: Vec::new(), tentative: Vec::new(), wpm: 0.0 });
                 self.send(EngineEvent::ResetDone);
@@ -498,6 +509,11 @@ impl Worker {
                 let refs: Vec<&str> = w.iter().map(|s| s.as_str()).collect();
                 self.pipe.add_words(&refs);
                 self.words.extend(w);
+            }
+            Command::Hints(h) => {
+                let refs: Vec<&str> = h.iter().map(|s| s.as_str()).collect();
+                self.pipe.set_hints(&refs);
+                self.hints = h;
             }
             Command::Tuning(t) => self.apply_tuning(&t),
             Command::Volume(_) => {}
@@ -539,6 +555,7 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
         pipe,
         pcfg,
         words: cfg.words.clone(),
+        hints: Vec::new(),
         reported_tone: cfg.tone_hz,
         wf: Waterfall::new(cfg.waterfall_lo_hz, cfg.waterfall_hi_hz),
         rec: None,

@@ -58,6 +58,9 @@
   {/if}
 
   <!-- Always in sight, not under the tools: it changes what the decoder reads. -->
+  {#if app.audioHole !== null}
+    <p class="hole" role="alert" title={t('audio.hole.help')}><strong>{t('audio.hole', { hz: Math.round(app.audioHole) })}</strong> {t('audio.hole.do')}</p>
+  {/if}
   <div class="ctl fade">
     <span class="lbl" id="fading-lbl">{t('decoder.fading')}</span>
     <div class="seg" role="group" aria-labelledby="fading-lbl">
@@ -126,4 +129,5 @@
   .small { padding: 3px 10px; font-size: 12px; }
   .small.on { border-color: var(--accent); color: var(--accent); }
   kbd { font: inherit; font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 3px; }
+  .hole { margin: 6px 0; padding: 6px 8px; border: 1px solid var(--warn, #b9770e); border-radius: 6px; font-size: 12.5px; line-height: 1.4; color: var(--warn, #b9770e); background: rgba(185, 119, 14, 0.08); }
 </style>

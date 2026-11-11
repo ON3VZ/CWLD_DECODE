@@ -375,3 +375,51 @@ De gewone testbank (alle cellen) is identiek aan 0.16.1. De andere vuisten zijn 
 
 De acht echte opnames lezen **precies hetzelfde** als met 0.16.1. Ook de opname van 7008,9 kHz, die de aanleiding was, werd dus niet beter: de fouten in het snelle stuk daar (`S:RY` voor SORRY) blijken niet van samengesmolten tekens door de wissel te komen. In die opname sloeg de nieuwe herkenning pas helemaal op het einde aan. Zonder de juiste tekst kan ik niet zeggen wat daar wel misgaat.
 
+## Clusterspots als hint voor de decoder (0.18.1)
+
+Vraag: helpt het als de decoder de roepletters kent van spots vlak bij de frequentie, en kan een foute spot schade doen?
+
+Meting met `cargo run --release -p cwld-decoder --example hintbench`: 60 berichten per geval, telkens met een roepletter die de decoder nooit zag (80 roepletters per geval). Drie keer gedecodeerd: zonder hints, met de juiste roepletter tussen drie foute, en met alleen foute hints. De foute hints zijn bewust lastig: de echte roepletter met één teken anders, de echte roepletter met één punt of streep meer, en twee willekeurige.
+
+| Geval | Zonder hints: fout %, roepletter goed % | Juiste hint | Alleen foute hints | Foute hint in tekst |
+|---|---|---|---|---|
+| Schoon, +15 dB | 0,0 / 100 | 0,0 / 100 | 0,0 / 100 | 0 |
+| 3 op 100 elementen weg | 7,3 / 60,0 | 4,9 / 85,0 | 7,3 / 60,0 | 0 |
+| 6 op 100 weg, +6 dB | 17,2 / 38,8 | 14,4 / 67,5 | 17,2 / 38,8 | 0 |
+| Slordig handwerk | 25,9 / 23,8 | 24,0 / 40,0 | 25,9 / 23,8 | 1 |
+| Zwak, 0 dB | 3,3 / 85,0 | 2,6 / 91,2 | 3,3 / 85,0 | 0 |
+| Diepe QSB | 48,7 / 0,0 | 48,7 / 0,0 | 48,7 / 0,0 | 0 |
+
+Wat dit zegt:
+
+- Een juiste hint helpt waar elementen wegvallen of pauzes verkeerd vallen. De roepletter zelf komt duidelijk vaker goed door.
+- Bij diepe QSB helpt het niet: daar vallen meerdere elementen na elkaar weg en dat herstelt de decoder niet.
+- Foute hints veranderden de tekst in geen enkel geval meetbaar. Eén keer op 480 roepletters kwam een foute hint in de tekst.
+- Dit is synthetisch. Op de band is het nog niet gemeten (test A53). Een skimmer kan ook zelf een foute roepletter melden; dat geval zit in de foute hints, maar echte fouten van skimmers kunnen anders zijn.
+
+## Klein neuraal netwerk als extra bron (0.18.3, niet ingeschakeld)
+
+Vraag: levert een klein netwerk, getraind op de CPU, betere waarschijnlijkheden op of de sleutel neer is, vooral bij zwakke signalen en QSB?
+
+Opzet:
+
+- Netwerk met 6001 gewichten (99 ingangen, lagen van 48 en 24). Per frame van 5 ms kijkt het naar de omhullende en de klassieke waarschijnlijkheid van 120 ms aan elke kant, geschaald op het signaalniveau van de laatste twee seconden.
+- Training op 700 synthetische berichten van de eigen generator (12 tot 38 WPM, -8 tot +15 dB, met en zonder QSB, ongelijke pauzes), controle op 150 andere. Trainen duurt minder dan een minuut op twee CPU-kernen, met alleen numpy (`tools/nn/train.py`).
+- Uitvoeren in gewone Rust, zonder bibliotheek. Het antwoord komt 240 ms later, omdat het netwerk vooruit kijkt.
+
+Meting per frame (controleset): het netwerk raadt de sleutelstand veel vaker goed dan het klassieke getal per frame (10,0 tegen 19,9 procent fout). Dat is geen eerlijke vergelijking: het klassieke getal kijkt naar één frame, en het zoekalgoritme van de decoder voegt de samenhang in de tijd daarna zelf toe.
+
+Meting door de hele decoder (volledige testbank, 71 cellen, tekenfouten in procent):
+
+| Variant | Gemiddeld | Beter | Slechter |
+|---|---|---|---|
+| Klassiek (0.18.2) | 10,7 | | |
+| Netwerk opgeteld bij klassiek (sterkte 0,2) | 10,8 | 10 cellen | 19 cellen |
+| Netwerk in plaats van klassiek (snelle testbank) | 11,9 tegen 10,3 | 6 | 24 |
+
+Enkele rijen, klassiek tegen opgeteld: 0 dB 0,4 / 1,0 / 6,8 / 9,2 tegen 0,7 / 0,0 / 7,4 / 13,4 (12, 20, 28, 36 WPM); -3 dB 12,5 / 36,3 / 57,4 / 75,0 tegen 14,0 / 32,7 / 58,0 / 75,4; diepe QSB 31,4 tegen 34,1; draaggolf op 50 Hz die samen met het signaal start 16,6 tegen 13,5.
+
+Besluit: niet inschakelen. Er is geen winst, en de verschillen per cel vallen binnen de spreiding van de testbank. De reden is waarschijnlijk dat het tijdsmodel van de decoder (Viterbi met duurkansen) de informatie uit de omgeving al benut; het netwerk voegt hetzelfde nog eens toe. Als vervanging is het slechter bij hoge snelheid, omdat het de randen van korte punten uitsmeert.
+
+Wat wel kans maakt, later: een netwerk dat rechtstreeks tekens leest (met CTC) in plaats van de sleutelstand per frame, of afstellen op echte opnames waarvan de juiste tekst bekend is. Het eerste is veel groter en past niet bij "trainen in een minuut"; het tweede vraagt opnames met tekst. De code en het trainingsgereedschap blijven in de repository, uitgeschakeld (`PipelineConfig::neural`, in de testbank met `CWLD_NN=-0.2`).
+

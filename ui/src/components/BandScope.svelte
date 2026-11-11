@@ -29,14 +29,26 @@
     return out;
   });
 
-  /** Dark for noise, blue to white for strong signals. The radio sends 0 to 160. */
-  function colour(v: number, data: Uint8ClampedArray, i: number) {
-    const x = Math.max(0, Math.min(1, (v - 30) / 110));
-    const c = x * x * (3 - 2 * x);
-    data[i] = 8 + c * c * 247;
-    data[i + 1] = 12 + c * 215;
-    data[i + 2] = 18 + c * 237;
-    data[i + 3] = 255;
+  /** Waterfall colors: night blue for noise, through blue and cyan to amber and warm white for strong signals. */
+  const STOPS: [number, number, number, number][] = [
+    [0.0, 4, 7, 12],
+    [0.12, 9, 22, 44],
+    [0.35, 18, 82, 150],
+    [0.58, 34, 170, 196],
+    [0.8, 240, 196, 80],
+    [1.0, 255, 246, 220],
+  ];
+  const LUT = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const x = i / 255;
+    let k = 1;
+    while (k < STOPS.length - 1 && x > STOPS[k][0]) k++;
+    const [x0, r0, g0, b0] = STOPS[k - 1];
+    const [x1, r1, g1, b1] = STOPS[k];
+    const f = Math.max(0, Math.min(1, (x - x0) / (x1 - x0)));
+    LUT[i * 3] = r0 + (r1 - r0) * f;
+    LUT[i * 3 + 1] = g0 + (g1 - g0) * f;
+    LUT[i * 3 + 2] = b0 + (b1 - b0) * f;
   }
 
   function freqAt(e: MouseEvent): number {
@@ -56,44 +68,196 @@
     app.tuneTo(freqAt(e));
   }
 
+  /** Rows of history kept for the waterfall. */
+  const HIST = 240;
+
   onMount(() => {
     const sctx = spectrum.getContext('2d');
     const fctx = fall.getContext('2d');
     if (!sctx || !fctx) return;
-    let raf = 0;
-    const draw = () => {
-      raf = requestAnimationFrame(draw);
-      const rows = app.scopeRows.splice(0);
-      for (const row of rows) {
-        const n = row.data.length;
-        if (fall.width !== n) {
-          fall.width = n;
-          spectrum.width = n;
-          fctx.fillStyle = '#05080b';
-          fctx.fillRect(0, 0, fall.width, fall.height);
+    // The history lives in its own small canvas (one pixel per scope point and per sweep) and is
+    // stretched smoothly onto the screen, so the waterfall never looks blocky.
+    const hist = document.createElement('canvas');
+    hist.height = HIST;
+    const hctx = hist.getContext('2d')!;
+    let n = 0;
+    let rows = 0;
+    let disp = new Float32Array(0);
+    let peak = new Float32Array(0);
+    // The level range follows the band: the noise floor sits near the bottom, the strongest signal near the top.
+    let floorS = 0;
+    let topS = 0;
+    let lastLo = 0;
+    let lastHi = 0;
+    let dirty = true;
+
+    const fit = (c: HTMLCanvasElement) => {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const w = Math.max(1, Math.round(c.clientWidth * dpr));
+      const h = Math.max(1, Math.round(c.clientHeight * dpr));
+      if (c.width !== w || c.height !== h) {
+        c.width = w;
+        c.height = h;
+        dirty = true;
+      }
+      return dpr;
+    };
+
+    const norm = (v: number) => Math.max(0, Math.min(1, (v - (floorS - 3)) / Math.max(24, topS + 5 - (floorS - 3))));
+
+    const take = (row: { data: number[]; lo_hz: number; hi_hz: number }) => {
+      const d = row.data;
+      if (d.length !== n) {
+        n = d.length;
+        hist.width = n;
+        hctx.fillStyle = '#04070c';
+        hctx.fillRect(0, 0, n, HIST);
+        rows = 0;
+        disp = new Float32Array(n);
+        peak = new Float32Array(n);
+        floorS = 0;
+      }
+      // Follow the radio when the scope window moves: shift the history sideways, or start again after a new span.
+      const sp = row.hi_hz - row.lo_hz;
+      if (lastHi > lastLo && (row.lo_hz !== lastLo || row.hi_hz !== lastHi)) {
+        if (Math.abs(sp - (lastHi - lastLo)) < 1 && sp > 0) {
+          const dx = Math.round(((lastLo - row.lo_hz) / sp) * n);
+          if (dx !== 0 && Math.abs(dx) < n) {
+            hctx.drawImage(hist, dx, 0);
+            hctx.fillStyle = '#04070c';
+            if (dx > 0) hctx.fillRect(0, 0, dx, HIST);
+            else hctx.fillRect(n + dx, 0, -dx, HIST);
+            const moved = new Float32Array(n);
+            for (let i = 0; i < n; i++) moved[i] = i - dx >= 0 && i - dx < n ? peak[i - dx] : 0;
+            peak = moved;
+          } else if (Math.abs(dx) >= n) {
+            hctx.fillRect(0, 0, n, HIST);
+            peak.fill(0);
+          }
+        } else {
+          hctx.fillStyle = '#04070c';
+          hctx.fillRect(0, 0, n, HIST);
+          rows = 0;
+          peak.fill(0);
+          floorS = 0;
         }
-        // Waterfall: scroll down one line, new line on top.
-        fctx.drawImage(fall, 0, 0, n, fall.height - 1, 0, 1, n, fall.height - 1);
-        const img = fctx.createImageData(n, 1);
-        row.data.forEach((v, x) => colour(v, img.data, x * 4));
-        fctx.putImageData(img, 0, 0);
-        // Spectrum line of the newest sweep.
-        const H = spectrum.height;
-        sctx.fillStyle = '#05080b';
-        sctx.fillRect(0, 0, n, H);
-        sctx.beginPath();
-        sctx.moveTo(0, H);
-        row.data.forEach((v, x) => sctx.lineTo(x, H - (v / 160) * (H - 2)));
-        sctx.lineTo(n, H);
-        sctx.closePath();
-        sctx.fillStyle = 'rgba(80, 170, 230, 0.35)';
-        sctx.fill();
-        sctx.strokeStyle = 'rgba(150, 215, 255, 0.9)';
-        sctx.lineWidth = 1;
-        sctx.stroke();
+      }
+      lastLo = row.lo_hz;
+      lastHi = row.hi_hz;
+      const sorted = Float32Array.from(d).sort();
+      const fl = sorted[Math.floor(n * 0.3)];
+      const tp = sorted[Math.min(n - 1, Math.floor(n * 0.998))];
+      if (floorS === 0) {
+        floorS = fl;
+        topS = tp;
+      } else {
+        floorS += 0.08 * (fl - floorS);
+        topS = Math.max(tp, topS - 0.25);
+      }
+      hctx.drawImage(hist, 0, 0, n, HIST - 1, 0, 1, n, HIST - 1);
+      const img = hctx.createImageData(n, 1);
+      for (let i = 0; i < n; i++) {
+        const v = d[i];
+        disp[i] += (v > disp[i] ? 0.65 : 0.22) * (v - disp[i]);
+        peak[i] = Math.max(v, peak[i] - 0.6);
+        const c = Math.round(norm(v) * 255) * 3;
+        img.data[i * 4] = LUT[c];
+        img.data[i * 4 + 1] = LUT[c + 1];
+        img.data[i * 4 + 2] = LUT[c + 2];
+        img.data[i * 4 + 3] = 255;
+      }
+      hctx.putImageData(img, 0, 0);
+      rows = Math.min(HIST, rows + 1);
+      dirty = true;
+    };
+
+    const curve = (ctx: CanvasRenderingContext2D, values: Float32Array, W: number, H: number, pad: number) => {
+      const y = (i: number) => H - pad - norm(values[i]) * (H - 2 * pad);
+      ctx.moveTo(0, y(0));
+      for (let i = 1; i < n; i++) {
+        const x0 = ((i - 1) / (n - 1)) * W;
+        const x1 = (i / (n - 1)) * W;
+        const xm = (x0 + x1) / 2;
+        ctx.quadraticCurveTo(x0, y(i - 1), xm, (y(i - 1) + y(i)) / 2);
+        if (i === n - 1) ctx.lineTo(x1, y(i));
       }
     };
-    raf = requestAnimationFrame(draw);
+
+    const paint = () => {
+      const dpr = fit(spectrum);
+      fit(fall);
+      if (!dirty) return;
+      dirty = false;
+      const W = spectrum.width;
+      const H = spectrum.height;
+      sctx.clearRect(0, 0, W, H);
+      // Quiet grid: the frequency ticks and three level lines.
+      sctx.strokeStyle = 'rgba(140, 170, 200, 0.07)';
+      sctx.lineWidth = 1;
+      sctx.beginPath();
+      for (const k of ticks) {
+        const x = Math.round(k.x * W) + 0.5;
+        sctx.moveTo(x, 0);
+        sctx.lineTo(x, H);
+      }
+      for (let g = 1; g <= 3; g++) {
+        const y = Math.round((g / 4) * H) + 0.5;
+        sctx.moveTo(0, y);
+        sctx.lineTo(W, y);
+      }
+      sctx.stroke();
+      if (n > 1) {
+        const pad = 3 * dpr;
+        // Peak hold: where signals were a moment ago.
+        sctx.beginPath();
+        curve(sctx, peak, W, H, pad);
+        sctx.strokeStyle = 'rgba(125, 211, 252, 0.22)';
+        sctx.lineWidth = dpr;
+        sctx.stroke();
+        // The spectrum itself: a soft filled curve with a bright edge.
+        const grad = sctx.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0, 'rgba(56, 189, 248, 0.55)');
+        grad.addColorStop(0.6, 'rgba(56, 189, 248, 0.16)');
+        grad.addColorStop(1, 'rgba(56, 189, 248, 0.02)');
+        sctx.beginPath();
+        curve(sctx, disp, W, H, pad);
+        sctx.lineTo(W, H);
+        sctx.lineTo(0, H);
+        sctx.closePath();
+        sctx.fillStyle = grad;
+        sctx.fill();
+        sctx.beginPath();
+        curve(sctx, disp, W, H, pad);
+        sctx.strokeStyle = '#8fdcff';
+        sctx.lineWidth = 1.4 * dpr;
+        sctx.lineJoin = 'round';
+        sctx.shadowColor = 'rgba(56, 189, 248, 0.7)';
+        sctx.shadowBlur = 6 * dpr;
+        sctx.stroke();
+        sctx.shadowBlur = 0;
+      }
+      // Waterfall: the newest sweeps on top, about two screen pixels per sweep, stretched smoothly.
+      const FW = fall.width;
+      const FH = fall.height;
+      fctx.fillStyle = '#04070c';
+      fctx.fillRect(0, 0, FW, FH);
+      if (n > 1 && rows > 0) {
+        const want = Math.max(8, Math.min(HIST, Math.round(fall.clientHeight / 2)));
+        const use = Math.min(rows, want);
+        fctx.imageSmoothingEnabled = true;
+        fctx.imageSmoothingQuality = 'high';
+        fctx.drawImage(hist, 0, 0, n, use, 0, 0, FW, (use / want) * FH);
+      }
+    };
+
+    let raf = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const fresh = app.scopeRows.splice(0);
+      for (const row of fresh) take(row);
+      paint();
+    };
+    raf = requestAnimationFrame(loop);
     const clock = setInterval(() => (nowSec = Math.floor(Date.now() / 1000)), 15_000);
     return () => {
       cancelAnimationFrame(raf);
@@ -104,7 +268,7 @@
   const size = $derived((app.settings?.contest_mode ? app.settings?.scope_size_contest : app.settings?.scope_size) ?? 'medium');
 
   // ---- DX cluster labels ----
-  const ROW_PX = 13;
+  const ROW_PX = 18;
   const PRIORITY = { new: 0, other_band: 1, worked: 2 } as const;
   const rowsMax = $derived(size === 'small' ? 1 : size === 'large' ? 4 : 3);
   const cluster = $derived(app.settings?.cluster);
@@ -119,8 +283,8 @@
     const rows: Array<Array<[number, number]>> = Array.from({ length: rowsMax }, () => []);
     const items: Array<ClusterSpot & { x: number; row: number }> = [];
     for (const s of inView) {
-      const x = ((s.freq_hz - lo) / span) * areaW;
-      const end = x + s.call.length * 6.7 + 10;
+      const x = ((s.freq_hz - lo) / span) * areaW - 8;
+      const end = x + s.call.length * 6.4 + 24;
       const row = rows.findIndex((r) => r.every(([a, b]) => end + 3 <= a || x >= b + 3));
       if (row < 0) continue;
       rows[row].push([x, end]);
@@ -128,6 +292,9 @@
     }
     return { items, hidden: inView.length - items.length };
   });
+
+  /** The labels get their own lane above the spectrum, only as high as the rows in use. */
+  const lanePx = $derived(showLabels && placed.items.length ? (Math.max(...placed.items.map((p) => p.row)) + 1) * ROW_PX + 6 : 0);
 
   function spotTitle(s: ClusterSpot): string {
     const mins = Math.max(0, Math.round((nowSec - s.ts) / 60));
@@ -158,25 +325,32 @@
     class:small={size === 'small'}
     class:large={size === 'large'}
     class:live={app.scopeLive}
+    style:--lane={`${lanePx}px`}
     role="presentation"
     onmousemove={move}
     onmouseleave={() => (hoverHz = null)}
     onclick={click}
     bind:clientWidth={areaW}
     title={app.scopeLive ? t('scope.click') : ''}>
-    <canvas class="spectrum" bind:this={spectrum} width="475" height="55"></canvas>
-    <canvas class="fall" bind:this={fall} width="475" height="110"></canvas>
+    <div class="upper">
+      <canvas class="spectrum" bind:this={spectrum}></canvas>
+      {#if app.scopeLive}
+        {#each placed.items as sp (`${sp.call}|${sp.band}|${sp.freq_hz}`)}
+          <div class="pin {sp.status}" style:left={`${sp.x * 100}%`} style:top={`${3 + sp.row * ROW_PX + 15}px`}></div>
+          <button class="spot {sp.status}" style:left={`${sp.x * 100}%`} style:top={`${3 + sp.row * ROW_PX}px`} title={spotTitle(sp)} onclick={(e) => spotClick(e, sp.freq_hz)} onmousemove={(e) => e.stopPropagation()}><i></i>{sp.call}</button>
+        {/each}
+      {/if}
+    </div>
+    <div class="scale">
+      {#each ticks as k (k.khz)}
+        <span class="tick mono" style:left={`${k.x * 100}%`}>{k.khz}</span>
+      {/each}
+    </div>
+    <canvas class="fall" bind:this={fall}></canvas>
     {#if app.scopeLive}
       {#if vfoX >= 0 && vfoX <= 1}
         <div class="vfo" style:left={`${vfoX * 100}%`}></div>
       {/if}
-      {#each ticks as k (k.khz)}
-        <span class="tick mono" style:left={`${k.x * 100}%`}>{k.khz}</span>
-      {/each}
-      {#each placed.items as sp (`${sp.call}|${sp.band}|${sp.freq_hz}`)}
-        <div class="pin {sp.status}" style:left={`${sp.x * 100}%`} style:top={`${2 + sp.row * ROW_PX}px`}></div>
-        <button class="spot {sp.status}" style:left={`${sp.x * 100}%`} style:top={`${2 + sp.row * ROW_PX}px`} title={spotTitle(sp)} onclick={(e) => spotClick(e, sp.freq_hz)} onmousemove={(e) => e.stopPropagation()}>{sp.call}</button>
-      {/each}
       {#if hoverHz !== null}
         <div class="hover" style:left={`${hoverX * 100}%`}></div>
         <span class="hoverlabel mono" style:left={`${Math.min(88, Math.max(0, hoverX * 100 + 0.5))}%`}>{(hoverHz / 1000).toFixed(2)} kHz</span>
@@ -198,24 +372,21 @@
 </section>
 
 <style>
-  .scope { background: #05080b; border-bottom: 1px solid var(--line); }
-  .area { position: relative; height: 165px; overflow: hidden; }
-  .area.small { height: 90px; }
-  .area.small .spectrum { height: 32px; }
-  .area.small .fall { height: 58px; }
-  .area.small .tick { top: 20px; }
-  .area.large { height: 230px; }
-  .area.large .spectrum { height: 80px; }
-  .area.large .fall { height: 150px; }
-  .area.large .tick { top: 66px; }
+  .scope { background: #04070c; border-bottom: 1px solid var(--line); }
+  /* From top to bottom: the label lane and the spectrum, the frequency scale, the waterfall. */
+  .area { position: relative; height: 270px; overflow: hidden; display: grid; grid-template-rows: minmax(0, 6fr) 17px minmax(0, 5fr); }
+  .area.small { height: 140px; grid-template-rows: minmax(0, 6fr) 15px minmax(0, 4fr); }
+  .area.large { height: 380px; }
   .area.live { cursor: crosshair; }
-  canvas { display: block; width: 100%; image-rendering: pixelated; }
-  .spectrum { height: 55px; border-bottom: 1px solid rgba(120, 150, 180, 0.25); }
-  .fall { height: 110px; }
-  .vfo { position: absolute; top: 0; bottom: 0; border-left: 2px solid rgba(255, 90, 90, 0.85); pointer-events: none; }
-  .hover { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(255, 255, 255, 0.6); pointer-events: none; }
-  .hoverlabel { position: absolute; top: 4px; font-size: 12px; color: #fff; text-shadow: 0 0 3px #000; pointer-events: none; }
-  .tick { position: absolute; top: 42px; font-size: 10px; color: rgba(190, 210, 230, 0.75); transform: translateX(-50%); pointer-events: none; text-shadow: 0 0 3px #000; }
+  .upper { position: relative; min-height: 0; padding-top: var(--lane, 0px); background: linear-gradient(180deg, #070c14 0%, #050910 100%); }
+  canvas { display: block; width: 100%; height: 100%; }
+  .spectrum { min-height: 0; }
+  .scale { position: relative; background: #0a1019; border-top: 1px solid rgba(140, 170, 200, 0.16); border-bottom: 1px solid rgba(140, 170, 200, 0.1); }
+  .tick { position: absolute; top: 50%; transform: translate(-50%, -50%); font-size: 10px; color: rgba(190, 210, 230, 0.72); pointer-events: none; }
+  .fall { min-height: 0; }
+  .vfo { position: absolute; top: var(--lane, 0px); bottom: 0; width: 0; border-left: 1px solid rgba(255, 99, 99, 0.95); box-shadow: 0 0 8px 1px rgba(255, 99, 99, 0.45); pointer-events: none; z-index: 2; }
+  .hover { position: absolute; top: var(--lane, 0px); bottom: 0; border-left: 1px dashed rgba(255, 255, 255, 0.5); pointer-events: none; z-index: 2; }
+  .hoverlabel { position: absolute; top: calc(var(--lane, 0px) + 4px); padding: 1px 6px; border-radius: 6px; background: rgba(10, 16, 25, 0.9); border: 1px solid rgba(160, 185, 210, 0.3); font-size: 11px; color: #fff; pointer-events: none; z-index: 4; }
   .off { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; padding: 0 16px; text-align: center; }
   .bar { display: flex; gap: 14px; align-items: center; padding: 3px 12px; font-size: 12px; border-top: 1px solid var(--line); }
   .bar .left { flex: 1; }
@@ -224,12 +395,15 @@
   .dot.online { background: #4ade80; }
   .dot.connecting { background: #fbbf24; }
   .dot.offline { background: #f87171; }
-  .spot { position: absolute; z-index: 2; height: 12px; padding: 0 3px 0 4px; border: none; border-left: 2px solid currentColor; background: rgba(5, 8, 11, 0.74); font: 600 11px/12px var(--mono, ui-monospace, monospace); cursor: pointer; white-space: nowrap; }
-  .spot:hover { background: rgba(5, 8, 11, 0.95); outline: 1px solid currentColor; }
-  .pin { position: absolute; bottom: 0; width: 0; border-left: 1px solid currentColor; opacity: 0.45; pointer-events: none; z-index: 1; }
-  .new { color: #6ee7a0; }
-  .other_band { color: #fbbf24; }
-  .worked { color: #f87171; }
-  .spot.worked { text-decoration: line-through; opacity: 0.85; }
+  /* Spot labels: quiet tags. The color lives in the small dot only; worked stations fade. */
+  .spot { position: absolute; z-index: 3; display: inline-flex; align-items: center; gap: 5px; height: 15px; padding: 0 7px 0 5px; border: 1px solid rgba(160, 185, 210, 0.22); border-radius: 8px; background: rgba(22, 30, 40, 0.92); color: #d5dee8; font: 500 10.5px/1 var(--mono, ui-monospace, monospace); letter-spacing: 0.02em; cursor: pointer; white-space: nowrap; transform: translateX(-8px); transition: background 0.12s, border-color 0.12s; }
+  .spot i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+  .spot.new i { color: #5fc79a; }
+  .spot.other_band i { color: #d9a84a; }
+  .spot.worked i { color: #7d8894; }
+  .spot.worked { color: #8b96a2; background: rgba(22, 30, 40, 0.65); border-color: rgba(160, 185, 210, 0.12); }
+  .spot:hover { background: rgba(38, 50, 64, 0.98); border-color: rgba(160, 185, 210, 0.55); color: #fff; z-index: 5; }
+  .pin { position: absolute; bottom: 0; width: 0; border-left: 1px solid rgba(160, 185, 210, 0.2); pointer-events: none; z-index: 1; }
+  .pin.worked { border-left-color: rgba(160, 185, 210, 0.08); }
   .link { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }
 </style>

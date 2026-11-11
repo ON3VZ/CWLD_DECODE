@@ -6,6 +6,7 @@
 
 use crate::{AppCore, CoreError, CoreEvent};
 use cwld_cluster::{Client, Config, Event, Node, Software, Spot};
+use cwld_radio::Rig;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -77,6 +78,32 @@ pub struct ClusterState {
     lines: VecDeque<String>,
     /// (call, band) pairs of the logbook and when they were read.
     worked: Option<(Instant, HashSet<(String, String)>)>,
+    /// The callsigns last given to the decoder as hints, and the ticks since then.
+    hints: Vec<String>,
+    hint_age: u32,
+}
+
+/// Spots this close to the VFO can be the station in the passband.
+const HINT_HZ: u64 = 700;
+const HINT_MAX: usize = 6;
+/// Hints are sent again after this many ticks, so a restarted audio engine gets them too.
+const HINT_REPEAT_TICKS: u32 = 50;
+
+/// The callsigns of the spots next to `vfo_hz`, nearest first.
+fn hints_near(spots: &[Stored], vfo_hz: u64) -> Vec<String> {
+    let mut near: Vec<(u64, &str)> = spots.iter().map(|s| (s.spot.freq_hz.abs_diff(vfo_hz), s.spot.call.as_str())).filter(|(d, _)| *d <= HINT_HZ).collect();
+    near.sort();
+    let mut out: Vec<String> = Vec::new();
+    for (_, c) in near {
+        // A portable call is also known without its addition.
+        let base = c.split('/').max_by_key(|p| p.len()).unwrap_or(c).to_string();
+        for x in [c.to_string(), base] {
+            if !out.contains(&x) && out.len() < HINT_MAX {
+                out.push(x);
+            }
+        }
+    }
+    out
 }
 
 /// The first word of a cluster command must be one that only reads or changes our own filters.
@@ -229,6 +256,35 @@ impl AppCore {
 
     /// Collects what the cluster thread delivered and drops old spots. Called every tick.
     pub fn cluster_tick(&self) -> Vec<CoreEvent> {
+        let events = self.cluster_collect();
+        self.cluster_hints();
+        events
+    }
+
+    /// Tells the decoder which callsigns the cluster expects next to the VFO. Without a cluster
+    /// connection the hints are cleared once.
+    fn cluster_hints(&self) {
+        let vfo = self.rig.lock().unwrap().status().frequency_hz;
+        let mut st = self.cluster.lock().unwrap();
+        let want = if st.client.is_some() { hints_near(&st.spots, vfo) } else { Vec::new() };
+        st.hint_age += 1;
+        if want == st.hints && (st.hint_age < HINT_REPEAT_TICKS || want.is_empty()) {
+            return;
+        }
+        st.hints = want.clone();
+        st.hint_age = 0;
+        drop(st);
+        if let Some(e) = &self.audio.lock().unwrap().engine_ref() {
+            e.set_hints(want);
+        }
+    }
+
+    /// The callsigns the decoder has as hints right now (for tests and diagnostics).
+    pub fn cluster_hint_calls(&self) -> Vec<String> {
+        self.cluster.lock().unwrap().hints.clone()
+    }
+
+    fn cluster_collect(&self) -> Vec<CoreEvent> {
         let mut st = self.cluster.lock().unwrap();
         let Some(client) = &st.client else {
             return Vec::new();
@@ -431,6 +487,40 @@ mod tests {
         assert_eq!(all[0].hits, 2);
         assert_eq!(all[0].snr, Some(18), "the newest report");
         core.cluster_stop();
+    }
+
+    #[test]
+    fn hints_are_the_spots_next_to_the_vfo_nearest_first() {
+        let mk = |line: &str| Stored { spot: cwld_cluster::parse_spot(line).unwrap(), band: "40m", ts: now_secs(), hits: 1 };
+        let spots = vec![
+            mk("DX de K1ABC: 7030.6 DL1XYZ CW 1234Z"),
+            mk("DX de K1ABC: 7030.1 PA3ABC/P CW 1234Z"),
+            mk("DX de K1ABC: 7032.0 OK1FAR CW 1234Z"),
+        ];
+        assert_eq!(hints_near(&spots, 7_030_000), vec!["PA3ABC/P", "PA3ABC", "DL1XYZ"]);
+        assert!(hints_near(&spots, 7_040_000).is_empty());
+    }
+
+    #[test]
+    fn the_core_follows_the_vfo_with_its_hints() {
+        let core = AppCore::new(None);
+        {
+            let mut st = core.cluster.lock().unwrap();
+            let sp = cwld_cluster::parse_spot("DX de K1ABC: 7030.0 PA3ABC CW 1234Z").unwrap();
+            st.spots.push(Stored { spot: sp, band: "40m", ts: now_secs(), hits: 1 });
+            st.client = Some(Client::start(Config::new(vec![], "ON3VZ")));
+        }
+        core.set_frequency(7_030_200).unwrap();
+        core.cluster_tick();
+        assert_eq!(core.cluster_hint_calls(), vec!["PA3ABC"]);
+        core.set_frequency(7_010_000).unwrap();
+        core.cluster_tick();
+        assert!(core.cluster_hint_calls().is_empty());
+        core.set_frequency(7_030_000).unwrap();
+        core.cluster_tick();
+        core.cluster_stop();
+        core.cluster_tick();
+        assert!(core.cluster_hint_calls().is_empty(), "no cluster, no hints");
     }
 
     #[test]

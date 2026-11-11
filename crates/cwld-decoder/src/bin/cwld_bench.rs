@@ -14,6 +14,9 @@ fn main() {
     let plain = std::env::args().any(|a| a == "--plain");
     let pcfg = move |s: &CwSpec| {
         let mut p = PipelineConfig::new(s.sample_rate, 700.0);
+        if let Some(a) = std::env::var("CWLD_NN").ok().and_then(|v| v.parse::<f32>().ok()) {
+            p.neural = Some(a);
+        }
         if std::env::var("CWLD_NOGATE").is_ok() {
             p.cw_gate = false;
         }

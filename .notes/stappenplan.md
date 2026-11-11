@@ -76,8 +76,13 @@ Ontwerpen: claude/ontwerp_architectuur.md (basis), claude/ontwerp_contest_profie
 ## Punt 4: decoderkwaliteit (keuze Kristof, 11 november)
 - [x] 4a (0.17.0): zender die van spatiëring wisselt. Beter op de testbank, geen verschil op de acht opnames.
 - [ ] 4b: roepletters uit eigen logboek en QSO-paneel meegeven (Sonnet). Daarna lijst van bekende roepletters, licentie eerst nakijken.
-- [ ] 4c: klein neuraal netwerk voor de zwakste signalen (Opus). Pas als er opnames met bevestigde tekst zijn.
+- [x] 4c (0.18.3): klein neuraal netwerk geprobeerd (6001 gewichten, numpy op CPU, sleutelstand per frame). Geen winst op de testbank (10,7 tegen 10,8 procent), dus niet ingeschakeld. Code en gereedschap blijven staan. Vervolg alleen met echte opnames met juiste tekst, of een netwerk dat tekens leest (veel groter).
+- [x] 0.18.3: paddle-oefening telt letters los van spaties (melding Kristof: 20 procent bij één foute letter door lange pauzes).
 - [x] 4d-1 (0.18.0): clusterspots op de bandscoop. Telnet-client met inloggen, skimmer aan of uit, uitval naar de volgende node, lijst met acht clusters (ON0DXK eerst), label per station met kleur (nieuw, andere band, al gewerkt of dupe), klik stemt af, schakelaar tonen of verbergen, Test-knop, commandovenster dat alleen leest. Test A50 tot A52. Nog niet getest op de echte nodes.
+- [x] 0.18.1: labels rustiger (grijze vakjes met gekleurd bolletje, gewerkt vervaagt) en spots binnen 700 Hz van de VFO als hint voor de decoder. Hintbench: roepletter goed 60 naar 85 procent bij 3 op 100 elementen weg, foute hints zonder effect. Test A53.
+- [x] 0.18.2: bandscoop opnieuw getekend na opmerking Kristof (blokkerig, alles bovenaan gepropt): eigen strook voor labels, vloeiend spectrum met automatisch niveau, schaal in eigen strook, vloeiende waterval met nieuw palet. Test A54.
+- [x] 0.18.4: opnames van 11 november tonen een gat van 35 tot 45 dB tussen 450 en 850 Hz (op 10 november niet), vermoedelijk de notch van de radio. Waarschuwing in de kaart Audio, toonzoeker volgt geen filterrand meer. Test A55. Open: met het gat kiest de toonzoeker soms een ander signaal (1167 Hz in de opname van 7012,1 kHz); eerst afwachten of de notch de oorzaak was.
+- [ ] 4b zoals eerst bedoeld (logboek als bron) vervalt: weinig toegevoegde waarde volgens Kristof, vervangen door de spot-hints.
 - [ ] 4d-2: eigen decoders per signaal in de doorlaat (Opus), later en optioneel. Eerst CPU meten. Schakelaar met belastingsbeveiliging: hoofdkanaal heeft voorrang, extra kanalen vallen weg bij te hoge belasting, belastingsindicator, standaard uit. Beperkt door het radiofilter. Labels uit 4d-1 krijgen dan een tweede bron.
 - [ ] Later, optioneel: een WebSDR of KiwiSDR als tweede ontvanger (alleen online). KiwiSDR heeft een open koppeling met ongeveer 12 kHz bandbreedte en tijdslimieten; WebSDR heeft voor zover bekend geen open koppeling. Eerst voorwaarden nakijken.
 

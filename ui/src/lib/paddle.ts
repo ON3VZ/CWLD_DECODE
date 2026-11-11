@@ -175,10 +175,19 @@ export interface Marked {
   got: string;
 }
 
-/** Compares what was asked with what the decoder heard, character by character. */
+/**
+ * Compares what was asked with what the decoder heard, character by character. Spaces are left
+ * out on both sides: a learner who leaves long pauses still keyed the right characters. The
+ * spacing has its own measurement (see `analyseTiming`).
+ */
 export function markTarget(target: string, got: string): Marked[] {
-  const a = [...target.toUpperCase()];
-  const b = [...got.toUpperCase().replace(/\s+/g, ' ').trim()];
+  const full = [...target.toUpperCase()];
+  const letters = markLetters(full.filter((c) => c !== ' '), [...got.toUpperCase().replace(/\s+/g, '')]);
+  let k = 0;
+  return full.map((ch) => (ch === ' ' ? { ch, ok: true, got: '' } : letters[k++]));
+}
+
+function markLetters(a: string[], b: string[]): Marked[] {
   const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
   for (let i = 1; i <= a.length; i++)
     for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1), d[i - 1][j] + 1, d[i][j - 1] + 1);

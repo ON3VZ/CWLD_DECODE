@@ -64,12 +64,16 @@ pub struct WordModel {
     recent: std::collections::VecDeque<String>,
     /// Callsigns given by the operator (his own, those in the QSO panel): never forgotten.
     pinned: Vec<String>,
+    /// Callsigns expected on this frequency (DX cluster spots next to the VFO). Replaced as a
+    /// whole when the operator tunes. They count as heard before, nothing more: a hint is only
+    /// used where the decoder doubts its own reading.
+    hints: Vec<String>,
     by_elements: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Default for WordModel {
     fn default() -> Self {
-        let mut m = WordModel { words: HashSet::new(), recent: std::collections::VecDeque::new(), pinned: Vec::new(), by_elements: std::collections::HashMap::new() };
+        let mut m = WordModel { words: HashSet::new(), recent: std::collections::VecDeque::new(), pinned: Vec::new(), hints: Vec::new(), by_elements: std::collections::HashMap::new() };
         for w in WORDS {
             m.add(w);
         }
@@ -117,14 +121,23 @@ impl WordModel {
     }
 
     pub fn heard_before(&self, w: &str) -> bool {
-        self.recent.iter().any(|x| x == w) || self.pinned.iter().any(|x| x == w)
+        self.recent.iter().any(|x| x == w) || self.pinned.iter().any(|x| x == w) || self.hints.iter().any(|x| x == w)
+    }
+
+    /// Replaces the callsigns expected on this frequency. Anything that is not a callsign is dropped.
+    pub fn set_hints(&mut self, calls: &[&str]) {
+        self.hints = calls.iter().map(|c| c.trim().to_ascii_uppercase()).filter(|c| looks_like_callsign(c) && c.chars().count() >= 4).take(8).collect();
+    }
+
+    pub fn hints(&self) -> &[String] {
+        &self.hints
     }
 
     /// The known words and the callsigns heard before that are made of exactly this row of
     /// dots and dashes (see `elements`). Used to mend a character that a pause cut in two, or
     /// two characters that ran together: the elements are right, only a boundary is wrong.
     pub fn same_elements(&self, el: &str) -> Vec<&str> {
-        let mut out: Vec<&str> = self.recent.iter().filter(|c| elements(c).as_deref() == Some(el)).map(|c| c.as_str()).collect();
+        let mut out: Vec<&str> = self.recent.iter().chain(self.hints.iter()).filter(|c| elements(c).as_deref() == Some(el)).map(|c| c.as_str()).collect();
         if let Some(v) = self.by_elements.get(el) {
             out.extend(v.iter().map(|w| w.as_str()));
         }
@@ -138,7 +151,7 @@ impl WordModel {
 
     /// The callsigns heard a moment ago, newest first.
     pub fn recent_calls(&self) -> impl Iterator<Item = &str> {
-        self.recent.iter().rev().chain(self.pinned.iter()).map(|c| c.as_str())
+        self.recent.iter().rev().chain(self.hints.iter()).chain(self.pinned.iter()).map(|c| c.as_str())
     }
 
     /// Log bonus (nats) for a whole word.
@@ -310,6 +323,21 @@ impl WordCorrector {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hints_count_as_heard_before_and_are_replaced_as_a_whole() {
+        let mut m = WordModel::default();
+        assert!(!m.heard_before("PA3KLM"));
+        m.set_hints(&["pa3klm", "HELLO", "DL1XYZ"]);
+        assert!(m.heard_before("PA3KLM"));
+        assert_eq!(m.hints(), ["PA3KLM", "DL1XYZ"], "only callsigns are kept");
+        assert!(!m.known("PA3KLM"), "a hint is no dictionary word");
+        assert!(m.recent_calls().any(|c| c == "DL1XYZ"));
+        m.set_hints(&["OK1FAR"]);
+        assert!(!m.heard_before("PA3KLM"), "tuning away drops the old hints");
+        m.set_hints(&[]);
+        assert!(m.hints().is_empty());
+    }
 
     fn up(text: &str, conf: &[f32], alts: Vec<Vec<(char, f32)>>, strength: f32) -> DecodeUpdate {
         DecodeUpdate {

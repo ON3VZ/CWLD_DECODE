@@ -388,8 +388,16 @@ impl AppCore {
                 EngineEvent::Level { dbfs, peak } => out.push(CoreEvent::AudioLevel { dbfs, peak }),
                 EngineEvent::PracticeDone { ids } => out.push(CoreEvent::PracticeDone { ids }),
                 EngineEvent::Keying { runs } => out.push(CoreEvent::Keying { runs }),
-                EngineEvent::Stats { confidence, snr_db, bandwidth_hz, voice } => {
+                EngineEvent::Stats { confidence, snr_db, bandwidth_hz, voice, hole_hz } => {
                     self.tx_track.lock().unwrap().voice = voice;
+                    // Report a hole (or its end) once, rounded so it does not flicker.
+                    let now = hole_hz.map(|h| ((h / 50.0).round() * 50.0) as i32);
+                    let mut last = self.hole_reported.lock().unwrap();
+                    if *last != now {
+                        *last = now;
+                        out.push(CoreEvent::AudioHole { hz: now.map(|h| h as f32) });
+                    }
+                    drop(last);
                     out.push(CoreEvent::Bandwidth { hz: bandwidth_hz });
                     if let Some(c) = confidence {
                         out.push(CoreEvent::Decoder { stats: cwld_types::DecoderStats { confidence: c, snr_db, accuracy: None, bandwidth_hz: Some(bandwidth_hz) } });

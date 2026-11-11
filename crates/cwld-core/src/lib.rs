@@ -118,6 +118,8 @@ pub const SWR_READINGS_TO_TRIP: u8 = 2;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CoreEvent {
+    /// A hole in the audio around this pitch (a notch filter on the radio?), or `None` when it is gone.
+    AudioHole { hz: Option<f32> },
     /// The DX cluster connection changed.
     ClusterStatus { status: cluster::ClusterStatus },
     /// New or updated spots (colored by the logbook), newest data only.
@@ -166,6 +168,8 @@ pub struct AppCore {
     /// Callsign lookup (QRZ.com), with its own session and cache.
     lookup: cwld_lookup::Lookup,
     cluster: Mutex<cluster::ClusterState>,
+    /// The hole in the audio last reported to the interface (Hz, rounded).
+    hole_reported: Mutex<Option<i32>>,
     /// The practice band while a practice exercise runs.
     practice: Mutex<Option<std::sync::Arc<Mutex<cwld_dsp::PracticeBand>>>>,
     /// Speaker volume and break-in as they were before practice mode turned them down.
@@ -240,6 +244,7 @@ impl AppCore {
             logbook: Mutex::new(logbook),
             lookup: cwld_lookup::Lookup::new(env!("CARGO_PKG_VERSION")),
             cluster: Mutex::new(cluster::ClusterState::default()),
+            hole_reported: Mutex::new(None),
         }
     }
 

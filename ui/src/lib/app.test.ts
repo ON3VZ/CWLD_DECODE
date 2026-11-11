@@ -1566,3 +1566,14 @@ describe('DX cluster spots', () => {
     expect(app.clusterProbeResult.list.some((r) => !r.ok)).toBe(true);
   });
 });
+
+describe('hole in the audio', () => {
+  it('shows and clears the notch warning as the core reports it', async () => {
+    const api = await fresh();
+    expect(app.audioHole).toBeNull();
+    api.emitNow([{ type: 'audio_hole', hz: 650 }]);
+    expect(app.audioHole).toBe(650);
+    api.emitNow([{ type: 'audio_hole', hz: null }]);
+    expect(app.audioHole).toBeNull();
+  });
+});

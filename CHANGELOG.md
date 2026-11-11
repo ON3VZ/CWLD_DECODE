@@ -1,3 +1,34 @@
+## 0.18.4 (notch warning, tone search no longer follows a filter edge)
+
+- New warning in the Audio card: "A hole in the audio around ... Hz". It appears when a stretch in the middle of the passband is at least 20 dB quieter than both sides for three seconds, as a notch filter on the radio leaves behind, and it goes away by itself. Reason: all six recordings of 11 November have such a hole between about 450 and 850 Hz (35 to 45 dB down), right where a well tuned CW station sits; the recordings of 10 November do not. CWLD never switches the notch itself.
+- Tone search: the edge of the radio's filter or of a notch no longer counts as a signal. The noise next to a pitch is now judged on both sides: on a slope the louder side decides. Before, the decoder wandered down along the edge (395, 385, 372 ... 336 Hz) and jumped to it in the middle of a transmission. In even noise nothing changes.
+- Measured on the recordings, decoded the way the app does (new tool `cargo run --release -p cwld-audio --example filedec -- file.wav`): the seven recordings of 10 November read exactly as before, and the seek benchmark is identical. Of the recordings with the hole: 7004.3 kHz better (`R RK6HR PSE DX K`, no jump to the edge at the end), 7005.4 kHz the same, 7012.1 kHz (9 s) worse (the station next to the hole is found later), 7012.1 kHz (25 s) different (the decoder now stays on a second, longer signal at 1167 Hz instead of the station at 896 Hz), 7014.8 kHz nothing (before: `E?BK`). With the hole in the audio the tone search stays unreliable; the fix for that is the notch on the radio.
+
+## 0.18.3 (paddle practice scores letters fairly, neural network tried and not adopted)
+
+- Fixed: in paddle practice, long pauses between the characters made right characters count as wrong (ON3VZ: `AOWRW RAOWR MSOKT SKKRL` keyed with one wrong letter scored 20 percent). Every character had become its own word and the spaces were compared too, so everything shifted. Characters are now compared without the spaces; the spacing keeps its own table and tips.
+- Experiment, not switched on: a small neural network (6001 weights, trained on the CPU in under a minute on synthetic CW of CWLD's own generator) as an extra source of key-down evidence. Per frame it looked much better than the classic number, but through the whole decoder the test bench shows no gain: mean wrong characters 10.7 percent classic, 10.8 percent with the network added, better in 10 cells and worse in 19 of 71. Used instead of the classic evidence it is clearly worse at high speeds. The decoder's timing search already combines the evidence over time, which is what the network tried to add. The code and the training tools stay in the repository (`tools/nn`, `crates/cwld-decoder/src/neural.rs`, switch `PipelineConfig::neural`, off) for a later attempt with real recordings and their true text.
+
+## 0.18.2 (a modern band scope)
+
+- The band scope is drawn anew. From top to bottom: a lane for the spot labels (only as high as the rows in use), the spectrum, the frequency scale in its own strip, and the waterfall filling the rest.
+- The spectrum is a smooth curve with a soft fill and a faint peak-hold line. Its level range follows the band by itself: the noise floor sits near the bottom and the strongest signal near the top, so weak signals on a wide span (for example 200 kHz) no longer disappear into a flat line.
+- The waterfall is stretched smoothly instead of in blocks, uses the same automatic level range, and has a new palette (night blue for noise, through blue and cyan to amber and warm white). When the radio moves the scope window the history shifts along.
+- Sharper on high-resolution screens. Heights: small 140, medium 270, large 380 pixels (Settings, Display).
+
+## 0.18.1 (quieter spot labels, cluster spots as hints for the decoder)
+
+- Band scope: the spot labels are quiet tags now: a small rounded label in a muted tone with the callsign in light grey. Only a small dot carries the color (green: not in your log, amber: worked on another band, grey: worked on this band). A worked station fades instead of standing out in red. The pin line is thinner. Two rows of labels on the medium scope, three on the large one.
+- Decoder: the callsigns of cluster spots within 700 Hz of the VFO are given to the decoder as hints. A hint counts like a callsign that was heard a moment ago: it is only used where the decoder doubts its own reading (a dot or dash lost in a fade, a gap in the wrong place). Tuning away replaces the hints, disconnecting the cluster clears them.
+- Measured with `cargo run --release -p cwld-decoder --example hintbench` (60 messages per case, a callsign the decoder never saw; wrong characters in percent, and how often the callsign came out exactly right):
+  - 3 in 100 dots and dashes lost: 7.3 to 4.9 percent, callsign right 60 to 85 percent.
+  - 6 in 100 lost at +6 dB: 17.2 to 14.4 percent, callsign right 39 to 68 percent.
+  - sloppy hand keying: 25.9 to 24.0 percent, callsign right 24 to 40 percent.
+  - weak signal (0 dB): 3.3 to 2.6 percent, callsign right 85 to 91 percent.
+  - clean signal and deep QSB: no difference.
+  - Only wrong hints (among them the real call with one character changed, and with one dot or dash more): the text is identical to no hints in every case. In 480 callsigns a wrong hint came out once.
+- Not measured on the air: this needs a real cluster connection next to a real signal (test A53).
+
 ## 0.18.0 (DX cluster spots on the band scope)
 
 - New: spots of a DX cluster appear as labels on the band scope, at the frequency of the station. Green: not in your log. Amber: you worked the station on another band. Red with a line through it: already in your log on this band (in contest mode: a dupe of the active contest run). A click on a label tunes the radio there; the pin line under it runs down to the waterfall. "Hide spots" in the bar under the scope hides them, "Show cluster spots" connects.

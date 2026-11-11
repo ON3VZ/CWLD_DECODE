@@ -827,5 +827,8 @@
   "error.cluster_no_nodes": "De lijst met clusters is leeg. Voeg een cluster toe of herstel de standaardlijst.",
   "error.cluster_not_connected": "Niet verbonden met een cluster.",
   "error.cluster_command_not_allowed": "Dat commando mag niet. CWLD leest alleen van de cluster, dus commando's die iets plaatsen zijn geblokkeerd.",
-  "error.cluster_network": "De clusters konden niet getest worden."
+  "error.cluster_network": "De clusters konden niet getest worden.",
+  "audio.hole": "Een gat in het geluid rond {hz} Hz.",
+  "audio.hole.do": "Stations die je op je CW-toon afstemt worden weggefilterd. Staat de notchfilter van de radio aan? Kijk op het scherm naar MN of AN en druk op NOTCH tot het weg is.",
+  "audio.hole.help": "Het geluid van de radio is in een stuk in het midden veel stiller dan aan beide kanten ervan. Dat doet een ontvangstfilter niet, een notchfilter wel. CWLD schakelt de notch zelf niet."
 }

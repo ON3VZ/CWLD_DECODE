@@ -51,12 +51,16 @@ pub struct PipelineConfig {
     pub spacing: bool,
     /// Keep the key down and up times (for the paddle trainer), see `take_keying`.
     pub keying: bool,
+    /// Experimental: take the key-down evidence from the small neural network (see `neural`),
+    /// with this strength. A negative value adds the network to the classic evidence with that
+    /// strength instead of replacing it. `None`: the classic evidence only.
+    pub neural: Option<f32>,
     pub decoder: DecoderConfig,
 }
 
 impl PipelineConfig {
     pub fn new(sample_rate: u32, tone_hz: f64) -> Self {
-        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, cw_gate: true, voice_gate: true, fading: true, weak_marks: None, spacing: true, keying: false, decoder: DecoderConfig::default() }
+        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, cw_gate: true, voice_gate: true, fading: true, weak_marks: None, spacing: true, keying: false, neural: None, decoder: DecoderConfig::default() }
     }
 }
 
@@ -92,6 +96,7 @@ pub struct Pipeline {
     last_voice_eval: u64,
     keying: KeyingRecorder,
     spacer: crate::spacing::Spacer,
+    neural: Option<crate::neural::NeuralLlr>,
     /// Frames processed so far, and the count when text last came out of the decoder.
     frames_seen: u64,
     last_text_at: u64,
@@ -267,7 +272,8 @@ impl Pipeline {
             // A pipeline rebuilt during a paddle exercise (engine reset) keeps the speech check off.
             cfg.voice_gate = false;
         }
-        Pipeline { front: { let mut f = Frontend::new(fc); f.set_weak_marks(cfg_fading); f }, dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0, voice: crate::voice::VoiceDetector::new(cfg_rate), voice_heard: false, voice_clear_evals: 0, last_voice_eval: 0, keying: KeyingRecorder::default(), spacer: { let mut sp = crate::spacing::Spacer::new(cfg_spacing); sp.junk_strength = junk; sp }, voice_gate_base: cfg_voice, replaying: false, frames_seen: 0, last_text_at: 0 }
+        let cfg_neural = cfg.neural;
+        Pipeline { neural: cfg_neural.map(|a| { let mut n = crate::neural::NeuralLlr::new(a.abs()); n.mix = a < 0.0; n }), front: { let mut f = Frontend::new(fc); f.set_weak_marks(cfg_fading); f }, dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0, voice: crate::voice::VoiceDetector::new(cfg_rate), voice_heard: false, voice_clear_evals: 0, last_voice_eval: 0, keying: KeyingRecorder::default(), spacer: { let mut sp = crate::spacing::Spacer::new(cfg_spacing); sp.junk_strength = junk; sp }, voice_gate_base: cfg_voice, replaying: false, frames_seen: 0, last_text_at: 0 }
     }
 
     /// Keyed CW is in the envelope (not just noise at this pitch).
@@ -276,6 +282,12 @@ impl Pipeline {
     }
 
     /// Speech or another wide signal is heard (an SSB station, or the radio is not on CW).
+    /// The middle of a hole in the audio (Hz): a stretch of the passband that is far quieter
+    /// than both sides, as a notch filter on the radio leaves behind. `None`: no hole.
+    pub fn hole_hz(&self) -> Option<f64> {
+        self.seeker.as_ref().and_then(|s| s.hole())
+    }
+
     pub fn voice_heard(&self) -> bool {
         self.voice_heard
     }
@@ -503,6 +515,11 @@ impl Pipeline {
             }
         }
         let frames = self.front.push(samples);
+        // With the network on, everything below works on its delayed stream of frames.
+        let frames = match &mut self.neural {
+            Some(nn) => nn.push_frames(&frames),
+            None => frames,
+        };
         if !self.replaying {
             self.frames_seen += frames.len() as u64;
         }
@@ -577,7 +594,18 @@ impl Pipeline {
         }
     }
 
+    /// Callsigns expected on this frequency (cluster spots next to the VFO). Replaces the old ones.
+    pub fn set_hints(&mut self, calls: &[&str]) {
+        self.words.model.set_hints(calls);
+    }
+
     pub fn flush(&mut self) {
+        if let Some(nn) = &mut self.neural {
+            let rest: Vec<f32> = nn.flush_frames().iter().map(|f| f.llr).collect();
+            if self.last_usable {
+                self.dec.push_llr(&rest);
+            }
+        }
         self.dec.flush();
         let up = self.dec.poll();
         let mut out = self.words.push(&self.spacer.push(&up, &self.words.model));

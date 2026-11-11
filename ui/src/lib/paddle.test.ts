@@ -83,6 +83,12 @@ describe('marking and statistics', () => {
     expect(split[1].ok).toBe(true);
     expect(split[0].ok).toBe(false);
     expect(accuracy(markTarget('CQ DE', 'CQ DE'))).toBe(1);
+    // Long pauses between the characters (every character its own word) do not make characters wrong.
+    const slow = markTarget('AOWRW RAOWR', 'A O W R W R A M W R');
+    expect(slow.filter((x) => x.ch !== ' ' && !x.ok).map((x) => `${x.ch}>${x.got}`)).toEqual(['O>M']);
+    expect(accuracy(slow)).toBeCloseTo(0.9);
+    expect(slow[5]).toEqual({ ch: ' ', ok: true, got: '' });
+    expect(accuracy(markTarget('CQ DE', 'CQDE'))).toBe(1);
   });
 
   it('counts tries and errors and finds the weakest characters', () => {
