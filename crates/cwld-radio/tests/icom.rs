@@ -33,8 +33,30 @@ fn poll_asks_for_the_status_values() {
     r.poll();
     let frames = written_frames(&h);
     let bodies: Vec<Vec<u8>> = frames.iter().map(|f| f.body.clone()).collect();
-    assert_eq!(bodies, vec![vec![0x03], vec![0x04], vec![0x1C, 0x00], vec![0x14, 0x0C], vec![0x15, 0x02], vec![0x14, 0x01], vec![0x16, 0x47], vec![0x14, 0x03]]);
+    assert_eq!(bodies, vec![vec![0x03], vec![0x04], vec![0x1C, 0x00], vec![0x14, 0x0C], vec![0x15, 0x02], vec![0x14, 0x01], vec![0x16, 0x47], vec![0x14, 0x03], vec![0x16, 0x48], vec![0x16, 0x41], vec![0x14, 0x07], vec![0x14, 0x08]]);
     assert!(frames.iter().all(|f| f.to == RADIO && f.from == CONTROLLER));
+}
+
+#[test]
+fn notch_and_twin_pbt_are_read_and_set() {
+    let (mut r, h, _c) = rig(false);
+    h.feed(&from_radio(&[0x16, 0x48, 0x01])); // manual notch on
+    h.feed(&from_radio(&[0x16, 0x41, 0x00])); // automatic notch off
+    h.feed(&from_radio(&[0x14, 0x07, 0x00, 0x90])); // PBT inner 90
+    h.feed(&from_radio(&[0x14, 0x08, 0x01, 0x28])); // PBT outer 128
+    r.poll();
+    let a = r.audio_controls();
+    assert_eq!((a.notch, a.auto_notch, a.pbt_inner, a.pbt_outer), (Some(true), Some(false), Some(90), Some(128)));
+    let _ = written_frames(&h);
+    // Receive-only settings: allowed while listening, nothing can key the radio.
+    let mut g = GuardedRig::new(r, PolicyHandle::new(TxPolicy::ListenOnly));
+    g.execute(&RadioCommand::SetNotch(false)).unwrap();
+    g.execute(&RadioCommand::SetAutoNotch(false)).unwrap();
+    g.execute(&RadioCommand::CenterPbt).unwrap();
+    let bodies: Vec<Vec<u8>> = written_frames(&h).into_iter().map(|f| f.body).collect();
+    assert_eq!(bodies, vec![vec![0x16, 0x48, 0x00], vec![0x16, 0x41, 0x00], vec![0x14, 0x07, 0x01, 0x28], vec![0x14, 0x08, 0x01, 0x28]]);
+    let a = g.audio_controls();
+    assert_eq!((a.notch, a.auto_notch, a.pbt_inner, a.pbt_outer), (Some(false), Some(false), Some(128), Some(128)));
 }
 
 #[test]
@@ -44,7 +66,7 @@ fn af_level_and_break_in_are_read_and_set() {
     h.feed(&from_radio(&[0x16, 0x47, 0x02])); // full break-in
     h.feed(&from_radio(&[0x14, 0x03, 0x00, 0x40])); // squelch 40
     r.poll();
-    assert_eq!(r.audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(2), squelch: Some(40) });
+    assert_eq!(r.audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(2), squelch: Some(40), ..Default::default() });
     let _ = written_frames(&h);
     // In practice mode (no transmitting allowed) both may be changed: neither keys the radio.
     let mut g = GuardedRig::new(r, PolicyHandle::new(TxPolicy::Practice));
@@ -53,7 +75,7 @@ fn af_level_and_break_in_are_read_and_set() {
     g.execute(&RadioCommand::SetSquelch(255)).unwrap();
     let bodies: Vec<Vec<u8>> = written_frames(&h).into_iter().map(|f| f.body).collect();
     assert_eq!(bodies, vec![vec![0x14, 0x01, 0x00, 0x00], vec![0x16, 0x47, 0x00], vec![0x14, 0x03, 0x02, 0x55]]);
-    assert_eq!(g.audio_controls(), cwld_radio::AudioControls { af_level: Some(0), break_in: Some(0), squelch: Some(255) });
+    assert_eq!(g.audio_controls(), cwld_radio::AudioControls { af_level: Some(0), break_in: Some(0), squelch: Some(255), ..Default::default() });
     assert!(g.execute(&RadioCommand::SetBreakIn(3)).is_err());
 }
 
@@ -202,6 +224,10 @@ fn radio_refusing_a_block_without_pipeline_is_retried_then_given_up() {
                 [0x14, 0x01] => h.feed(&from_radio(&[0x14, 0x01, 0x01, 0x28])),
                 [0x16, 0x47] => h.feed(&from_radio(&[0x16, 0x47, 0x01])),
                 [0x14, 0x03] => h.feed(&from_radio(&[0x14, 0x03, 0x00, 0x00])),
+                [0x16, 0x48] => h.feed(&from_radio(&[0x16, 0x48, 0x00])),
+                [0x16, 0x41] => h.feed(&from_radio(&[0x16, 0x41, 0x00])),
+                [0x14, 0x07] => h.feed(&from_radio(&[0x14, 0x07, 0x01, 0x28])),
+                [0x14, 0x08] => h.feed(&from_radio(&[0x14, 0x08, 0x01, 0x28])),
                 _ => {}
             }
         }

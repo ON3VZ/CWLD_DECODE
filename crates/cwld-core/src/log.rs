@@ -171,6 +171,27 @@ impl AppCore {
         Ok(DupeInfo { dupe, other_bands })
     }
 
+    /// Writes a text file (a CSV made by the window) in the export folder.
+    /// Only the file name counts: folders in `name` are dropped, and the extension is always `.csv`.
+    pub fn export_text_file(&self, name: &str, text: &str) -> Result<String, CoreError> {
+        if text.trim().is_empty() {
+            return Err(CoreError::Invalid("export_empty"));
+        }
+        let base: String = name.rsplit(['/', '\\']).next().unwrap_or("").chars().filter(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ' ' | '@')).collect();
+        let stem = base.trim().trim_end_matches(".csv").trim_matches('.');
+        let stem = if stem.is_empty() { "cwld-log" } else { stem };
+        let dir = self.export_dir();
+        std::fs::create_dir_all(&dir).map_err(|e| CoreError::Log(e.to_string()))?;
+        let path = dir.join(format!("{stem}.csv"));
+        std::fs::write(&path, text.as_bytes()).map_err(|e| CoreError::Log(e.to_string()))?;
+        Ok(path.display().to_string())
+    }
+
+    /// The folder exported files go to (the CWLD folder in Documents).
+    pub fn export_folder(&self) -> PathBuf {
+        self.export_dir()
+    }
+
     fn export_dir(&self) -> PathBuf {
         if let Some(d) = self.recordings_dir.lock().unwrap().clone() {
             return d;
@@ -189,6 +210,10 @@ impl AppCore {
             let lb = self.logbook.lock().unwrap();
             (lb.list(&LogFilter { limit: 0, ..f.clone() })?, lb.activations(200)?)
         };
+        if qsos.is_empty() {
+            // An empty file helps nobody and looks like a failed export.
+            return Err(CoreError::Invalid("export_empty"));
+        }
         let now = now_ts();
         if check_export(&qsos, &acts, now).iter().any(|i| i.severity == Severity::Error) {
             return Err(CoreError::Invalid("export_check_failed"));
@@ -221,6 +246,25 @@ mod tests {
 
     fn core() -> AppCore {
         AppCore::new(None)
+    }
+
+    #[test]
+    fn a_csv_file_lands_in_the_export_folder_under_a_safe_name() {
+        let c = core();
+        assert_eq!(c.export_text_file("x.csv", "  ").err(), Some(CoreError::Invalid("export_empty")));
+        let p = c.export_text_file("../../etc/evil name.csv", "a;b\n1;2\n").unwrap();
+        assert!(p.ends_with("evil name.csv"), "{p}");
+        assert!(p.starts_with(&c.export_folder().display().to_string()), "{p}");
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "a;b\n1;2\n");
+        let p2 = c.export_text_file("", "x").unwrap();
+        assert!(p2.ends_with("cwld-log.csv"));
+        let _ = (std::fs::remove_file(p), std::fs::remove_file(p2));
+    }
+
+    #[test]
+    fn an_export_without_qsos_is_refused_with_a_clear_reason() {
+        let c = core();
+        assert_eq!(c.log_export(&LogFilter::default(), "", "0.0.0").err(), Some(CoreError::Invalid("export_empty")));
     }
 
     fn portable_core() -> AppCore {

@@ -404,3 +404,72 @@ Bevindingen ON3VZ met 0.12.0 en 0.13.0: AF op 0 maakte de band stil, maar ook de
 3. Druk op NOTCH tot de aanduiding weg is. Verwacht: de melding in CWLD verdwijnt binnen enkele seconden.
 4. Maak één opname van een CW-station met de notch uit en stuur die. Meld ook of CWLD nu beter leest.
 5. Stond er geen notch aan en komt de melding toch: meld welk filter (FIL1, 2 of 3), welke bandbreedte en of Twin PBT verdraaid is.
+
+## A56. ADIF exporteren (0.18.5)
+
+1. Open het exportvenster en klik meteen op **Exporteren**, zonder eerst op Controleren te klikken. Verwacht: de controle loopt vanzelf. Zijn er fouten, dan staan ze in het venster. Anders: "N QSO's opgeslagen in ..." met het volledige pad.
+2. Klik op **Map openen**. Verwacht: de Verkenner opent de map CWLD in Documenten, met het .adi-bestand erin.
+3. Kies een selectie zonder QSO's (bijvoorbeeld "Sinds laatste export" direct na een export). Verwacht: de melding dat er geen QSO's in de selectie zitten, en geen leeg bestand.
+4. Lukt het nog steeds niet: stuur een schermafdruk van het exportvenster met de melding.
+
+## A57. Notch en Twin PBT (0.19.0)
+
+1. Verbind de radio. Zet op de radio de handmatige notch aan (NOTCH tot "MN" op het scherm staat). Verwacht: binnen een paar seconden in de kaart Audio "Op de radio: handmatige notch (MN) aan" met de knop **Notch uit**.
+2. Klik op **Notch uit**. Verwacht: "MN" verdwijnt van het scherm van de radio en de melding in CWLD gaat weg.
+3. Draai aan de binnenste PBT-knop. Verwacht: "Twin PBT verschoven" en de knop **PBT in het midden**. Klik erop. Verwacht: de PBT-aanduiding op de radio staat weer in het midden.
+4. Doe hetzelfde met de automatische notch (AN).
+5. Komt er geen melding, of doet een knop niets: meld welke stap, dan kloppen de CI-V-commando's voor de MK II niet en zoek ik verder.
+
+## A58. Logboekscherm (0.19.0)
+
+1. Klik bovenaan op **Logboek**. Verwacht: alle QSO's in een tabel, nieuwste eerst.
+2. Typ een stuk van een roepletter in het zoekvak. Verwacht: de tabel volgt meteen. Kies ook een band en een datum.
+3. Klik op **Kolommen** en zet "Vermogen" aan. Sluit CWLD en open het logboek opnieuw. Verwacht: de kolom staat er nog.
+4. Klik op "Deze N QSO's exporteren". Verwacht: het pad en **Map openen**. Lees het bestand in Log4OM in en tel of het aantal klopt.
+5. Klik op een rij, wijzig de naam en bewaar. Verwacht: de tabel toont de nieuwe naam.
+
+## A59. Alle velden verbeteren (0.19.1)
+
+1. Open het logboek, klik op een rij. Verwacht: een venster met onder meer datum, tijd (UTC), kHz, band (grijs), mode en opmerking.
+2. Wijzig alleen de opmerking en klik **Opslaan**. Verwacht: meteen bewaard, de tabel toont de wijziging.
+3. Wijzig de frequentie van een 40m-QSO naar 14025 en klik **Opslaan**. Verwacht: eerst de vraag "Frequentie wijzigen?" met "band verandert van 40m naar 20m". Klik **Terug**: niets is bewaard. Probeer opnieuw en klik **Ja, wijzigen**. Verwacht: de rij toont 20m.
+4. Typ bij de tijd "25:00". Verwacht: een foutmelding en niets bewaard.
+5. Klap **Mijn station** open, wijzig het vermogen en bewaar. Verwacht: de kolom Vermogen (Kolommen) toont de nieuwe waarde.
+
+## A60. Logboek als CSV (0.19.2)
+
+1. Open het logboek, kies een band en klik op **CSV**. Verwacht: een melding met het pad en **Map openen**.
+2. Klik op **Map openen** en dubbelklik het bestand `cwld-logbook-...csv`. Verwacht: Excel toont de kolommen netjes verdeeld, met de koppen in het Nederlands en de namen met accenten juist.
+3. Zet via **Kolommen** "Vermogen" aan, exporteer opnieuw. Verwacht: de extra kolom staat in het bestand.
+4. Sorteer op roepletters en exporteer opnieuw. Verwacht: dezelfde volgorde als in het scherm.
+5. Controleer dat de QSO's niet als "ADIF" geëxporteerd staan na een CSV-export.
+
+## A61. Scrollen en tabbladen (0.19.3)
+
+1. Laat een gesprek met veel tekst lopen. Scrol met het muiswiel een stuk omhoog en wacht tot er nieuwe tekst bijkomt. Verwacht: het beeld blijft staan. Scrol weer helemaal naar onder. Verwacht: nieuwe tekst loopt weer mee.
+2. Klik op een ander tabblad en terug. Verwacht: je ziet het einde van het gesprek.
+3. Open de kaart Audio en draai aan de notch op de radio tot "MN" verschijnt. Verwacht: de oranje melding komt over het spectrum, de regelaars daaronder blijven op dezelfde plaats.
+4. Klik op **Instellingen**, zoek de tabbladen en zet "Maximaal aantal open tabbladen" op 3. Open meerdere gesprekken. Verwacht: de oudste rustige tabbladen sluiten, er verschijnt geen horizontale balk, en een gesprek waarin je al gezonden hebt zonder te loggen blijft open.
+
+
+## A62. Terugspoelen (0.20.0)
+
+1. Start het luisteren en laat een QSO een halve minuut lopen. Open in de kaart Audio **Terugspoelen** (klik op het driehoekje ervoor). Kies **20 s** en klik **Zelfde toon**. Verwacht: na ongeveer een seconde de tekst van de laatste 20 seconden, met toon en snelheid erboven. De live tekst loopt intussen gewoon door.
+2. Zet een tweede station in de doorlaat (draai de VFO tot er twee tonen hoorbaar zijn). Klik **Sterkste**. Verwacht: onder "Gehoord" staan beide tonen. Klik op de andere toon. Verwacht: de tekst van het andere station.
+3. Klik op een roepletter in het resultaat. Verwacht: hij komt in het QSO-paneel, zoals bij een klik in het gesprek.
+4. Klik **Laatste minuut bewaren (WAV)**. Verwacht: een melding met het pad. Open de opnamemap (zelfde map als de gewone opnames) en dubbelklik het bestand. Verwacht: een minuut geluid, met de frequentie in de naam.
+5. Stop het luisteren. Verwacht: Terugspoelen verdwijnt uit de kaart.
+
+## A63. Steil filter (0.20.0)
+
+1. Klik in de kaart Audio op **Afstellen** en daarna op **Steil**. Verwacht: Steil licht op, Smal en Breed niet. De rode lijnen in de audio-waterval blijven even breed als bij Smal.
+2. Zoek een zwak station met een sterk station 60 tot 150 Hz ernaast (een contestband is ideaal). Vergelijk Smal en Steil een minuut elk. Noteer welk de minste rommel geeft.
+3. Op een rustige plek zonder signaal: laat Steil een minuut aanstaan. Noteer of er tekens uit de ruis komen. Doe hetzelfde met Smal.
+4. Klik **Breed** en daarna terug **Steil**. Klik op **Instellingen** en kies links **Decoder**. Verwacht: dezelfde keuze staat daar, ook na een herstart van CWLD.
+
+## A64. Gespelde letters (0.20.0)
+
+1. Laat iemand (of een tweede programma, of de oefenmodus) `NAME IS H A N S` zenden met lange pauzes tussen de letters. Verwacht: CWLD toont `HANS`. De letters verschijnen eerst als voorlopige tekst en worden samen definitief zodra het volgende woord of een pauze van enkele seconden komt.
+2. Zo ook `DE D L 4 S A V K`. Verwacht: `DL4SAV K`.
+3. Een normaal einde `73 E E` of `R R TU`. Verwacht: blijft zoals het is.
+4. Klik op **Instellingen**, kies links **Decoder** en zet "Gespelde letters samenvoegen" uit. Herhaal stap 1. Verwacht: `H A N S`.

@@ -17,6 +17,25 @@ fn main() {
         if let Some(a) = std::env::var("CWLD_NN").ok().and_then(|v| v.parse::<f32>().ok()) {
             p.neural = Some(a);
         }
+        // CWLD_STEEP=4: the steep filter of that order. CWLD_WIDE=1: the wide filter.
+        if let Some(o) = std::env::var("CWLD_STEEP").ok().and_then(|v| v.parse::<usize>().ok()) {
+            p.steep_order = o;
+        }
+        if std::env::var("CWLD_WIDE").is_ok() {
+            p.bandwidth_factor = 2.4;
+        }
+        if let Some(f) = std::env::var("CWLD_BWF").ok().and_then(|v| v.parse::<f64>().ok()) {
+            p.bandwidth_factor = f;
+        }
+        if std::env::var("CWLD_NONB").is_ok() {
+            p.noise_blanker = false;
+        }
+        if std::env::var("CWLD_NONOTCH").is_ok() {
+            p.auto_notch = false;
+        }
+        if std::env::var("CWLD_NOJOIN").is_ok() {
+            p.join_spelled = false;
+        }
         if std::env::var("CWLD_NOGATE").is_ok() {
             p.cw_gate = false;
         }
@@ -45,6 +64,10 @@ fn main() {
         fists_only(trials, pcfg);
         return;
     }
+    if std::env::args().any(|a| a == "--neighbours") {
+        neighbours(trials, pcfg);
+        return;
+    }
     println!("Character error rate (%), SNR in 500 Hz, {trials} messages per cell\n");
     let wpms = [12.0, 20.0, 28.0, 36.0];
     print!("| SNR dB |");
@@ -53,7 +76,9 @@ fn main() {
     }
     println!();
     println!("|---|{}", "---|".repeat(wpms.len()));
-    for snr in [30.0, 15.0, 10.0, 6.0, 3.0, 0.0, -3.0, -6.0] {
+    // CWLD_SNRS=30,15 runs only those rows (the full bench takes long on a slow computer).
+    let snrs: Vec<f64> = std::env::var("CWLD_SNRS").ok().map(|v| v.split(',').filter_map(|x| x.parse().ok()).collect()).unwrap_or_else(|| vec![30.0, 15.0, 10.0, 6.0, 3.0, 0.0, -3.0, -6.0]);
+    for snr in snrs {
         print!("| {snr:+} |");
         for w in wpms {
             let base = CwSpec { wpm: w, snr_db: Some(snr), jitter: 0.05, ..Default::default() };
@@ -61,6 +86,9 @@ fn main() {
             print!(" {:.1} |", c.cer * 100.0);
         }
         println!();
+    }
+    if std::env::args().any(|a| a == "--grid") {
+        return;
     }
 
     println!("\nDifficult signals, 20 WPM, SNR +10 dB unless noted\n");
@@ -90,8 +118,35 @@ fn main() {
         let c = run_cell(&spec, trials, 777, pcfg);
         println!("| {name} | {:.1} |", c.cer * 100.0);
     }
+    if std::env::args().any(|a| a == "--difficult") {
+        return;
+    }
 
+    neighbours(trials, pcfg);
     fists_only(trials, pcfg);
+}
+
+/// Stations next door: what a steeper filter is for.
+fn neighbours(trials: usize, pcfg: impl Fn(&CwSpec) -> PipelineConfig + Copy) {
+    println!("\nStations next door, 20 WPM, SNR +10 dB unless noted\n");
+    println!("| Case | CER % |");
+    println!("|---|---|");
+    let base = CwSpec { wpm: 20.0, snr_db: Some(10.0), jitter: 0.05, ..Default::default() };
+    let n = |off: f64, db: f64, wpm: f64| Some(Interferer { offset_hz: off, rel_db: db, wpm });
+    let cases: Vec<(&str, CwSpec)> = vec![
+        ("40 Hz away, equal level", CwSpec { interferer: n(40.0, 0.0, 22.0), ..base.clone() }),
+        ("60 Hz away, +10 dB", CwSpec { interferer: n(60.0, 10.0, 26.0), ..base.clone() }),
+        ("80 Hz away, +20 dB", CwSpec { interferer: n(-80.0, 20.0, 18.0), ..base.clone() }),
+        ("100 Hz away, +20 dB", CwSpec { interferer: n(100.0, 20.0, 30.0), ..base.clone() }),
+        ("150 Hz away, +30 dB", CwSpec { interferer: n(-150.0, 30.0, 25.0), ..base.clone() }),
+        ("200 Hz away, +40 dB", CwSpec { interferer: n(200.0, 40.0, 28.0), ..base.clone() }),
+        ("100 Hz away, +20 dB, 30 WPM wanted at +6 dB", CwSpec { wpm: 30.0, snr_db: Some(6.0), interferer: n(100.0, 20.0, 22.0), ..base.clone() }),
+        ("70 Hz away, +15 dB, 12 WPM wanted", CwSpec { wpm: 12.0, interferer: n(70.0, 15.0, 20.0), ..base.clone() }),
+    ];
+    for (name, spec) in cases {
+        let c = run_cell(&spec, trials, 909, pcfg);
+        println!("| {name} | {:.1} |", c.cer * 100.0);
+    }
 }
 
 fn fists_only(trials: usize, pcfg: impl Fn(&CwSpec) -> PipelineConfig + Copy) {

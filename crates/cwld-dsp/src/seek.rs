@@ -226,6 +226,30 @@ impl ToneSeeker {
         self.best
     }
 
+    /// Every tone that stands out now, not only the strongest: the bins inside the range that
+    /// are higher than both neighbours and score at least `min_db`, strongest first.
+    pub fn peaks(&self, min_db: f64) -> Vec<Candidate> {
+        if self.updates < WARMUP_UPDATES {
+            return Vec::new();
+        }
+        let res = self.sample_rate / SIZE as f64;
+        let mut out: Vec<Candidate> = (self.first.max(1)..=self.last.min(self.peak.len().saturating_sub(2)))
+            .filter(|&k| self.score[k] >= self.score[k - 1] && self.score[k] > self.score[k + 1])
+            .filter_map(|k| {
+                let score_db = 10.0 * self.score[k].max(1e-20).log10();
+                if score_db < min_db {
+                    return None;
+                }
+                let (a, b, c) = (self.peak[k - 1].max(1e-30).ln(), self.peak[k].max(1e-30).ln(), self.peak[k + 1].max(1e-30).ln());
+                let d = a - 2.0 * b + c;
+                let off = if d.abs() > 1e-12 { (0.5 * (a - c) / d).clamp(-0.5, 0.5) } else { 0.0 };
+                Some(Candidate { hz: self.freqs[k] + off * res, score_db, steady: 0 })
+            })
+            .collect();
+        out.sort_by(|a, b| b.score_db.partial_cmp(&a.score_db).unwrap());
+        out
+    }
+
     /// Score in dB of the bin closest to `hz` (peak over median).
     pub fn score_at(&self, hz: f64) -> Option<f64> {
         if self.noise == 0.0 {

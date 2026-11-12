@@ -52,11 +52,19 @@ pub struct FrontendConfig {
     pub weak_plateau: f64,
     /// Step of that level follower per key-down frame (0.03 is about 150 ms of key-down).
     pub fade_rate: f64,
+    /// Shape of the low-pass filter: 0 is the soft filter (three one-pole sections, the
+    /// standard), an even number 2 to 8 a Butterworth filter of that order with the same
+    /// -3 dB point and a much steeper slope beyond it (see `STEEP_ORDER`).
+    pub steep_order: usize,
 }
+
+/// Order of the steep filter the app offers ("Steep" next to "Narrow" and "Wide"). Chosen on
+/// the test bench, see docs/meetresultaten_decoder.md (0.20.0).
+pub const STEEP_ORDER: usize = 6;
 
 impl FrontendConfig {
     pub fn new(sample_rate: u32, tone_hz: f64) -> Self {
-        FrontendConfig { sample_rate, tone_hz, bandwidth_hz: 40.0, afc: true, afc_range_hz: 60.0, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, weak_floor_sd: 4.0, weak_cost: 0.5, weak_depth: 4.0, weak_pitch_hz: 15.0, weak_plateau: 2.0, fade_rate: 0.05 }
+        FrontendConfig { sample_rate, tone_hz, bandwidth_hz: 40.0, afc: true, afc_range_hz: 60.0, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, weak_floor_sd: 4.0, weak_cost: 0.5, weak_depth: 4.0, weak_pitch_hz: 15.0, weak_plateau: 2.0, fade_rate: 0.05, steep_order: 0 }
     }
 }
 
@@ -83,10 +91,47 @@ pub struct Levels {
 struct Chain {
     phase: f64,
     lp: [[f64; 2]; 3],
+    /// State of the steep filter: per section the two integrator states of I and of Q.
+    svf: [[f64; 4]; 4],
+}
+
+/// Coefficients of one low-pass section of the steep filter (a state-variable filter in the
+/// trapezoidal form, which stays well behaved when its cutoff moves with the speed).
+#[derive(Clone, Copy, Debug, Default)]
+struct Svf {
+    a1: f64,
+    a2: f64,
+    a3: f64,
+}
+
+impl Svf {
+    fn new(fc: f64, q: f64, fs: f64) -> Self {
+        let g = (PI * fc / fs).tan();
+        let k = 1.0 / q;
+        let a1 = 1.0 / (1.0 + g * (g + k));
+        let a2 = g * a1;
+        Svf { a1, a2, a3: g * a2 }
+    }
+
+    /// One sample through the section; `st` holds (ic1, ic2).
+    #[inline]
+    fn run(&self, x: f64, st: &mut [f64]) -> f64 {
+        let v3 = x - st[1];
+        let v1 = self.a1 * st[0] + self.a2 * v3;
+        let v2 = st[1] + self.a2 * st[0] + self.a3 * v3;
+        st[0] = 2.0 * v1 - st[0];
+        st[1] = 2.0 * v2 - st[1];
+        v2
+    }
+}
+
+/// Section Q values of a Butterworth low-pass of even order `n`.
+fn butterworth_q(n: usize) -> Vec<f64> {
+    (0..n / 2).map(|k| 1.0 / (2.0 * ((2 * k + 1) as f64 * PI / (2 * n) as f64).sin())).collect()
 }
 
 impl Chain {
-    fn run(&mut self, x: f32, f: f64, fs: f64, alpha: f64) -> (f64, f64) {
+    fn run(&mut self, x: f32, f: f64, fs: f64, alpha: f64, steep: &[Svf]) -> (f64, f64) {
         self.phase += 2.0 * PI * f / fs;
         if self.phase > 2.0 * PI {
             self.phase -= 2.0 * PI;
@@ -94,6 +139,14 @@ impl Chain {
         let (s, c) = self.phase.sin_cos();
         let mut i = x as f64 * c;
         let mut q = -(x as f64) * s;
+        if !steep.is_empty() {
+            for (sec, st) in steep.iter().zip(self.svf.iter_mut()) {
+                let (a, b) = st.split_at_mut(2);
+                i = sec.run(i, a);
+                q = sec.run(q, b);
+            }
+            return (i, q);
+        }
         for sec in self.lp.iter_mut() {
             sec[0] += alpha * (i - sec[0]);
             sec[1] += alpha * (q - sec[1]);
@@ -101,6 +154,12 @@ impl Chain {
             q = sec[1];
         }
         (i, q)
+    }
+
+    /// Clears the filter state when the shape changes: the old state means nothing to the new shape.
+    fn switch_shape(&mut self) {
+        self.lp = [[0.0; 2]; 3];
+        self.svf = [[0.0; 4]; 4];
     }
 }
 
@@ -137,6 +196,8 @@ pub struct Frontend {
     /// The last frames, held back half a unit (see `frame`): envelope, evidence without and with weak marks.
     tail: std::collections::VecDeque<(f32, f32, f32)>,
     afc_frames: usize,
+    /// Sections of the steep filter, empty for the soft filter.
+    steep: Vec<Svf>,
 }
 
 impl Frontend {
@@ -170,6 +231,7 @@ impl Frontend {
             weak_on: true,
             tail: std::collections::VecDeque::new(),
             afc_frames: 0,
+            steep: Vec::new(),
         };
         f.set_bandwidth(f.cfg.bandwidth_hz);
         f
@@ -181,6 +243,29 @@ impl Frontend {
         // cutoff of one section, so scale it up.
         let fc = self.cfg.bandwidth_hz * 1.9;
         self.alpha = 1.0 - (-2.0 * PI * fc / self.cfg.sample_rate as f64).exp();
+        // The steep filter: -3 dB at the bandwidth, like the soft one (whose three sections
+        // together are 3 dB down at 0.97 times the bandwidth).
+        let order = self.cfg.steep_order.min(8) & !1;
+        let fs = self.cfg.sample_rate as f64;
+        self.steep = butterworth_q(order).into_iter().map(|q| Svf::new(self.cfg.bandwidth_hz, q, fs)).collect();
+    }
+
+    /// Switches between the soft filter (0) and a steep one of this even order (2 to 8).
+    pub fn set_steep(&mut self, order: usize) {
+        let order = order.min(8) & !1;
+        if order == self.cfg.steep_order {
+            return;
+        }
+        self.cfg.steep_order = order;
+        self.main.switch_shape();
+        for r in self.refs.iter_mut() {
+            r.switch_shape();
+        }
+        self.set_bandwidth(self.cfg.bandwidth_hz);
+    }
+
+    pub fn steep_order(&self) -> usize {
+        self.cfg.steep_order
     }
 
     /// AFC on or off.
@@ -270,9 +355,9 @@ impl Frontend {
                 self.amp2 = 0.0;
                 self.notch_changed = true;
             }
-            let (i, q) = self.main.run(x, self.f_now, fs, self.alpha);
-            let (ia, qa) = self.refs[0].run(x, self.f_now - ref_off, fs, self.alpha);
-            let (ib, qb) = self.refs[1].run(x, self.f_now + ref_off, fs, self.alpha);
+            let (i, q) = self.main.run(x, self.f_now, fs, self.alpha, &self.steep);
+            let (ia, qa) = self.refs[0].run(x, self.f_now - ref_off, fs, self.alpha, &self.steep);
+            let (ib, qb) = self.refs[1].run(x, self.f_now + ref_off, fs, self.alpha, &self.steep);
             self.sample_count += 1;
             if self.sample_count as f64 >= self.next_frame_at {
                 self.next_frame_at += step;
@@ -587,6 +672,39 @@ mod tests {
         let mut f = Frontend::new(FrontendConfig::new(g.sample_rate, tone));
         let frames = f.push(&g.samples);
         (frames, f)
+    }
+
+    /// Envelope level of a steady tone `off_hz` away from the tuned pitch, after the filter settled.
+    fn response(off_hz: f64, steep: usize) -> f64 {
+        let mut cfg = FrontendConfig::new(8000, 700.0);
+        cfg.afc = false;
+        cfg.noise_blanker = false;
+        cfg.auto_notch = false;
+        cfg.steep_order = steep;
+        cfg.bandwidth_hz = 20.0;
+        let mut f = Frontend::new(cfg);
+        let x: Vec<f32> = (0..16000).map(|i| (2.0 * PI * (700.0 + off_hz) * i as f64 / 8000.0).sin() as f32).collect();
+        let fr = f.push(&x);
+        let tail = &fr[fr.len() - 100..];
+        tail.iter().map(|f| f.env as f64).sum::<f64>() / tail.len() as f64
+    }
+
+    #[test]
+    fn steep_filter_has_the_same_passband_and_much_less_beside_it() {
+        for order in [0, STEEP_ORDER] {
+            let pass = response(0.0, order);
+            let edge = 20.0 * (response(20.0, order) / pass).log10();
+            assert!((-4.5..=-2.0).contains(&edge), "order {order}: {edge:.1} dB at the bandwidth");
+        }
+        let db = |off: f64, o: usize| 20.0 * (response(off, o) / response(0.0, o)).log10();
+        if std::env::var("CWLD_SHOW").is_ok() {
+            for o in [0, 4, 6, 8] {
+                println!("order {o}: {}", [20.0, 40.0, 60.0, 80.0, 120.0, 200.0].map(|f| format!("{f} Hz {:.1} dB", db(f, o))).join(", "));
+            }
+        }
+        // 60 and 120 Hz away: a neighbour station.
+        assert!(db(60.0, STEEP_ORDER) < db(60.0, 0) - 10.0, "{} vs {}", db(60.0, STEEP_ORDER), db(60.0, 0));
+        assert!(db(120.0, STEEP_ORDER) < -55.0, "{}", db(120.0, STEEP_ORDER));
     }
 
     #[test]

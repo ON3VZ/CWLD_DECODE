@@ -23,6 +23,7 @@
   import ListenTrainer from './components/ListenTrainer.svelte';
   import LogEdit from './components/LogEdit.svelte';
   import ExportDialog from './components/ExportDialog.svelte';
+  import LogBook from './components/LogBook.svelte';
   import Wizard from './components/Wizard.svelte';
 
   onMount(() => {
@@ -39,6 +40,7 @@
       else if (app.contestAsk) app.contestAsk = false;
       else if (app.editing) app.editing = null;
       else if (app.exportOpen) app.exportOpen = false;
+      else if (app.bookOpen) app.bookOpen = false;
       else if (app.qOpen) app.qOpen = false;
       else app.stop();
       return;
@@ -132,6 +134,7 @@
   {#if app.settingsOpen}<SettingsDialog />{/if}
   {#if app.wizardOpen}<Wizard />{/if}
   {#if app.qOpen}<QCodePanel />{/if}
+  {#if app.bookOpen}<LogBook />{/if}
   {#if app.exportOpen}<ExportDialog />{/if}
   {#if app.editing}<LogEdit />{/if}
   {#if app.closeAllAsk}

@@ -69,7 +69,17 @@ pub struct AudioControls {
     pub break_in: Option<u8>,
     /// Squelch 0 (open) to 255 (closed).
     pub squelch: Option<u16>,
+    /// Manual notch (MN) and automatic notch (AN) on the radio. A notch on the CW pitch cuts
+    /// the wanted station out of the audio.
+    pub notch: Option<bool>,
+    pub auto_notch: Option<bool>,
+    /// Twin PBT, inner and outer knob, 0 to 255; 128 is the middle (filter not shifted).
+    pub pbt_inner: Option<u16>,
+    pub pbt_outer: Option<u16>,
 }
+
+/// The value of a Twin PBT knob in the middle.
+pub const PBT_CENTER: u16 = 128;
 
 impl Rig for Box<dyn Rig> {
     fn info(&self) -> RigInfo {

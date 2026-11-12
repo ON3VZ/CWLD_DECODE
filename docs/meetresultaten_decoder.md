@@ -423,3 +423,69 @@ Besluit: niet inschakelen. Er is geen winst, en de verschillen per cel vallen bi
 
 Wat wel kans maakt, later: een netwerk dat rechtstreeks tekens leest (met CTC) in plaats van de sleutelstand per frame, of afstellen op echte opnames waarvan de juiste tekst bekend is. Het eerste is veel groter en past niet bij "trainen in een minuut"; het tweede vraagt opnames met tekst. De code en het trainingsgereedschap blijven in de repository, uitgeschakeld (`PipelineConfig::neural`, in de testbank met `CWLD_NN=-0.2`).
 
+
+## Steil filter, terugspoelen en gespelde letters (0.20.0)
+
+Gemeten met `cwld_bench` (12 berichten per cel), `spellbench` en de tests van `cwld-audio`. Alles synthetisch: er zitten geen echte opnames in deze ronde.
+
+### Steil filter
+
+Het steile filter is een Butterworth-laagdoorlaat (secties in trapeziumvorm, die rustig blijven als de grenzen met de snelheid meeschuiven) met hetzelfde -3 dB-punt als Smal. Demping bij 20 Hz bandbreedte (20 WPM):
+
+| Afstand | Smal | Orde 4 | Orde 6 | Orde 8 |
+|---|---|---|---|---|
+| 40 Hz | -9,7 dB | -24,1 dB | -36,1 dB | -48,2 dB |
+| 60 Hz | -16,3 dB | -38,2 dB | -57,3 dB | -76,4 dB |
+| 120 Hz | -31,2 dB | -62,3 dB | -93,4 dB | -124,6 dB |
+
+Station ernaast (nieuw deel van de testbank, gewenst signaal 20 WPM op +10 dB, tekenfouten in procent):
+
+| Geval | Smal | Breed | Steil 4 | Steil 6 |
+|---|---|---|---|---|
+| 40 Hz, even sterk | 14,1 | 72,9 | 44,7 | 37,8 |
+| 60 Hz, +10 dB | 101,0 | 103,4 | 80,1 | 3,4 |
+| 80 Hz, +20 dB | 82,5 | 83,8 | 82,8 | 49,1 |
+| 100 Hz, +20 dB | 124,4 | 124,1 | 27,1 | 15,8 |
+| 150 Hz, +30 dB | 86,9 | 102,7 | 43,3 | 38,8 |
+| 200 Hz, +40 dB | 80,1 | 114,1 | 14,8 | 11,0 |
+| 100 Hz, +20 dB, gewenst 30 WPM op +6 dB | 82,1 | 82,5 | 29,9 | 29,6 |
+| 70 Hz, +15 dB, gewenst 12 WPM | 128,9 | 129,2 | 102,4 | 4,1 |
+
+Gekozen: orde 6. Orde 8 gaf in een snelle meting (4 berichten) ongeveer hetzelfde als orde 6.
+
+Standaardrooster met orde 6 (12, 20, 28, 36 WPM), tegenover Smal:
+
+| SNR | Smal | Steil 6 |
+|---|---|---|
+| +3 dB | 0,0 / 0,0 / 0,6 / 1,4 | 0,0 / 0,0 / 0,3 / 0,4 |
+| 0 dB | 0,4 / 1,0 / 6,8 / 9,2 | 1,1 / 0,3 / 8,0 / 13,0 |
+| -3 dB | 12,5 / 36,3 / 57,4 / 74,6 | 11,0 / 30,0 / 57,4 / 65,5 |
+| -6 dB | 69,9 / 86,1 / 92,3 / 94,7 | 111,8 / 87,5 / 93,5 / 93,7 |
+
+Van +30 tot +6 dB is alles 0,0 bij beide. Bij -6 dB en 12 WPM verzint het steile filter tekst uit ruis (111,8 procent, dus meer tekens dan er waren). Oorzaak: achter een steil filter duurt een ruispiekje iets langer (gemeten met `gatesteep`: ongeveer 1,1 keer), waardoor de ruisdeur het minder vaak als ruis herkent. De deur rekent bij Steil daarom met een 1,1 keer langere piek; dat bracht de cel van 125 naar 112 procent, maar lost het niet op. Daarom blijft Smal de standaard en is Steil een keuze voor drukke banden.
+
+Moeilijke signalen, Smal tegen Steil 6: grotendeels gelijk. Beter: tweede station 60 Hz (0,7 naar 0,0), draaggolf 120 Hz +25 dB (4,7 naar 0,0), draaggolf 50 Hz die met het signaal start (16,6 naar 8,1). Slechter: draaggolf 50 Hz die er al was (4,7 naar 8,1), klikken 40 per seconde (1,0 naar 3,7), klikken 15 per seconde (0,0 naar 1,4), handseinen 15 procent (1,7 naar 2,4). Slordige seiners: binnen de spreiding gelijk (bijvoorbeeld ongelijke pauzes 16,5 naar 15,6, straight key 23,9 naar 21,8).
+
+Twee bevindingen voor later:
+
+- Bij een heel sterk station 150 tot 200 Hz verder slaat de spraakdetectie aan. Met de spraakdetectie uit (`CWLD_NOVOICE`) gaan die gevallen met Steil 6 van 38,8 naar 16,8 en van 11,0 naar 7,2 procent.
+- Bij 40 Hz en even sterk sluit de ruisdeur te vaak: met de deur uit (`CWLD_NOGATE`) 7,6 procent in plaats van 37,8.
+
+### Gespelde letters samenvoegen
+
+Standaardrooster met en zonder samenvoegen: gelijk (alleen -3 dB 36 WPM 75,0 tegen 74,6 en -6 dB 12 WPM 68,8 tegen 69,9, binnen de spreiding).
+
+`spellbench`: tien zinnen met een gespeld woord (naam, QTH, roepletter, 5NN) en tien zinnen met losse letters die zo moeten blijven (R R, E E, K), 3 keer elk:
+
+| Signaal | Gespeld: woorden juist, uit | aan | Losse letters, CER uit | aan |
+|---|---|---|---|---|
+| pauze 7, +15 dB, 20 WPM | 11/33 | 15/33 | 4,8 | 4,8 |
+| pauze 10, +15 dB, 20 WPM | 17/33 | 22/33 | 4,8 | 4,8 |
+| pauze 7, +6 dB, 25 WPM | 10/33 | 14/33 | 4,8 | 4,8 |
+| pauze 12, +10 dB, 16 WPM | 21/33 | 29/33 | 4,8 | 4,8 |
+
+Losse letters gaan er niet op achteruit. Wat overblijft: als de pauzes in het gespelde woord even lang zijn als de woordpauzes van de zender, plakt de spatiëring (`spacing`) soms ook de woorden ernaast eraan (`ISHANSHANS`). Op tijd alleen is dat niet te scheiden; het vraagt woordkennis en is niet in deze stap opgelost.
+
+### Terugspoelen
+
+Het stuk wordt twee keer gelezen: de eerste keer alleen om niveaus en toon te vinden. Gemeten op 40 korte berichten die meteen beginnen (+3 en 0 dB, 22 WPM): 0,4 procent tekenfouten met twee doorgangen, 1,4 procent met één. Tests: hetzelfde stuk opnieuw lezen vanaf het eerste teken, een tweede station op een andere toon lezen, beide tonen in de lijst (sterkste eerst), alleen de laatste seconden, ruis geeft geen tekst en geen tonen, WAV terug inlezen. Een stuk van 30 seconden opnieuw decoderen duurt ongeveer een seconde.

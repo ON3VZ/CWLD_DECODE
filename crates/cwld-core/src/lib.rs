@@ -15,7 +15,7 @@ pub use log::{ActivationStats, DupeInfo, ExportResult};
 pub use cwld_log::{Activation, CheckIssue, Severity};
 
 pub use audio::{mode_holds_decoder, AudioStatus, DecodeHold, DecodeSource};
-pub use cwld_audio::{InputDevice, Source as AudioSource, TentativeOut};
+pub use cwld_audio::{HeardTone, InputDevice, ReplayResult, Source as AudioSource, TentativeOut};
 
 use cwld_radio::{
     list_ports, GuardedRig, IcomRig, NullRig, PortInfo, QmxRig, Rig, RigError, SerialTransport, SimRig, SystemClock,
@@ -455,6 +455,21 @@ impl AppCore {
         Ok(())
     }
 
+    /// Switches the manual and the automatic notch of the radio off. Only on the operator's
+    /// click: a notch set on purpose against a carrier must not disappear by itself.
+    pub fn notch_off(&self) -> Result<(), CoreError> {
+        let mut rig = self.rig.lock().unwrap();
+        rig.execute(&RadioCommand::SetNotch(false))?;
+        rig.execute(&RadioCommand::SetAutoNotch(false))?;
+        Ok(())
+    }
+
+    /// Puts both Twin PBT knobs of the radio back in the middle.
+    pub fn pbt_center(&self) -> Result<(), CoreError> {
+        self.rig.lock().unwrap().execute(&RadioCommand::CenterPbt)?;
+        Ok(())
+    }
+
     /// Called about every 500 ms by the shell.
     pub fn tick(&self) -> Vec<CoreEvent> {
         let events = self.rig.lock().unwrap().poll();
@@ -801,7 +816,26 @@ mod tests {
 
 #[cfg(test)]
 mod radio_tests {
+    /// The notch and PBT state the simulator starts with (practice mode leaves them alone).
+    fn sim_filters() -> cwld_radio::AudioControls {
+        cwld_radio::AudioControls { notch: Some(false), auto_notch: Some(false), pbt_inner: Some(cwld_radio::PBT_CENTER), pbt_outer: Some(cwld_radio::PBT_CENTER), ..Default::default() }
+    }
     use super::*;
+
+    #[test]
+    fn notch_and_pbt_can_be_reset_while_only_listening() {
+        let c = AppCore::new(None);
+        {
+            let mut rig = c.rig.lock().unwrap();
+            rig.execute(&RadioCommand::SetNotch(true)).unwrap();
+            rig.execute(&RadioCommand::SetAutoNotch(true)).unwrap();
+        }
+        assert_eq!(c.policy(), TxPolicy::ListenOnly);
+        c.notch_off().unwrap();
+        c.pbt_center().unwrap();
+        let a = c.rig.lock().unwrap().audio_controls();
+        assert_eq!((a.notch, a.auto_notch, a.pbt_inner, a.pbt_outer), (Some(false), Some(false), Some(cwld_radio::PBT_CENTER), Some(cwld_radio::PBT_CENTER)));
+    }
 
     #[test]
     fn a_real_radio_setting_starts_disconnected_not_simulated() {
@@ -875,10 +909,10 @@ mod radio_tests {
         let c = AppCore::new(None);
         c.connect(&RadioSettings::default()).unwrap();
         let before = c.rig.lock().unwrap().audio_controls();
-        assert_eq!(before, cwld_radio::AudioControls { af_level: Some(128), break_in: Some(1), squelch: Some(0) });
+        assert_eq!(before, cwld_radio::AudioControls { af_level: Some(128), break_in: Some(1), squelch: Some(0), ..sim_filters() });
         c.set_policy(TxPolicy::Practice, false).unwrap();
         // Squelch closed and break-in off; the volume stays, so the sidetone stays on the USB audio.
-        assert_eq!(c.rig.lock().unwrap().audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(0), squelch: Some(SQUELCH_CLOSED) });
+        assert_eq!(c.rig.lock().unwrap().audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(0), squelch: Some(SQUELCH_CLOSED), ..sim_filters() });
         assert!(c.radio_is_quieted());
         // The operator opens the squelch by hand: practice mode leaves it alone.
         c.rig.lock().unwrap().execute(&RadioCommand::SetSquelch(60)).unwrap();
@@ -898,7 +932,7 @@ mod radio_tests {
         c.update_settings(s).unwrap();
         c.set_policy(TxPolicy::Practice, false).unwrap();
         c.tick();
-        assert_eq!(c.rig.lock().unwrap().audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(1), squelch: Some(0) });
+        assert_eq!(c.rig.lock().unwrap().audio_controls(), cwld_radio::AudioControls { af_level: Some(128), break_in: Some(1), squelch: Some(0), ..sim_filters() });
     }
 
     #[test]
@@ -909,7 +943,7 @@ mod radio_tests {
         assert_eq!(reports(c.tick()).len(), 1);
         assert!(reports(c.tick()).is_empty());
         c.set_policy(TxPolicy::Practice, false).unwrap();
-        assert_eq!(reports(c.tick()), vec![cwld_radio::AudioControls { af_level: Some(128), break_in: Some(0), squelch: Some(SQUELCH_CLOSED) }]);
+        assert_eq!(reports(c.tick()), vec![cwld_radio::AudioControls { af_level: Some(128), break_in: Some(0), squelch: Some(SQUELCH_CLOSED), ..sim_filters() }]);
     }
 
     #[test]

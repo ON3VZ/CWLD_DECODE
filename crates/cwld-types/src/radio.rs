@@ -85,6 +85,12 @@ pub enum RadioCommand {
     /// Squelch level 0 to 255 (Icom SQL). Fully closed silences the band in the headphones while
     /// the sidetone and the USB audio stay. Receive only.
     SetSquelch(u16),
+    /// Manual notch (MN) on or off. Receive only.
+    SetNotch(bool),
+    /// Automatic notch (AN) on or off. Receive only.
+    SetAutoNotch(bool),
+    /// Both Twin PBT knobs back to the middle, so the filter is not shifted. Receive only.
+    CenterPbt,
 }
 
 /// Safety class of a command. Outside `TxPolicy::Live` only the first three are allowed.
@@ -118,6 +124,9 @@ impl RadioCommand {
             RadioCommand::SetAfLevel(_) => CommandClass::Config,
             RadioCommand::SetBreakIn(_) => CommandClass::Config,
             RadioCommand::SetSquelch(_) => CommandClass::Config,
+            RadioCommand::SetNotch(_) => CommandClass::Config,
+            RadioCommand::SetAutoNotch(_) => CommandClass::Config,
+            RadioCommand::CenterPbt => CommandClass::Config,
         }
     }
 
@@ -137,6 +146,9 @@ impl RadioCommand {
             RadioCommand::SetAfLevel(0),
             RadioCommand::SetBreakIn(0),
             RadioCommand::SetSquelch(255),
+            RadioCommand::SetNotch(false),
+            RadioCommand::SetAutoNotch(false),
+            RadioCommand::CenterPbt,
         ]
     }
 
@@ -155,6 +167,9 @@ impl RadioCommand {
             RadioCommand::SetAfLevel(_) => "set_af_level",
             RadioCommand::SetBreakIn(_) => "set_break_in",
             RadioCommand::SetSquelch(_) => "set_squelch",
+            RadioCommand::SetNotch(_) => "set_notch",
+            RadioCommand::SetAutoNotch(_) => "set_auto_notch",
+            RadioCommand::CenterPbt => "center_pbt",
         }
     }
 }
@@ -180,6 +195,9 @@ mod tests {
             ("set_af_level", Config),
             ("set_break_in", Config),
             ("set_squelch", Config),
+            ("set_notch", Config),
+            ("set_auto_notch", Config),
+            ("center_pbt", Config),
         ];
         let examples = RadioCommand::examples();
         assert_eq!(examples.len(), expected.len());

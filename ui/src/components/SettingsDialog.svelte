@@ -20,7 +20,7 @@
   /** A slider or switch of the decoder acts at once, and the draft keeps the same values. */
   function tune() {
     const a = draft.audio;
-    app.setTuning({ gain_db: a.gain_db, wide_filter: a.wide_filter, min_wpm: a.min_wpm, max_wpm: a.max_wpm, lock_wpm: a.lock_wpm });
+    app.setTuning({ gain_db: a.gain_db, wide_filter: a.wide_filter, steep_filter: a.steep_filter, join_spelled: a.join_spelled, min_wpm: a.min_wpm, max_wpm: a.max_wpm, lock_wpm: a.lock_wpm });
   }
   function preset(name: 'weak' | 'medium' | 'strong') {
     draft.audio.squelch = PRESETS[name];
@@ -319,11 +319,15 @@
           <div class="group">
             <strong>{t('decoder.filter')}</strong>
             <div class="seg" role="group" aria-label={t('decoder.filter')}>
-              <button type="button" class:on={!draft.audio.wide_filter} aria-pressed={!draft.audio.wide_filter} onclick={() => { draft.audio.wide_filter = false; tune(); }}>{t('decoder.filter.narrow')}</button>
-              <button type="button" class:on={draft.audio.wide_filter} aria-pressed={draft.audio.wide_filter} onclick={() => { draft.audio.wide_filter = true; tune(); }}>{t('decoder.filter.wide')}</button>
+              <button type="button" class:on={!draft.audio.wide_filter && !draft.audio.steep_filter} aria-pressed={!draft.audio.wide_filter && !draft.audio.steep_filter} onclick={() => { draft.audio.wide_filter = false; draft.audio.steep_filter = false; tune(); }}>{t('decoder.filter.narrow')}</button>
+              <button type="button" class:on={!draft.audio.wide_filter && draft.audio.steep_filter} aria-pressed={!draft.audio.wide_filter && draft.audio.steep_filter} onclick={() => { draft.audio.wide_filter = false; draft.audio.steep_filter = true; tune(); }}>{t('decoder.filter.steep')}</button>
+              <button type="button" class:on={draft.audio.wide_filter} aria-pressed={draft.audio.wide_filter} onclick={() => { draft.audio.wide_filter = true; draft.audio.steep_filter = false; tune(); }}>{t('decoder.filter.wide')}</button>
             </div>
-            <small class="muted">{t('decoder.filter.help')}</small>
+            <small class="muted">{t('decoder.filter.help')} {t('decoder.filter.steep.help')}</small>
           </div>
+          <label class="check"><input type="checkbox" bind:checked={draft.audio.join_spelled} onchange={() => tune()} /> {t('decoder.join')}
+            <small class="muted">{t('decoder.join.help')}</small>
+          </label>
           <label class="check"><input type="checkbox" bind:checked={draft.audio.afc} onchange={() => app.setAfc(draft.audio.afc)} /> {t('decoder.afc')}
             <small class="muted">{t('decoder.afc.help')}</small>
           </label>
@@ -404,6 +408,10 @@
           <label>{t('tabs.autoclose')}
             <input class="mono short" type="number" min="0" max="240" step="5" bind:value={draft.tabs_auto_close_minutes} />
             <small class="muted">{t('tabs.autoclose.help')}</small>
+          </label>
+          <label>{t('tabs.max')}
+            <input class="mono short" type="number" min="0" max="40" step="1" bind:value={draft.tabs_max} />
+            <small class="muted">{t('tabs.max.help')}</small>
           </label>
         {/if}
 

@@ -10,6 +10,7 @@
 pub mod bench;
 pub mod decoder;
 pub mod gate;
+pub mod join;
 pub mod lang;
 pub mod neural;
 #[rustfmt::skip]

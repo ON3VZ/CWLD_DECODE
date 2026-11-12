@@ -1,4 +1,4 @@
-import type { Activation, ActivationStats, Api, AudioStatus, CheckIssue, ClusterProbe, ClusterSpot, ClusterStatus, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, CoreFailure, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, SwrAlert, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TentativeChar, Tuning, TxPolicy } from './types';
+import type { Activation, ActivationStats, Api, AudioStatus, ReplayResult, CheckIssue, ClusterProbe, ClusterSpot, ClusterStatus, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, CoreFailure, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, SwrAlert, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TentativeChar, Tuning, TxPolicy } from './types';
 import { durationSeconds, playSidetone } from './morse';
 import { adifText, bandOf } from './adif';
 import { DEFAULT_CLUSTER_NODES } from './cluster';
@@ -33,7 +33,7 @@ export function defaultSettings(): Settings {
     theme: 'dark',
     station: { calls: [], name: '', qth: '', locator: '' },
     swr: { enabled: true, limit: 1.5, qrx_after_stop: true },
-    audio: { input: '', tone_hz: 700, auto_start: true, record_dir: '', squelch: 3.5, auto_tone: true, gain_db: 0, wide_filter: false, fading: true, min_wpm: 5, max_wpm: 50, lock_wpm: 0, afc: true },
+    audio: { input: '', tone_hz: 700, auto_start: true, record_dir: '', squelch: 3.5, auto_tone: true, gain_db: 0, wide_filter: false, steep_filter: false, join_spelled: true, fading: true, min_wpm: 5, max_wpm: 50, lock_wpm: 0, afc: true },
     radio: { kind: 'simulator', port: '', civ_address: 0xb6, baud: 115200, pipeline: false, auto_connect: true },
     last_policy: 'listen_only',
     first_run_done: false,
@@ -43,6 +43,7 @@ export function defaultSettings(): Settings {
     audio_waterfall: true,
     default_rst: '5NN',
     tabs_auto_close_minutes: 15,
+    tabs_max: 5,
     contest_mode: false,
     contest_nr: 1,
     user_words: [],
@@ -128,6 +129,8 @@ export class MockApi implements Api {
   }
   async logList(f: LogFilter): Promise<LogQso[]> {
     let r = this.qsos.filter((q) => (f.include_deleted || !q.deleted) && (f.from_ts == null || q.ts >= f.from_ts) && (f.to_ts == null || q.ts <= f.to_ts) && (!f.band || q.band === f.band) && (!f.contest || q.contest === f.contest) && (f.session == null || q.session === f.session) && (f.test == null || q.test === f.test) && (f.activation == null || q.activation_id === f.activation) && (!f.not_exported || !q.exported_to.includes('adif')));
+    const needle = (f.search ?? '').trim().toUpperCase();
+    if (needle) r = r.filter((q) => [q.call, q.name, q.qth, q.comment, q.their_ref].some((v) => v.toUpperCase().includes(needle)));
     r = r.sort((a, b) => b.ts - a.ts || b.id - a.id);
     return (f.limit ? r.slice(0, f.limit) : r).map((q) => ({ ...q }));
   }
@@ -155,6 +158,7 @@ export class MockApi implements Api {
   }
   async logExport(f: LogFilter, contestId: string): Promise<ExportResult> {
     const list = await this.logList({ ...f, limit: 0 });
+    if (!list.length) fail('export_empty');
     if ((await this.logCheck(f)).some((i) => i.severity === 'error')) fail('export_check_failed');
     if (f.test !== true) for (const q of this.qsos) if (list.some((x) => x.id === q.id) && !q.test && !q.exported_to.includes('adif')) q.exported_to = q.exported_to ? `${q.exported_to} adif` : 'adif';
     return { path: '(browser)', count: list.length, text: adifText(list, contestId) };
@@ -272,6 +276,28 @@ export class MockApi implements Api {
     return this.settings.cluster.nodes.map((n, i) => ({ node: n.name, host: n.host, port: n.port, ok: i !== 2, millis: 40 + i * 25, software: i % 2 ? 'DX Spider' : 'CC Cluster', error: i === 2 ? 'connection refused' : '' }));
   }
 
+  /** The notch and PBT of the demo radio. Tests can set them to try the warning. */
+  filters = { notch: false, auto_notch: false, pbt_inner: 128, pbt_outer: 128 };
+  private pushControls() {
+    this.pending.push({ type: 'radio_controls', controls: { af_level: 128, break_in: 1, squelch: 0, ...this.filters } });
+  }
+  async notchOff(): Promise<void> {
+    this.filters = { ...this.filters, notch: false, auto_notch: false };
+    this.pushControls();
+  }
+  async pbtCenter(): Promise<void> {
+    this.filters = { ...this.filters, pbt_inner: 128, pbt_outer: 128 };
+    this.pushControls();
+  }
+
+  async exportTextFile(_name: string, text: string): Promise<string> {
+    if (!text.trim()) fail('export_empty');
+    return '(browser)';
+  }
+  async openExportFolder(): Promise<string> {
+    return '(browser)';
+  }
+
   async activationStats(id: number): Promise<ActivationStats> {
     const q = this.qsos.filter((x) => !x.deleted && !x.test && x.activation_id === id);
     const unique = new Set(q.map((x) => `${x.call}|${x.band}|${x.mode}`)).size;
@@ -338,6 +364,8 @@ export class MockApi implements Api {
       ...this.settings.audio,
       gain_db: Math.min(20, Math.max(-20, t.gain_db)),
       wide_filter: t.wide_filter,
+      steep_filter: t.steep_filter && !t.wide_filter,
+      join_spelled: t.join_spelled,
       min_wpm: t.min_wpm,
       max_wpm: t.max_wpm,
       lock_wpm: t.lock_wpm,
@@ -378,6 +406,22 @@ export class MockApi implements Api {
 
   async setAutoTone(on: boolean) {
     this.settings.audio.auto_tone = on;
+  }
+
+  /** Demo: two stations in the last minute, one per pitch. */
+  async replay(seconds: number, toneHz: number | null, strongest: boolean): Promise<ReplayResult> {
+    if (!this.audio.running) fail('audio');
+    const s = Math.min(60, Math.max(5, seconds));
+    const tones = [{ hz: 702, score_db: 24 }, { hz: 845, score_db: 15 }];
+    const hz = strongest ? 702 : toneHz ?? this.settings.audio.tone_hz;
+    const text = Math.abs(hz - 845) < 30 ? 'QRZ DE DL4SAV DL4SAV K' : Math.abs(hz - 702) < 30 ? 'CQ CQ DE ON4ABC ON4ABC K' : '';
+    return { text, conf: [...text].map(() => 0.9), tone_hz: hz, seconds: s, wpm: text ? 22 : 0, tones };
+  }
+
+  async saveRewind(): Promise<string> {
+    if (!this.audio.running) fail('audio');
+    const khz = (this.status.frequency_hz / 1000).toFixed(1);
+    return `Documents/CWLD/cwld-demo-${khz}kHz-last60s.wav`;
   }
 
   async startRecording(): Promise<string> {

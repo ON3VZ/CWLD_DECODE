@@ -5,7 +5,7 @@
 
 use crate::{AppCore, CoreError, CoreEvent};
 use cwld_radio::Rig;
-use cwld_audio::{list_inputs, Engine, EngineConfig, EngineEvent, InputDevice, Source, Tuning};
+use cwld_audio::{list_inputs, Engine, EngineConfig, EngineEvent, InputDevice, ReplayResult, ReplayTone, Source, Tuning};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -195,11 +195,14 @@ impl AppCore {
     }
 
     /// Changes the gain, filter width and speed range of the running decoder, and remembers them.
-    pub fn set_tuning(&self, gain_db: f32, wide_filter: bool, min_wpm: u8, max_wpm: u8, lock_wpm: u8) -> Result<(), CoreError> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_tuning(&self, gain_db: f32, wide_filter: bool, steep_filter: bool, join_spelled: bool, min_wpm: u8, max_wpm: u8, lock_wpm: u8) -> Result<(), CoreError> {
         let audio = {
             let mut s = self.settings.lock().unwrap();
             s.audio.gain_db = gain_db;
             s.audio.wide_filter = wide_filter;
+            s.audio.steep_filter = steep_filter && !wide_filter;
+            s.audio.join_spelled = join_spelled;
             s.audio.min_wpm = min_wpm;
             s.audio.max_wpm = max_wpm;
             s.audio.lock_wpm = lock_wpm;
@@ -255,6 +258,40 @@ impl AppCore {
             }
             None => Err(CoreError::Audio("audio is not running".into())),
         }
+    }
+
+    /// Decodes the last `seconds` again (5 to 60) with a separate decoder: at the pitch of the
+    /// live decoder, at `tone_hz`, or at the strongest keyed tone of that stretch. The live
+    /// decoder goes on undisturbed. Slow (about a second): call it off the interface thread.
+    pub fn replay(&self, seconds: f64, tone_hz: Option<f64>, strongest: bool) -> Result<ReplayResult, CoreError> {
+        let rw = self.take_rewind()?;
+        let tone = match (tone_hz, strongest) {
+            (_, true) => ReplayTone::Strongest,
+            (Some(hz), false) => ReplayTone::Fixed(hz.clamp(200.0, 1500.0)),
+            (None, false) => ReplayTone::Current,
+        };
+        let seconds = if seconds.is_finite() { seconds } else { 20.0 };
+        Ok(cwld_audio::replay::replay(&rw, seconds, tone))
+    }
+
+    /// Saves the last minute of audio (as the decoder heard it, 8 kHz) as a WAV file in the
+    /// recordings folder. Returns the path.
+    pub fn save_rewind(&self) -> Result<String, CoreError> {
+        let rw = self.take_rewind()?;
+        if rw.samples.is_empty() {
+            return Err(CoreError::Audio("nothing heard yet".into()));
+        }
+        let khz = self.rig.lock().unwrap().status().frequency_hz as f64 / 1000.0;
+        let name = format!("cwld-{}-{:.1}kHz-last{}s.wav", timestamp(SystemTime::now()), khz, (rw.samples.len() as f64 / cwld_audio::engine::DECODE_RATE as f64).round() as u32);
+        let path = self.recordings_dir().join(name);
+        cwld_audio::replay::save_wav(&rw, &path).map_err(|e| CoreError::Audio(format!("{}: {e}", path.display())))?;
+        Ok(path.display().to_string())
+    }
+
+    fn take_rewind(&self) -> Result<cwld_audio::Rewind, CoreError> {
+        let st = self.audio.lock().unwrap();
+        let e = st.engine.as_ref().ok_or_else(|| CoreError::Audio("audio is not running".into()))?;
+        e.rewind().ok_or_else(|| CoreError::Audio("the audio thread did not answer".into()))
     }
 
     pub fn stop_recording(&self) {
@@ -471,7 +508,7 @@ impl AppCore {
 /// The decoder tuning from the settings, kept inside its ranges.
 pub(crate) fn tuning_of(a: &cwld_types::AudioSettings) -> Tuning {
     let (lo, hi) = a.safe_wpm_range();
-    Tuning { gain_db: a.safe_gain_db(), wide: a.wide_filter, wpm_min: lo as f32, wpm_max: hi as f32, fixed_wpm: a.safe_lock_wpm().map(|w| w as f32) }
+    Tuning { gain_db: a.safe_gain_db(), wide: a.wide_filter, steep: a.steep_filter && !a.wide_filter, join: a.join_spelled, wpm_min: lo as f32, wpm_max: hi as f32, fixed_wpm: a.safe_lock_wpm().map(|w| w as f32) }
 }
 
 pub fn timestamp(t: SystemTime) -> String {
@@ -669,6 +706,23 @@ mod tests {
     }
 
     #[test]
+    fn replay_reads_the_last_seconds_again_and_saves_them() {
+        let c = core();
+        let dir = std::env::temp_dir().join(format!("cwld-core-rewind-{}", std::process::id()));
+        c.set_default_recordings_dir(dir.clone());
+        assert!(c.replay(20.0, None, false).is_err(), "no audio, no replay");
+        let g = generate(&CwSpec { text: "CQ DE ON3VZ K".into(), snr_db: Some(15.0), lead_s: 1.0, ..Default::default() });
+        c.start_audio_source(Source::Samples { rate: 8000, data: g.samples, realtime: false }).unwrap();
+        let _ = run_until_stopped(&c);
+        let r = c.replay(20.0, Some(700.0), false).unwrap();
+        assert_eq!(r.text, g.truth);
+        let path = c.save_rewind().unwrap();
+        assert!(path.contains("kHz-last") && path.ends_with("s.wav"), "{path}");
+        assert!(std::path::Path::new(&path).exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn recording_writes_a_file_with_date_and_frequency() {
         let c = core();
         let dir = std::env::temp_dir().join(format!("cwld-core-rec-{}", std::process::id()));
@@ -697,13 +751,16 @@ mod tests {
     #[test]
     fn tuning_is_remembered_and_kept_in_range() {
         let c = core();
-        c.set_tuning(6.0, true, 8, 40, 0).unwrap();
+        c.set_tuning(6.0, true, true, false, 8, 40, 0).unwrap();
         let a = c.settings().audio;
         assert_eq!((a.gain_db, a.wide_filter, a.min_wpm, a.max_wpm, a.lock_wpm), (6.0, true, 8, 40, 0));
+        // Wide and steep do not go together: wide wins.
+        assert!(!a.steep_filter && !a.join_spelled);
         let t = tuning_of(&a);
-        assert!(t.wide && t.fixed_wpm.is_none() && t.wpm_min == 8.0 && t.wpm_max == 40.0);
-        c.set_tuning(99.0, false, 1, 200, 18).unwrap();
+        assert!(t.wide && !t.steep && !t.join && t.fixed_wpm.is_none() && t.wpm_min == 8.0 && t.wpm_max == 40.0);
+        c.set_tuning(99.0, false, true, true, 1, 200, 18).unwrap();
         let t = tuning_of(&c.settings().audio);
+        assert!(t.steep && !t.wide && t.join);
         assert_eq!(t.gain_db, 20.0);
         assert_eq!((t.wpm_min, t.wpm_max), (5.0, 60.0));
         assert_eq!(t.fixed_wpm, Some(18.0));

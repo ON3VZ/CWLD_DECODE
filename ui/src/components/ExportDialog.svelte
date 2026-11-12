@@ -13,6 +13,8 @@
   let contestId = $state(ADIF_CONTEST_ID_SUGGESTIONS[app.settings?.contest.active ?? ''] ?? '');
   let result = $state<{ path: string; count: number } | null>(null);
   let busy = $state(false);
+  /** Why the check or the export did not work, shown inside the dialog. */
+  let problem = $state<string | null>(null);
 
   const BANDS = ['160m', '80m', '60m', '40m', '30m', '20m', '17m', '15m', '12m', '10m', '6m', '2m'];
 
@@ -39,19 +41,32 @@
   /** The grid that will be in the file, in large letters so a wrong one is seen at once. */
   const gridShown = $derived(app.activation?.grid || app.profile?.grid || app.settings?.station.locator || '');
 
-  async function check() {
+  /** A failure in plain words: the translated text of the error code when there is one. */
+  function say(e: unknown): string {
+    const f = e as { code?: string; message?: string };
+    const key = f?.code ? `error.${f.code}` : '';
+    const text = key ? t(key) : '';
+    return text && text !== key ? text : String(f?.message ?? e);
+  }
+
+  async function check(): Promise<boolean> {
     busy = true;
     result = null;
+    problem = null;
     try {
       issues = await app.checkLog(filter());
+      return !issues.some((i) => i.severity === 'error');
     } catch (e) {
-      app.error = String((e as { message?: string })?.message ?? e);
+      problem = say(e);
+      return false;
     } finally {
       busy = false;
     }
   }
 
+  /** Export checks first by itself: one button is enough. Errors stop it and are listed. */
   async function run() {
+    if (!(await check())) return;
     busy = true;
     try {
       const r = await app.exportLog(filter(), contestId);
@@ -64,9 +79,17 @@
         a.click();
       }
     } catch (e) {
-      app.error = String((e as { message?: string })?.message ?? e);
+      problem = say(e);
     } finally {
       busy = false;
+    }
+  }
+
+  async function openFolder() {
+    try {
+      await app.openExportFolder();
+    } catch (e) {
+      problem = say(e);
     }
   }
 </script>
@@ -118,13 +141,17 @@
         </div>
       {/if}
     {/if}
+    {#if problem}
+      <div class="issues bad" role="alert"><strong>{t('export.failed')}</strong> {problem}</div>
+    {/if}
     {#if result}
       <p class="ok" role="status">{t('export.done', { n: String(result.count), path: result.path })}</p>
+      {#if result.path !== '(browser)'}<button class="btn" onclick={openFolder}>{t('export.open_folder')}</button>{/if}
     {/if}
     <div class="act">
       <button class="btn" onclick={() => (app.exportOpen = false)}>{t('export.close')}</button>
       <button class="btn" disabled={busy} onclick={check}>{t('export.check')}</button>
-      <button class="btn primary" disabled={busy || issues === null || errors.length > 0} title={issues === null ? t('export.check.first') : ''} onclick={run}>{t('export.go')}</button>
+      <button class="btn primary" disabled={busy} onclick={run}>{t('export.go')}</button>
     </div>
   </div>
 </div>

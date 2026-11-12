@@ -15,6 +15,8 @@ const MANUAL_HOLD_S: f64 = 10.0;
 const AUTO_HOLD_S: f64 = 2.0;
 /// Below this score (dB) a usable but faint signal no longer keeps the decoder at its pitch.
 const QUIET_BELOW_DB: f64 = 12.0;
+/// How much longer a noise blip lasts behind the steep filter than behind the soft one.
+const STEEP_BLIP: f64 = 1.1;
 
 #[derive(Clone, Debug)]
 pub struct PipelineConfig {
@@ -31,6 +33,12 @@ pub struct PipelineConfig {
     pub min_separation: f32,
     /// The front-end bandwidth follows the speed: bandwidth = factor / unit seconds.
     pub bandwidth_factor: f64,
+    /// Filter shape: 0 the soft filter, an even order 2 to 8 a steep Butterworth filter
+    /// (see `cwld_dsp::frontend::STEEP_ORDER`).
+    pub steep_order: usize,
+    /// Join a run of loose letters that a sender spelled out (`D L 4 S A V` becomes `DL4SAV`),
+    /// see `join`.
+    pub join_spelled: bool,
     pub noise_blanker: bool,
     pub auto_notch: bool,
     pub rice: bool,
@@ -60,7 +68,7 @@ pub struct PipelineConfig {
 
 impl PipelineConfig {
     pub fn new(sample_rate: u32, tone_hz: f64) -> Self {
-        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, cw_gate: true, voice_gate: true, fading: true, weak_marks: None, spacing: true, keying: false, neural: None, decoder: DecoderConfig::default() }
+        PipelineConfig { sample_rate, tone_hz, auto_tone: false, seek_db: 14.0, seek_quiet_s: 1.5, afc: true, min_separation: 2.0, bandwidth_factor: 1.2, steep_order: 0, join_spelled: true, noise_blanker: true, auto_notch: true, rice: false, track_fading: true, language_model: true, junk_strength: 5.0, cw_gate: true, voice_gate: true, fading: true, weak_marks: None, spacing: true, keying: false, neural: None, decoder: DecoderConfig::default() }
     }
 }
 
@@ -96,6 +104,8 @@ pub struct Pipeline {
     last_voice_eval: u64,
     keying: KeyingRecorder,
     spacer: crate::spacing::Spacer,
+    /// Joins letters a sender spelled out (see `join`).
+    joiner: crate::join::Joiner,
     neural: Option<crate::neural::NeuralLlr>,
     /// Frames processed so far, and the count when text last came out of the decoder.
     frames_seen: u64,
@@ -254,6 +264,7 @@ impl Pipeline {
         fc.auto_notch = cfg.auto_notch;
         fc.rice = cfg.rice;
         fc.track_fading = cfg.track_fading;
+        fc.steep_order = cfg.steep_order;
         if let Some((floor, cost, depth)) = cfg.weak_marks {
             fc.weak_floor_sd = floor;
             fc.weak_cost = cost;
@@ -267,13 +278,14 @@ impl Pipeline {
         let cfg_rate = cfg.sample_rate;
         let cfg_voice = cfg.voice_gate;
         let cfg_spacing = cfg.spacing;
+        let cfg_join = cfg.join_spelled;
         let mut cfg = cfg;
         if cfg.keying {
             // A pipeline rebuilt during a paddle exercise (engine reset) keeps the speech check off.
             cfg.voice_gate = false;
         }
         let cfg_neural = cfg.neural;
-        Pipeline { neural: cfg_neural.map(|a| { let mut n = crate::neural::NeuralLlr::new(a.abs()); n.mix = a < 0.0; n }), front: { let mut f = Frontend::new(fc); f.set_weak_marks(cfg_fading); f }, dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0, voice: crate::voice::VoiceDetector::new(cfg_rate), voice_heard: false, voice_clear_evals: 0, last_voice_eval: 0, keying: KeyingRecorder::default(), spacer: { let mut sp = crate::spacing::Spacer::new(cfg_spacing); sp.junk_strength = junk; sp }, voice_gate_base: cfg_voice, replaying: false, frames_seen: 0, last_text_at: 0 }
+        Pipeline { neural: cfg_neural.map(|a| { let mut n = crate::neural::NeuralLlr::new(a.abs()); n.mix = a < 0.0; n }), front: { let mut f = Frontend::new(fc); f.set_weak_marks(cfg_fading); f }, dec: Decoder::new(cfg.decoder.clone()), words, flushed: Vec::new(), seeker: Some(ToneSeeker::new(cfg.sample_rate, 300.0, 1200.0)), cfg, raw: std::collections::VecDeque::new(), quiet_updates: 0, last_usable: false, hold_frames: 0, pending: std::collections::VecDeque::new(), snr_db: None, gate: crate::gate::EnvelopeGate::new(), cw_open: !cfg_gate, noise_evals: 0, last_eval: 0, voice: crate::voice::VoiceDetector::new(cfg_rate), voice_heard: false, voice_clear_evals: 0, last_voice_eval: 0, keying: KeyingRecorder::default(), spacer: { let mut sp = crate::spacing::Spacer::new(cfg_spacing); sp.junk_strength = junk; sp }, joiner: crate::join::Joiner::new(cfg_join), voice_gate_base: cfg_voice, replaying: false, frames_seen: 0, last_text_at: 0 }
     }
 
     /// Keyed CW is in the envelope (not just noise at this pitch).
@@ -382,6 +394,7 @@ impl Pipeline {
         self.pending.clear();
         self.dec = Decoder::new(self.cfg.decoder.clone());
         self.words.discard();
+        self.joiner.discard();
         self.spacer.discard();
         self.front.retune(c.hz);
         self.quiet_updates = 0;
@@ -425,6 +438,7 @@ impl Pipeline {
         self.pending.clear();
         self.dec = Decoder::new(self.cfg.decoder.clone());
         self.words.discard();
+        self.joiner.discard();
         self.spacer.discard();
         self.front.retune(c.hz);
         let end = self.raw.len() - incoming;
@@ -439,6 +453,7 @@ impl Pipeline {
         self.pending.clear();
         self.dec = Decoder::new(self.cfg.decoder.clone());
         self.words.discard();
+        self.joiner.discard();
         self.spacer.discard();
         self.flushed.clear();
         self.front.drop_held();
@@ -451,6 +466,31 @@ impl Pipeline {
         self.cfg.bandwidth_factor = if wide { 2.4 } else { 1.2 };
         let wpm = self.dec.wpm().unwrap_or(20.0);
         self.front.set_bandwidth(self.cfg.bandwidth_factor / (1.2 / wpm));
+    }
+
+    /// Forgets the text being built but keeps what the front-end learned (levels, pitch, the
+    /// tone search). For decoding the same audio a second time: the first pass only lets the
+    /// filter find the levels, so the start of the signal is read with the right ones.
+    pub fn restart_text(&mut self) {
+        self.pending.clear();
+        self.dec = Decoder::new(self.cfg.decoder.clone());
+        self.words.discard();
+        self.spacer.discard();
+        self.joiner.discard();
+        self.flushed.clear();
+        self.front.drop_held();
+    }
+
+    /// Joining of spelled letters on or off (see `join`).
+    pub fn set_join_spelled(&mut self, on: bool) {
+        self.cfg.join_spelled = on;
+        self.joiner.enabled = on;
+    }
+
+    /// Soft filter (0) or a steep one of this even order (see `PipelineConfig::steep_order`).
+    pub fn set_steep(&mut self, order: usize) {
+        self.cfg.steep_order = order;
+        self.front.set_steep(order);
     }
 
     /// The slowest and fastest speed to look for, or a fixed speed.
@@ -502,6 +542,7 @@ impl Pipeline {
                         self.pending.clear();
                         self.dec = Decoder::new(self.cfg.decoder.clone());
                         self.words.discard();
+        self.joiner.discard();
         self.spacer.discard();
                     }
                     self.voice_heard = true;
@@ -531,7 +572,10 @@ impl Pipeline {
             self.dec.push_llr(&vec![0.0; n]);
         }
         let envs: Vec<f32> = frames.iter().map(|f| f.env).collect();
-        self.gate.push(&envs, self.front.bandwidth_hz());
+        // Behind the steep filter a noise blip lasts a little longer (measured with the example
+        // `gatesteep`: 1.1 times), so the gate's idea of "shorter than a blip" stretches along.
+        let gate_bw = if self.cfg.steep_order > 0 { self.front.bandwidth_hz() / STEEP_BLIP } else { self.front.bandwidth_hz() };
+        self.gate.push(&envs, gate_bw);
         if self.cfg.cw_gate && self.gate.evals != self.last_eval {
             self.last_eval = self.gate.evals;
             let g = self.gate.stats;
@@ -611,7 +655,9 @@ impl Pipeline {
         let mut out = self.words.push(&self.spacer.push(&up, &self.words.model));
         out.extend(self.words.push(&self.spacer.flush(&self.words.model)));
         out.extend(self.words.flush());
-        self.flushed.extend(out);
+        let mut joined = self.joiner.push(&out, &self.words.model);
+        joined.extend(self.joiner.flush(&self.words.model));
+        self.flushed.extend(joined);
     }
 
     /// New final text (whole words once the word model is on) and the tentative rest.
@@ -622,8 +668,14 @@ impl Pipeline {
         }
         let mut done = std::mem::take(&mut self.flushed);
         let spaced = self.spacer.push(&raw, &self.words.model);
-        done.extend(self.words.push(&spaced));
-        let mut tentative = self.words.held();
+        let worded = self.words.push(&spaced);
+        done.extend(self.joiner.push(&worded, &self.words.model));
+        // A long silence ends a run of spelled letters without waiting for the next word.
+        if raw.silence_units >= crate::join::RELEASE_UNITS && raw.tentative.is_empty() && self.words.held().is_empty() && self.spacer.held().is_empty() {
+            self.joiner.release(&self.words.model, &mut done);
+        }
+        let mut tentative = self.joiner.held();
+        tentative.extend(self.words.held());
         tentative.extend(self.spacer.held());
         tentative.extend(raw.tentative.iter().cloned());
         DecodeUpdate {

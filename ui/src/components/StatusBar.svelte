@@ -73,6 +73,7 @@
     {#if !simulated}<span class="muted">{app.radioName}</span>{/if}
   </div>
   <ModeSwitch />
+  <button class="btn" onclick={() => (app.bookOpen = true)} title={t('book.open.help')}>{t('book.open')}</button>
   <button class="btn" onclick={() => (app.settingsOpen = true)} aria-label={t('settings.title')}>⚙</button>
 </header>
 

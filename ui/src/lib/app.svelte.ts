@@ -1,5 +1,5 @@
 import type { RadioControls } from './types';
-import type { Activation, ActivationStats, Api, ClusterProbe, ClusterSettings, ClusterSpot, ClusterStatus, DupeInfo, LogQso, AudioStatus, Tuning, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
+import type { Activation, ActivationStats, Api, ClusterProbe, ClusterSettings, ClusterSpot, ClusterStatus, DupeInfo, LogQso, AudioStatus, ReplayResult, Tuning, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
 import { i18n, t } from './i18n.svelte';
 import { activeProfile, activeSent, copyProfile as copyContestProfileData, cutNumber, isBuiltin, mergeImport, newProfileId, ownVars, parseImport, usesSerial, allProfiles, plain } from './contest';
 import { demoMessages, demoSignals, pileupChips, contestChips, type Message, type Signal } from './demo';
@@ -226,6 +226,7 @@ class AppState {
     const next = { ...this.makeSession(this.status.frequency_hz), practice: true };
     this.sessions.push(next);
     while (this.sessions.length > MAX_SESSIONS) this.sessions.shift();
+    this.limitTabs();
     this.viewId = next.id;
     this.tail = null;
     this.persist();
@@ -256,6 +257,7 @@ class AppState {
     const next = this.makeSession(freq);
     this.sessions.push(next);
     while (this.sessions.length > MAX_SESSIONS) this.sessions.shift();
+    this.limitTabs();
     this.viewId = next.id;
     this.persist();
   }
@@ -301,8 +303,31 @@ class AppState {
     return !s.logged && s.messages.some((m) => m.from === 'tx');
   }
 
+  /**
+   * Keeps at most `tabs_max` tabs: the oldest quiet ones close first. The live tab, the shown tab and
+   * tabs with sent text that is not logged never close, so the count can stay above the maximum.
+   */
+  limitTabs() {
+    const max = this.settings?.tabs_max ?? 0;
+    if (max <= 0) return;
+    let extra = this.sessions.length - max;
+    if (extra <= 0) return;
+    const drop = new Set<number>();
+    for (const s of this.sessions) {
+      if (extra <= 0) break;
+      if (s.id === this.cur.id || s.id === this.viewId || this.holdsUnloggedQso(s)) continue;
+      drop.add(s.id);
+      extra--;
+    }
+    if (drop.size) {
+      this.sessions = this.sessions.filter((s) => !drop.has(s.id));
+      this.persist();
+    }
+  }
+
   /** Closes conversations that were idle longer than the setting. Never the live or the shown one. */
   sweepTabs(now = Date.now()) {
+    this.limitTabs();
     const minutes = this.settings?.tabs_auto_close_minutes ?? 0;
     if (minutes <= 0 || this.sessions.length < 2) return;
     const limit = minutes * 60_000;
@@ -848,6 +873,7 @@ class AppState {
         const next = this.makeSession(this.status.frequency_hz);
         this.sessions.push(next);
         while (this.sessions.length > MAX_SESSIONS) this.sessions.shift();
+        this.limitTabs();
         if (wasShowingLive) this.viewId = next.id;
         if (bubble) next.messages.push(bubble);
         live = next;
@@ -1276,10 +1302,15 @@ class AppState {
     const t: Tuning = {
       gain_db: Math.min(20, Math.max(-20, change.gain_db ?? a.gain_db)),
       wide_filter: change.wide_filter ?? a.wide_filter,
+      steep_filter: change.steep_filter ?? a.steep_filter ?? false,
+      join_spelled: change.join_spelled ?? a.join_spelled ?? true,
       min_wpm: change.min_wpm ?? a.min_wpm,
       max_wpm: change.max_wpm ?? a.max_wpm,
       lock_wpm: change.lock_wpm ?? a.lock_wpm,
     };
+    // Steep is a shape of the narrow filter: choosing wide switches it off.
+    if (change.wide_filter === true) t.steep_filter = false;
+    if (change.steep_filter === true) t.wide_filter = false;
     t.min_wpm = Math.min(55, Math.max(5, Math.round(t.min_wpm)));
     t.max_wpm = Math.min(60, Math.max(t.min_wpm + 5, Math.round(t.max_wpm)));
     t.lock_wpm = t.lock_wpm >= 5 ? Math.min(60, Math.round(t.lock_wpm)) : 0;
@@ -1790,6 +1821,10 @@ class AppState {
   knownExtra = $state<string[]>([]);
   testNr = $state(1);
   exportOpen = $state(false);
+  /** The full logbook window. */
+  bookOpen = $state(false);
+  /** Raised after an edit or a delete, so the logbook window loads again. */
+  bookVersion = $state(0);
   editing = $state<LogQso | null>(null);
   lastLogged = $state<LogQso | null>(null);
 
@@ -2122,6 +2157,7 @@ class AppState {
       this.editing = null;
       await this.refreshLog();
       void this.clusterRefresh();
+      this.bookVersion++;
     } catch (e) {
       this.fail(e);
     }
@@ -2132,6 +2168,7 @@ class AppState {
       await this.api.logDelete(id);
       await this.refreshLog();
       void this.clusterRefresh();
+      this.bookVersion++;
     } catch (e) {
       this.fail(e);
     }
@@ -2140,6 +2177,47 @@ class AppState {
   async checkLog(filter: import('./types').LogFilter) {
     return this.api.logCheck(filter);
   }
+  /** What is set on the radio that can cut the CW pitch out of the audio. Empty: nothing known. */
+  get radioFilterIssues(): Array<'notch' | 'auto_notch' | 'pbt'> {
+    const c = this.radioControls;
+    if (!c) return [];
+    const out: Array<'notch' | 'auto_notch' | 'pbt'> = [];
+    if (c.notch) out.push('notch');
+    if (c.auto_notch) out.push('auto_notch');
+    const off = (v: number | null | undefined) => v !== null && v !== undefined && Math.abs(v - 128) > 4;
+    if (off(c.pbt_inner) || off(c.pbt_outer)) out.push('pbt');
+    return out;
+  }
+
+  async notchOff() {
+    try {
+      await this.api.notchOff();
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async pbtCenter() {
+    try {
+      await this.api.pbtCenter();
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** QSOs for the logbook window, with every filter applied by the core. */
+  async bookList(f: import('./types').LogFilter) {
+    return this.api.logList(f);
+  }
+
+  async exportCsvFile(name: string, text: string) {
+    return this.api.exportTextFile(name, text);
+  }
+
+  async openExportFolder() {
+    return this.api.openExportFolder();
+  }
+
   async exportLog(filter: import('./types').LogFilter, contestId: string) {
     return this.api.logExport(filter, contestId);
   }
@@ -2248,6 +2326,42 @@ class AppState {
   /** True while the decoder judges that a clear signal is present. */
   get signalPresent(): boolean {
     return this.decoder?.snr_db != null;
+  }
+
+  /** The panel "Listen again": open or closed, its choices and the last result. */
+  rewind = $state<{ open: boolean; seconds: number; busy: boolean; result: ReplayResult | null; asked: number | null; saved: string | null }>({ open: false, seconds: 20, busy: false, result: null, asked: null, saved: null });
+
+  toggleRewind() {
+    this.rewind = { ...this.rewind, open: !this.rewind.open };
+  }
+
+  /** Decodes the last seconds again: at the live pitch (null), at `toneHz`, or at the strongest
+   * tone ('strongest'). The live decoder goes on undisturbed. */
+  async replay(tone: number | null | 'strongest' = null, seconds?: number) {
+    if (this.rewind.busy) return;
+    const s = Math.min(60, Math.max(5, Math.round(seconds ?? this.rewind.seconds)));
+    this.error = null;
+    this.rewind = { ...this.rewind, open: true, seconds: s, busy: true, saved: null };
+    try {
+      const strongest = tone === 'strongest';
+      const result = await this.api.replay(s, strongest ? null : tone, strongest);
+      this.rewind = { ...this.rewind, busy: false, result, asked: strongest ? null : tone };
+    } catch (e) {
+      this.rewind = { ...this.rewind, busy: false };
+      this.fail(e);
+    }
+  }
+
+  /** Saves the last minute of audio as a WAV file. */
+  async saveRewind() {
+    this.error = null;
+    try {
+      const path = await this.api.saveRewind();
+      this.rewind = { ...this.rewind, saved: path };
+      this.notice = t('rewind.saved', { path });
+    } catch (e) {
+      this.fail(e);
+    }
   }
 
   async toggleRecording() {

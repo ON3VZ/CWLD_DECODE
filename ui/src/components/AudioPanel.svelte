@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { looksLikeCall } from '../lib/callsign';
   import { untrack } from 'svelte';
   import { app } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
@@ -15,6 +16,9 @@
   const zone = $derived(pct > 90 ? 'high' : pct < 5 ? 'low' : 'ok');
   const gain = $derived(app.settings?.audio.gain_db ?? 0);
   const wide = $derived(app.settings?.audio.wide_filter ?? false);
+  const steep = $derived(!wide && (app.settings?.audio.steep_filter ?? false));
+  const rw = $derived(app.rewind);
+  const SECONDS = [10, 20, 30, 60];
   const fading = $derived(app.settings?.audio.fading ?? true);
 
   // The tuning buttons are tucked away by default. The choice is remembered on this computer.
@@ -37,14 +41,35 @@
   }
 </script>
 
+{#snippet holeNote()}
+  {#if app.audioHole !== null || app.radioFilterIssues.length}
+    {@const issues = app.radioFilterIssues}
+    <div class="hole" role="alert" title={t('audio.hole.help')}>
+      {#if app.audioHole !== null}<p><strong>{t('audio.hole', { hz: Math.round(app.audioHole) })}</strong> {issues.length ? '' : t('audio.hole.do')}</p>{/if}
+      {#if issues.length}<p>{t('audio.radio_filters', { list: issues.map((i) => t(`audio.filter.${i}`)).join(', ') })}</p>{/if}
+      {#if app.audioHole !== null || issues.length}
+        <div class="holebtns">
+          {#if app.audioHole !== null || issues.includes('notch') || issues.includes('auto_notch')}<button class="btn small" onclick={() => app.notchOff()} title={t('audio.notch_off.help')}>{t('audio.notch_off')}</button>{/if}
+          {#if app.audioHole !== null || issues.includes('pbt')}<button class="btn small" onclick={() => app.pbtCenter()} title={t('audio.pbt_center.help')}>{t('audio.pbt_center')}</button>{/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
+
 <section class="card">
   <div class="head">
     <h2>{t('audio.panel.title')}</h2>
     <button class="link" onclick={() => app.setView('audio_waterfall', false)}>{t('audio.panel.hide')}</button>
   </div>
-  <div class="frame"><Waterfall height={110} /></div>
+  <div class="framewrap">
+    <div class="frame"><Waterfall height={110} /></div>
+    <!-- A warning lies over the waterfall, so nothing below it moves when it appears. -->
+    {@render holeNote()}
+  </div>
   <small class="muted">{t('audio.panel.help')}</small>
 
+  <div class="peakslot">
   {#if app.audio?.running}
     <div class="peak" title={t('meter.peak.help')}>
       <span class="label">{t('meter.peak')}</span>
@@ -56,11 +81,8 @@
     </div>
     <small class:warn={zone !== 'ok'} class="muted">{t(`meter.peak.${zone}`)}</small>
   {/if}
+  </div>
 
-  <!-- Always in sight, not under the tools: it changes what the decoder reads. -->
-  {#if app.audioHole !== null}
-    <p class="hole" role="alert" title={t('audio.hole.help')}><strong>{t('audio.hole', { hz: Math.round(app.audioHole) })}</strong> {t('audio.hole.do')}</p>
-  {/if}
   <div class="ctl fade">
     <span class="lbl" id="fading-lbl">{t('decoder.fading')}</span>
     <div class="seg" role="group" aria-labelledby="fading-lbl">
@@ -69,6 +91,42 @@
     </div>
     <small class="muted">{t(fading ? 'decoder.fading.on.note' : 'decoder.fading.off.note')}</small>
   </div>
+  {#if app.audio?.running}
+    <button class="tools" onclick={() => app.toggleRewind()} aria-expanded={rw.open} title={t('rewind.help')}>{rw.open ? '\u25BE' : '\u25B8'} {t('rewind.title')}</button>
+    {#if rw.open}
+      <div class="rewind" aria-busy={rw.busy}>
+        <div class="ctl">
+          <div class="seg" role="group" aria-label={t('rewind.seconds')}>
+            {#each SECONDS as s (s)}
+              <button class:on={rw.seconds === s} aria-pressed={rw.seconds === s} onclick={() => app.replay(rw.asked, s)} disabled={rw.busy}>{s} s</button>
+            {/each}
+          </div>
+          <button class="btn small" onclick={() => app.replay(null)} disabled={rw.busy} title={t('rewind.current.help')}>{t('rewind.current')}</button>
+          <button class="btn small" onclick={() => app.replay('strongest')} disabled={rw.busy} title={t('rewind.strongest.help')}>{t('rewind.strongest')}</button>
+        </div>
+        {#if rw.result && rw.result.tones.length > 0}
+          <div class="ctl">
+            <span class="lbl">{t('rewind.tones')}</span>
+            {#each rw.result.tones as tn (tn.hz)}
+              <button class="btn small" class:on={Math.abs(rw.result.tone_hz - tn.hz) < 20} onclick={() => app.replay(Math.round(tn.hz))} disabled={rw.busy} title={t('rewind.tone.help', { db: tn.score_db.toFixed(0) })}>{Math.round(tn.hz)} Hz</button>
+            {/each}
+          </div>
+        {/if}
+        {#if rw.busy}
+          <small class="muted">{t('rewind.busy')}</small>
+        {:else if rw.result}
+          <small class="muted">{t('rewind.result', { seconds: rw.result.seconds.toFixed(0), hz: rw.result.tone_hz.toFixed(0), wpm: rw.result.wpm > 0 ? rw.result.wpm.toFixed(0) : '?' })}</small>
+          <p class="mono replaytext">{#if rw.result.text}{#each rw.result.text.split(/(\s+)/) as w, i (i)}{#if looksLikeCall(w)}<button class="call" onclick={() => app.selectCall(w)}>{w}</button>{:else}{w}{/if}{/each}{:else}<span class="muted">{t('rewind.empty')}</span>{/if}</p>
+        {:else}
+          <small class="muted">{t('rewind.intro')}</small>
+        {/if}
+        <div class="ctl">
+          <button class="btn small" onclick={() => app.saveRewind()} title={t('rewind.save.help')}>{t('rewind.save')}</button>
+          {#if rw.saved}<small class="muted mono">{rw.saved}</small>{/if}
+        </div>
+      </div>
+    {/if}
+  {/if}
   <button class="tools" onclick={toggle} aria-expanded={tools} title={t('audio.tools.help')}>{tools ? '\u25BE' : '\u25B8'} {t('audio.tools')}</button>
   {#if tools}
   {#if app.audio?.running}
@@ -84,8 +142,9 @@
       {/each}
     </div>
     <div class="seg" role="group" aria-label={t('decoder.filter')}>
-      <button class:on={!wide} aria-pressed={!wide} onclick={() => app.setTuning({ wide_filter: false })} title={t('decoder.filter.help')}>{t('decoder.filter.narrow')}</button>
-      <button class:on={wide} aria-pressed={wide} onclick={() => app.setTuning({ wide_filter: true })} title={t('decoder.filter.help')}>{t('decoder.filter.wide')}</button>
+      <button class:on={!wide && !steep} aria-pressed={!wide && !steep} onclick={() => app.setTuning({ wide_filter: false, steep_filter: false })} title={t('decoder.filter.help')}>{t('decoder.filter.narrow')}</button>
+      <button class:on={steep} aria-pressed={steep} onclick={() => app.setTuning({ wide_filter: false, steep_filter: true })} title={t('decoder.filter.steep.help')}>{t('decoder.filter.steep')}</button>
+      <button class:on={wide} aria-pressed={wide} onclick={() => app.setTuning({ wide_filter: true, steep_filter: false })} title={t('decoder.filter.help')}>{t('decoder.filter.wide')}</button>
     </div>
   </div>
   <div class="ctl">
@@ -99,6 +158,8 @@
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
   .head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   h2 { margin: 0; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .framewrap { position: relative; }
+  .peakslot { min-height: 56px; }
   .frame { border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
   .link { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }
   small { font-size: 11px; }
@@ -118,6 +179,9 @@
   .gain { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
   .tools { align-self: flex-start; background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }
   .ctl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .rewind { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px dashed var(--line); border-radius: 8px; }
+  .replaytext { margin: 0; font-size: 14px; line-height: 1.5; word-break: break-word; }
+  .replaytext .call { background: none; border: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline; }
   .seg { display: inline-flex; }
   .lbl { font-size: 12px; color: var(--muted); }
   .fade small { flex-basis: 100%; font-size: 11px; line-height: 1.3; }
@@ -129,5 +193,8 @@
   .small { padding: 3px 10px; font-size: 12px; }
   .small.on { border-color: var(--accent); color: var(--accent); }
   kbd { font: inherit; font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 3px; }
-  .hole { margin: 6px 0; padding: 6px 8px; border: 1px solid var(--warn, #b9770e); border-radius: 6px; font-size: 12.5px; line-height: 1.4; color: var(--warn, #b9770e); background: rgba(185, 119, 14, 0.08); }
+  .hole p { margin: 0 0 4px; }
+  .holebtns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .holebtns .btn { font-size: 12px; padding: 3px 9px; }
+  .hole { position: absolute; left: 6px; right: 6px; bottom: 6px; margin: 0; z-index: 2; padding: 6px 8px; max-height: 100px; overflow: auto; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); border: 1px solid var(--warn, #b9770e); border-radius: 6px; font-size: 12.5px; line-height: 1.4; color: var(--warn, #b9770e); background: color-mix(in srgb, var(--warn, #b9770e) 12%, var(--panel)); }
 </style>

@@ -1,3 +1,45 @@
+## 0.20.0 (listen again, steep filter, spelled letters)
+
+- New: "Listen again" in the Audio card. CWLD keeps the last minute of audio. Choose how far back (10, 20, 30 or 60 seconds) and decode that stretch again at the same pitch, at the strongest keyed tone in it, or at one of the pitches it heard (up to four, strongest first). A separate decoder does this, so the live decoder goes on undisturbed. It reads the stretch twice, the first time only to find the levels, so the first characters come out right too. Callsigns in the result can be clicked like in the conversation.
+- New: "Save last minute (WAV)" saves the last minute as the decoder heard it (8 kHz, mono, before the gain) in the recordings folder, with date, time and frequency in the name.
+- New filter choice "Steep" next to Narrow and Wide: the narrow width with much steeper edges (a 6th order Butterworth filter instead of three soft sections). At 20 WPM a station 60 Hz away is 57 dB down instead of 16. On the test bench a strong station next door costs far fewer errors (see docs/meetresultaten_decoder.md). On very weak signals without a neighbour, Narrow stays a little better, so Narrow remains the default.
+- New setting "Join spelled letters" (on by default): when a sender spells a callsign or name with a word gap after every letter, D L 4 S A V shows as DL4SAV and H A N S as HANS. A K or R right after a spelled callsign stays apart (DL4SAV K). Single letters that belong alone (R R, E E, K) are left as they are. Letters are held back until the next word or a pause of 20 units.
+- Test bench: new part "Stations next door" (`cwld_bench --neighbours`), options `CWLD_STEEP`, `CWLD_WIDE`, `CWLD_NOJOIN`, `CWLD_SNRS` and `--grid` or `--difficult` to run only a part. New examples `spellbench` (spelled words) and `gatesteep` (noise blips behind both filters). The signal generator can key a word spelled out (`~HANS` in the text).
+
+## 0.19.3 (calmer windows, fewer tabs)
+
+- Fixed: the conversation window no longer jumps to the bottom when new text arrives while you have scrolled up to read. It follows new text only when you are at the bottom, and shows the end of a conversation when you open another tab.
+- Fixed: the Audio card no longer shifts when something appears. The notch and Twin PBT warning now lies over the audio waterfall, and the level meter keeps its place also when the audio is not running.
+- New setting "Most tabs kept open" (default 5, 0 is no limit). When there are more, the oldest quiet conversation closes. The conversation you are in and any with sent text that is not logged never close by themselves, so there can briefly be more than the maximum.
+
+## 0.19.2 (CSV export from the logbook)
+
+- New: the button "CSV" in the logbook window writes the QSOs as shown (same filter, same sort order) with the columns you chose to a CSV file in the CWLD folder, followed by "Open the folder". Separator is a semicolon, the file is UTF-8 with a byte order mark and CRLF line ends, so Excel with a Belgian or Dutch setup opens it correctly. Date and time are UTC in separate columns, frequency in kHz.
+- Fields with a semicolon, quote or line break are quoted. Text that starts with = + or @ gets a leading apostrophe so a spreadsheet does not read it as a formula.
+- A CSV export does not mark QSOs as exported: only the ADIF export does.
+
+## 0.19.1 (edit every field of a QSO)
+
+- The edit window now changes every field of a QSO: date and time (UTC), frequency, mode, both reports and exchanges, name, QTH, the other station's programme and reference, comment, and under "My station" the station call, operator, locator, power, rig, antenna and WWFF, POTA and SOTA references.
+- Changing the frequency always asks first: it shows the old and the new frequency and the band change, and needs a second "Yes, change it". The band follows the frequency; outside the amateur bands it stays as it was.
+- An edited QSO is exported again, as before.
+
+## 0.19.0 (logbook window, notch and Twin PBT from CWLD)
+
+- New: the logbook window. Open it with the button "Logbook" next to the settings, or "All QSOs" in the log card.
+  - Every QSO with all its details: date and time (UTC), callsign, band, frequency, mode, both reports, both exchanges, name, QTH, the other station's reference, comment, contest, station, operator, own locator and reference, power, rig, antenna, and whether it was exported. Choose the columns with "Columns"; the choice is remembered on this computer.
+  - Filters: a search box (callsign, name, QTH, comment or reference), dates, band, contest, activation, not exported yet, and the test log. Click a column header to sort.
+  - The line above the table counts QSOs, different callsigns and bands.
+  - "Export these N QSOs (ADIF)" writes exactly the QSOs of the filter to a file, after the same check as the export window, with "Open the folder" afterwards.
+  - A click on a row opens the edit window; changes and deletions show in the table at once.
+- New: CWLD reads the manual notch (MN), the automatic notch (AN) and both Twin PBT knobs of the IC-7300 MK II. When one of them is on or turned, or when CWLD hears a hole in the audio, the Audio card says so and offers "Notch off" and "PBT to the middle". CWLD never changes them by itself: a notch set on purpose against a carrier stays until you click. The CI-V commands (16 48, 16 41, 14 07, 14 08) are those of the IC-7300; on the MK II they are not yet confirmed (test A57).
+
+## 0.18.5 (ADIF export: one button, clear reasons)
+
+- Export dialog: "Export" now runs the check by itself. Before, the button stayed grey until "Check" had been pressed, with the reason only in a tooltip.
+- When the export does not work the dialog says why, in plain words, instead of showing a raw error code at the top of the window. An export without any QSO in the selection is refused with that reason; before it wrote an empty file.
+- After an export the dialog shows the file path and a button "Open the folder", which opens the CWLD folder in the file manager.
+
 ## 0.18.4 (notch warning, tone search no longer follows a filter edge)
 
 - New warning in the Audio card: "A hole in the audio around ... Hz". It appears when a stretch in the middle of the passband is at least 20 dB quieter than both sides for three seconds, as a notch filter on the radio leaves behind, and it goes away by itself. Reason: all six recordings of 11 November have such a hole between about 450 and 850 Hz (35 to 45 dB down), right where a well tuned CW station sits; the recordings of 10 November do not. CWLD never switches the notch itself.

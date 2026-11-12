@@ -43,7 +43,7 @@ impl SimRig {
             rng: 0x2545_F491_4F6C_DD1D,
             swr: 1.1,
             scope: false,
-            audio: crate::AudioControls { af_level: Some(128), break_in: Some(1), squelch: Some(0) },
+            audio: crate::AudioControls { af_level: Some(128), break_in: Some(1), squelch: Some(0), notch: Some(false), auto_notch: Some(false), pbt_inner: Some(crate::PBT_CENTER), pbt_outer: Some(crate::PBT_CENTER) },
             ticks: 0,
         }
     }
@@ -168,6 +168,12 @@ impl Rig for SimRig {
             RadioCommand::SetAfLevel(v) => self.audio.af_level = Some((*v).min(255)),
             RadioCommand::SetBreakIn(v) => self.audio.break_in = Some((*v).min(2)),
             RadioCommand::SetSquelch(v) => self.audio.squelch = Some((*v).min(255)),
+            RadioCommand::SetNotch(on) => self.audio.notch = Some(*on),
+            RadioCommand::SetAutoNotch(on) => self.audio.auto_notch = Some(*on),
+            RadioCommand::CenterPbt => {
+                self.audio.pbt_inner = Some(crate::PBT_CENTER);
+                self.audio.pbt_outer = Some(crate::PBT_CENTER);
+            }
         }
         Ok(())
     }

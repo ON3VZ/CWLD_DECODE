@@ -1,4 +1,4 @@
-import type { Activation, ActivationStats, Api, AudioStatus, CheckIssue, ClusterProbe, ClusterSpot, ClusterStatus, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
+import type { Activation, ActivationStats, Api, AudioStatus, ReplayResult, CheckIssue, ClusterProbe, ClusterSpot, ClusterStatus, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -52,10 +52,12 @@ export async function createTauriApi(): Promise<Api> {
     setTone: (hz: number) => invoke<void>('set_tone', { hz }),
     setSquelch: (value: number) => invoke<void>('set_squelch', { value }),
     setAutoTone: (on: boolean) => invoke<void>('set_auto_tone', { on }),
-    setTuning: (t) => invoke<void>('set_tuning', { gainDb: t.gain_db, wideFilter: t.wide_filter, minWpm: t.min_wpm, maxWpm: t.max_wpm, lockWpm: t.lock_wpm }),
+    setTuning: (t) => invoke<void>('set_tuning', { gainDb: t.gain_db, wideFilter: t.wide_filter, steepFilter: t.steep_filter, joinSpelled: t.join_spelled, minWpm: t.min_wpm, maxWpm: t.max_wpm, lockWpm: t.lock_wpm }),
     setAfc: (on: boolean) => invoke<void>('set_afc', { on }),
     setFading: (on: boolean) => invoke<void>('set_fading', { on }),
     goStrongest: () => invoke<void>('go_strongest'),
+    replay: (seconds, toneHz, strongest) => invoke<ReplayResult>('replay', { seconds, toneHz, strongest }),
+    saveRewind: () => invoke<string>('save_rewind'),
     startRecording: () => invoke<string>('start_recording'),
     stopRecording: () => invoke<void>('stop_recording'),
     logAdd: (qso: LogQso) => invoke<LogQso>('log_add', { qso }),
@@ -66,6 +68,10 @@ export async function createTauriApi(): Promise<Api> {
     logNextTestSerial: () => invoke<number>('log_next_test_serial'),
     logDupe: (call: string, contest: string, session: number, test: boolean) => invoke<DupeInfo>('log_dupe', { call, contest, session, test }),
     logExport: (filter: LogFilter, contestId: string) => invoke<ExportResult>('log_export', { filter, contestId }),
+    notchOff: () => invoke<void>('notch_off'),
+    pbtCenter: () => invoke<void>('pbt_center'),
+    exportTextFile: (name: string, text: string) => invoke<string>('export_text_file', { name, text }),
+    openExportFolder: () => invoke<string>('open_export_folder'),
     linkResendLast: () => invoke<LinkReport>('link_resend_last'),
     lookupStatus: () => invoke<LookupStatus>('lookup_status'),
     lookupSetPassword: (password) => invoke<void>('lookup_set_password', { password }),

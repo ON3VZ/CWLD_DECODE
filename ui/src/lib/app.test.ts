@@ -683,6 +683,32 @@ describe('tabs: jump to the frequency, close idle ones, close all', () => {
     expect(ids).toContain(fourth);
   });
 
+  it('keeps at most tabs_max tabs, oldest quiet ones first, never the live tab or an unlogged one', () => {
+    app.settings!.tabs_max = 3;
+    const first = app.cur.id;
+    app.cur.messages.push({ id: 9101, from: 'tx', text: 'CQ DE ON3VZ', time: '10:00' });
+    const ids = [first];
+    for (let i = 0; i < 4; i++) {
+      app.newConversation(14_030_000 + i * 1000);
+      app.cur.messages.push({ id: 9102 + i, from: 'rx', text: 'CQ DE DL1ABC', time: '10:0' + (i + 1) });
+      ids.push(app.cur.id);
+    }
+    const kept = app.sessions.map((s) => s.id);
+    expect(kept).toContain(first); // sent text, not logged: never closed
+    expect(kept).toContain(app.cur.id);
+    expect(kept).not.toContain(ids[1]);
+    expect(kept.length).toBe(3);
+  });
+
+  it('tabs_max 0 means no limit', () => {
+    app.settings!.tabs_max = 0;
+    for (let i = 0; i < 8; i++) {
+      app.cur.messages.push({ id: 9200 + i, from: 'rx', text: 'CQ', time: '10:00' });
+      app.newConversation(7_030_000 + i * 1000);
+    }
+    expect(app.sessions.length).toBeGreaterThan(8);
+  });
+
   it('0 minutes switches the closing off', async () => {
     const first = twoTabs();
     app.settings!.tabs_auto_close_minutes = 0;
@@ -727,6 +753,35 @@ describe('decoder tuning and presets', () => {
     expect(app.settings!.audio.lock_wpm).toBe(0);
     await app.setTuning({ lock_wpm: 18 });
     expect(app.settings!.audio.lock_wpm).toBe(18);
+  });
+
+  it('steep and wide exclude each other, joining spelled letters is remembered', async () => {
+    await app.setTuning({ steep_filter: true });
+    expect(app.settings!.audio.steep_filter).toBe(true);
+    expect(app.settings!.audio.wide_filter).toBe(false);
+    await app.setTuning({ wide_filter: true });
+    expect(app.settings!.audio.wide_filter).toBe(true);
+    expect(app.settings!.audio.steep_filter).toBe(false);
+    await app.setTuning({ wide_filter: false, steep_filter: false });
+    expect(app.settings!.audio.join_spelled).toBe(true);
+    await app.setTuning({ join_spelled: false });
+    expect(app.settings!.audio.join_spelled).toBe(false);
+  });
+
+  it('listening again decodes the last seconds at another pitch and saves the minute', async () => {
+    await app.startAudio();
+    await app.replay(845, 30);
+    expect(app.rewind.open).toBe(true);
+    expect(app.rewind.busy).toBe(false);
+    expect(app.rewind.seconds).toBe(30);
+    expect(app.rewind.result?.text).toContain('DL4SAV');
+    expect(app.rewind.result?.tones.length).toBeGreaterThan(0);
+    await app.replay('strongest', 200);
+    expect(app.rewind.seconds).toBe(60);
+    expect(app.rewind.result?.tone_hz).toBe(702);
+    await app.saveRewind();
+    expect(app.rewind.saved).toContain('last60s.wav');
+    expect(app.notice).toContain('last60s.wav');
   });
 
   it('the slowest speed keeps at least 5 WPM below the fastest', async () => {
@@ -1575,5 +1630,49 @@ describe('hole in the audio', () => {
     expect(app.audioHole).toBe(650);
     api.emitNow([{ type: 'audio_hole', hz: null }]);
     expect(app.audioHole).toBeNull();
+  });
+});
+
+describe('notch and Twin PBT on the radio', () => {
+  it('names what is set and puts it back on a click', async () => {
+    const api = await fresh();
+    expect(app.radioFilterIssues).toEqual([]);
+    api.filters = { notch: true, auto_notch: false, pbt_inner: 90, pbt_outer: 128 };
+    api.emitNow([{ type: 'radio_controls', controls: { af_level: 128, break_in: 1, squelch: 0, ...api.filters } }]);
+    expect(app.radioFilterIssues).toEqual(['notch', 'pbt']);
+    await app.notchOff();
+    api.flush();
+    expect(app.radioFilterIssues).toEqual(['pbt']);
+    await app.pbtCenter();
+    api.flush();
+    expect(app.radioFilterIssues).toEqual([]);
+  });
+
+  it('a radio that does not report them gives no warning', async () => {
+    const api = await fresh();
+    api.emitNow([{ type: 'radio_controls', controls: { af_level: 128, break_in: 1, squelch: 0 } }]);
+    expect(app.radioFilterIssues).toEqual([]);
+  });
+});
+
+describe('logbook window', () => {
+  it('lists with filters and exports exactly the filtered QSOs', async () => {
+    const api = await fresh();
+    const blank = Object.fromEntries(['rst_sent', 'rst_rcvd', 'nr_rcvd', 'extra_sent', 'extra_rcvd', 'name', 'qth', 'comment', 'contest', 'my_call', 'station_call', 'operator', 'my_grid', 'tx_pwr', 'my_rig', 'my_antenna', 'my_wwff', 'my_pota', 'my_sota', 'their_prog', 'their_ref', 'exported_to'].map((k) => [k, '']));
+    const add = (call: string, band: string, name = '') => api.logAdd({ ...blank, rst_sent: '599', rst_rcvd: '579', id: 0, call, band, name, freq_hz: band === '40m' ? 7_030_000 : 14_030_000, mode: 'CW', ts: Math.floor(Date.now() / 1000), nr_sent: 0, session: 0, test: false, deleted: false, activation_id: 0 } as never);
+    await add('PA3ABC', '40m', 'JAN');
+    await add('DL1XYZ', '20m', 'HANS');
+    await add('PA3ABC', '20m', 'JAN');
+    expect((await app.bookList({ test: false, search: 'pa3' })).length).toBe(2);
+    expect((await app.bookList({ test: false, search: 'hans' })).map((q) => q.call)).toEqual(['DL1XYZ']);
+    const f = { test: false, band: '20m' };
+    expect((await app.bookList(f)).length).toBe(2);
+    const errs = (await app.checkLog(f)).filter((i) => i.severity === 'error');
+    expect(errs).toEqual([]);
+    const r = await app.exportLog(f, '');
+    expect(r.count).toBe(2);
+    expect(r.text).toContain('<CALL:6>DL1XYZ');
+    expect(r.text).not.toContain('<BAND:3>40m');
+    expect((await app.bookList({ test: false, not_exported: true })).map((q) => q.call)).toEqual(['PA3ABC']);
   });
 });

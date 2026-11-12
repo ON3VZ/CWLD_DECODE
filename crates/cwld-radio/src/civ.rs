@@ -35,6 +35,12 @@ pub mod cmd {
     pub const BREAK_IN: [u8; 2] = [0x16, 0x47];
     /// Squelch level, 0000 to 0255. Same as the IC-7300; to confirm on the MK II **[TEST]**.
     pub const SQUELCH: [u8; 2] = [0x14, 0x03];
+    /// Twin PBT inner and outer, 0000 to 0255 in BCD, 0128 the middle **[TEST]** on the MK II.
+    pub const PBT_INNER: [u8; 2] = [0x14, 0x07];
+    pub const PBT_OUTER: [u8; 2] = [0x14, 0x08];
+    /// Automatic notch (AN) and manual notch (MN), 00 off and 01 on **[TEST]** on the MK II.
+    pub const AUTO_NOTCH: [u8; 2] = [0x16, 0x41];
+    pub const NOTCH: [u8; 2] = [0x16, 0x48];
 }
 
 /// Builds one frame: `FE FE to from body FD`.

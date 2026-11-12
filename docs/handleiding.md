@@ -453,3 +453,43 @@ Zo los je het op:
 4. De melding in CWLD verdwijnt vanzelf na een paar seconden.
 
 CWLD schakelt de notch zelf nooit. De melding komt alleen bij een gat van minstens 20 dB dat drie seconden blijft.
+
+## 32. Het logboekscherm (0.19.0)
+
+Klik bovenaan op **Logboek** (naast het tandwiel), of in de kaart Logboek op **Alle QSO's**.
+
+**Zoeken en filteren.** Typ in het zoekvak een stuk van roepletters, naam, QTH, opmerking of referentie. Daarnaast kies je datums (in UTC), band, contest en activatie. Met "Nog niet geëxporteerd" zie je wat nog naar Log4OM moet, met "Testlogboek" het aparte testlogboek. "Filters wissen" zet alles terug.
+
+**Kolommen.** Klik op **Kolommen** en vink aan wat je wilt zien, bijvoorbeeld vermogen, rig en antenne voor portabel werk. CWLD onthoudt je keuze. Klik op een kolomkop om te sorteren, nog eens om de volgorde om te draaien.
+
+**Exporteren van wat je ziet.** De knop "Deze N QSO's exporteren (ADIF)" schrijft precies de QSO's van je filter naar een bestand in de map CWLD in Documenten. Eerst loopt dezelfde controle als in het exportvenster. Daarna verschijnen het pad en de knop **Map openen**. In Log4OM lees je het bestand in via Bestand, ADIF importeren.
+
+**Wijzigen.** Klik op een rij om het QSO te wijzigen of te verwijderen. Verwijderen markeert het QSO alleen, er gaat niets verloren.
+
+## 33. Notch en Twin PBT vanuit CWLD (0.19.0)
+
+CWLD leest van de radio of de handmatige notch (MN) of de automatische notch (AN) aanstaat, en of Twin PBT verdraaid is. Is dat zo, of hoort CWLD een gat in het geluid, dan staat er een oranje melding in de kaart Audio met twee knoppen:
+
+- **Notch uit** zet MN en AN uit.
+- **PBT in het midden** zet beide PBT-knoppen terug in het midden.
+
+CWLD zet deze nooit zelf om. Gebruik je de notch bewust tegen een draaggolf, dan blijft hij staan tot je klikt.
+
+## 34. Een QSO verbeteren (0.19.1)
+
+Klik in het logboek op een rij (of op "Verbeter" in de logkaart). Alle velden zijn te wijzigen: datum en tijd in UTC, frequentie in kHz, mode, rapporten, uitwisseling, naam, QTH, referentie van de ander, opmerking, en onder **Mijn station** je eigen gegevens.
+
+Wijzig je de frequentie, dan vraagt CWLD eerst om bevestiging. Het toont de oude en nieuwe frequentie en of de band verandert. Klik op **Ja, wijzigen** om te bewaren of op **Terug** om verder te bewerken. De band volgt altijd de frequentie. Ligt de frequentie buiten de amateurbanden, dan blijft de band zoals hij was.
+
+Een verbeterd QSO staat daarna weer als "nog niet geëxporteerd".
+
+## 35. Logboek als CSV (0.19.2)
+
+Klik in het logboek op **CSV**. CWLD schrijft de QSO's zoals ze nu getoond worden naar een CSV-bestand in de CWLD-map, met de kolommen die je via **Kolommen** koos en in dezelfde volgorde. Klik daarna op **Map openen** en dubbelklik het bestand: Excel opent het met de juiste tekens en kolommen. Het scheidingsteken is een puntkomma. Een CSV-export markeert niets als geëxporteerd, want dat doet alleen de ADIF-export.
+
+## 36. Rustiger scherm en minder tabbladen (0.19.3)
+
+Scrol je in het gespreksvenster omhoog om iets terug te lezen, dan blijft het beeld staan als er nieuwe tekst bijkomt. Sta je helemaal onderaan, dan loopt het venster vanzelf mee. De waarschuwing over de notch of Twin PBT staat nu over het audiospectrum, zodat de rest van de kaart Audio niet meer verspringt.
+
+Het maximum aantal open tabbladen stel je in via **Instellingen**, onderdeel met de tabbladen, bij **Maximaal aantal open tabbladen** (standaard 5, 0 is geen limiet). Het oudste rustige gesprek sluit eerst. Het gesprek waarin je zit en gesprekken met gezonden tekst die nog niet gelogd zijn sluiten nooit vanzelf.
+

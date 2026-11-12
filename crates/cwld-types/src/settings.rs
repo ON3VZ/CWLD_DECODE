@@ -114,6 +114,12 @@ pub struct AudioSettings {
     pub gain_db: f32,
     /// Wide decoder filter (double bandwidth) for drifting or chirpy signals.
     pub wide_filter: bool,
+    /// Steep decoder filter: the narrow width with much steeper edges, against a strong station
+    /// close by. Ignored while `wide_filter` is on.
+    pub steep_filter: bool,
+    /// Join letters a sender spelled out with word gaps between them (`D L 4 S A V` becomes
+    /// `DL4SAV`).
+    pub join_spelled: bool,
     /// Read weak dots and dashes in fast fading (QSB). Off: only marks near the followed level
     /// count, which is steadier on very weak signals and with very uneven keying.
     pub fading: bool,
@@ -143,7 +149,7 @@ pub const NEW_TAB_SECONDS_DEFAULT: u32 = 5;
 
 impl Default for AudioSettings {
     fn default() -> Self {
-        AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new(), squelch: SQUELCH_DEFAULT, auto_tone: true, gain_db: 0.0, wide_filter: false, fading: true, min_wpm: WPM_FLOOR, max_wpm: MAX_WPM_DEFAULT, lock_wpm: 0, afc: true }
+        AudioSettings { input: String::new(), tone_hz: 700.0, auto_start: true, record_dir: String::new(), squelch: SQUELCH_DEFAULT, auto_tone: true, gain_db: 0.0, wide_filter: false, steep_filter: false, join_spelled: true, fading: true, min_wpm: WPM_FLOOR, max_wpm: MAX_WPM_DEFAULT, lock_wpm: 0, afc: true }
     }
 }
 
@@ -250,6 +256,8 @@ pub struct Settings {
     pub default_rst: DefaultRst,
     /// Close conversations without activity after this many minutes. 0: never.
     pub tabs_auto_close_minutes: u32,
+    /// Most conversation tabs kept open. The oldest quiet ones close first. 0: no limit.
+    pub tabs_max: u32,
     /// Contest mode: the serial number `{NR}` is filled in and counted.
     pub contest_mode: bool,
     /// The next serial number in contest mode.
@@ -595,6 +603,8 @@ pub struct UserWord {
 
 pub const TABS_AUTO_CLOSE_DEFAULT: u32 = 15;
 pub const TABS_AUTO_CLOSE_MAX: u32 = 240;
+pub const TABS_MAX_DEFAULT: u32 = 5;
+pub const TABS_MAX_LIMIT: u32 = 40;
 
 /// How the signal report is sent: cut number `5NN` or in full `599`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -633,6 +643,7 @@ impl Default for Settings {
             audio_waterfall: true,
             default_rst: DefaultRst::default(),
             tabs_auto_close_minutes: TABS_AUTO_CLOSE_DEFAULT,
+            tabs_max: TABS_MAX_DEFAULT,
             contest_mode: false,
             contest_nr: 1,
             user_words: Vec::new(),
@@ -788,6 +799,7 @@ mod tests {
         assert_eq!(s.default_rst, DefaultRst::Nn);
         assert_eq!(s.default_rst.text(), "5NN");
         assert_eq!(s.tabs_auto_close_minutes, 15);
+        assert_eq!(s.tabs_max, 5);
         assert!(!s.contest_mode);
         let s: Settings = serde_json::from_str(r#"{"default_rst":"599"}"#).unwrap();
         assert_eq!(s.default_rst.text(), "599");

@@ -209,6 +209,26 @@ impl<T: Transport> IcomRig<T> {
                     self.audio.squelch = Some(raw.min(255));
                 }
             }
+            // Twin PBT inner and outer, 0000 to 0255 in BCD **[TEST]** on the MK II.
+            0x14 if b.len() >= 4 && (b[1] == 0x07 || b[1] == 0x08) => {
+                self.answered_read();
+                if let Some(raw) = civ::from_bcd2(&b[2..]) {
+                    if b[1] == 0x07 {
+                        self.audio.pbt_inner = Some(raw.min(255));
+                    } else {
+                        self.audio.pbt_outer = Some(raw.min(255));
+                    }
+                }
+            }
+            // Automatic notch (41) and manual notch (48): 00 off, 01 on **[TEST]** on the MK II.
+            0x16 if b.len() >= 3 && (b[1] == 0x41 || b[1] == 0x48) => {
+                self.answered_read();
+                if b[1] == 0x41 {
+                    self.audio.auto_notch = Some(b[2] != 0);
+                } else {
+                    self.audio.notch = Some(b[2] != 0);
+                }
+            }
             // Break-in: 00 off, 01 semi, 02 full **[TEST]** on the MK II.
             0x16 if b.len() >= 3 && b[1] == 0x47 => {
                 self.answered_read();
@@ -293,7 +313,7 @@ impl<T: Transport> Rig for IcomRig<T> {
                 // At most one pair of these reads under way, so a radio that does not answer them
                 // never fills the list of expected answers.
                 if !self.acks.contains(&Ack::Read) {
-                    for body in [&cmd::AF_LEVEL[..], &cmd::BREAK_IN[..], &cmd::SQUELCH[..]] {
+                    for body in [&cmd::AF_LEVEL[..], &cmd::BREAK_IN[..], &cmd::SQUELCH[..], &cmd::NOTCH[..], &cmd::AUTO_NOTCH[..], &cmd::PBT_INNER[..], &cmd::PBT_OUTER[..]] {
                         self.send(body)?;
                         self.acks.push_back(Ack::Read);
                     }
@@ -367,6 +387,24 @@ impl<T: Transport> Rig for IcomRig<T> {
                 let raw = civ::bcd2((*v).min(255));
                 self.send_set(&[cmd::SQUELCH[0], cmd::SQUELCH[1], raw[0], raw[1]])?;
                 self.audio.squelch = Some((*v).min(255));
+                Ok(())
+            }
+            RadioCommand::SetNotch(on) => {
+                self.send_set(&[cmd::NOTCH[0], cmd::NOTCH[1], u8::from(*on)])?;
+                self.audio.notch = Some(*on);
+                Ok(())
+            }
+            RadioCommand::SetAutoNotch(on) => {
+                self.send_set(&[cmd::AUTO_NOTCH[0], cmd::AUTO_NOTCH[1], u8::from(*on)])?;
+                self.audio.auto_notch = Some(*on);
+                Ok(())
+            }
+            RadioCommand::CenterPbt => {
+                let raw = civ::bcd2(crate::PBT_CENTER);
+                self.send_set(&[cmd::PBT_INNER[0], cmd::PBT_INNER[1], raw[0], raw[1]])?;
+                self.send_set(&[cmd::PBT_OUTER[0], cmd::PBT_OUTER[1], raw[0], raw[1]])?;
+                self.audio.pbt_inner = Some(crate::PBT_CENTER);
+                self.audio.pbt_outer = Some(crate::PBT_CENTER);
                 Ok(())
             }
         }

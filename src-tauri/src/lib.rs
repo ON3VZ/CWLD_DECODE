@@ -135,8 +135,9 @@ fn set_squelch(core: Core, value: f32) -> Result<(), Failure> {
 }
 
 #[tauri::command]
-fn set_tuning(core: Core, gain_db: f32, wide_filter: bool, min_wpm: u8, max_wpm: u8, lock_wpm: u8) -> Result<(), Failure> {
-    core.set_tuning(gain_db, wide_filter, min_wpm, max_wpm, lock_wpm)?;
+#[allow(clippy::too_many_arguments)]
+fn set_tuning(core: Core, gain_db: f32, wide_filter: bool, steep_filter: bool, join_spelled: bool, min_wpm: u8, max_wpm: u8, lock_wpm: u8) -> Result<(), Failure> {
+    core.set_tuning(gain_db, wide_filter, steep_filter, join_spelled, min_wpm, max_wpm, lock_wpm)?;
     let _ = core.save_settings();
     Ok(())
 }
@@ -173,6 +174,20 @@ fn set_tone(core: Core, hz: f64) -> Result<(), Failure> {
     core.set_tone(hz)?;
     let _ = core.save_settings();
     Ok(())
+}
+
+/// Decodes the last seconds again, off the interface thread (it takes about a second).
+#[tauri::command]
+async fn replay(core: Core<'_>, seconds: f64, tone_hz: Option<f64>, strongest: bool) -> Result<cwld_core::ReplayResult, Failure> {
+    let c = core.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || c.replay(seconds, tone_hz, strongest)).await.map_err(|e| Failure { code: "audio", message: e.to_string() })?.map_err(Failure::from)
+}
+
+/// Saves the last minute of audio as a WAV file.
+#[tauri::command]
+async fn save_rewind(core: Core<'_>) -> Result<String, Failure> {
+    let c = core.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || c.save_rewind()).await.map_err(|e| Failure { code: "audio", message: e.to_string() })?.map_err(Failure::from)
 }
 
 #[tauri::command]
@@ -266,6 +281,16 @@ fn lookup_clear_password(core: Core) -> Result<(), Failure> {
 }
 
 #[tauri::command]
+fn notch_off(core: Core) -> Result<(), Failure> {
+    Ok(core.notch_off()?)
+}
+
+#[tauri::command]
+fn pbt_center(core: Core) -> Result<(), Failure> {
+    Ok(core.pbt_center()?)
+}
+
+#[tauri::command]
 fn cluster_start(core: Core) -> Result<ClusterStatus, Failure> {
     core.cluster_start()?;
     Ok(core.cluster_status())
@@ -327,6 +352,27 @@ fn link_resend_last(core: Core) -> Result<cwld_core::LinkReport, Failure> {
 #[tauri::command]
 fn log_export(core: Core, app: AppHandle, filter: LogFilter, contest_id: String) -> Result<cwld_core::ExportResult, Failure> {
     Ok(core.log_export(&filter, &contest_id, &app.package_info().version.to_string())?)
+}
+
+/// Writes a CSV made by the logbook window in the export folder and returns its path.
+#[tauri::command]
+fn export_text_file(core: Core, name: String, text: String) -> Result<String, Failure> {
+    Ok(core.export_text_file(&name, &text)?)
+}
+
+/// Shows the folder with the exported files in the file manager of the system.
+#[tauri::command]
+fn open_export_folder(core: Core) -> Result<String, Failure> {
+    let dir = core.export_folder();
+    let _ = std::fs::create_dir_all(&dir);
+    #[cfg(windows)]
+    let started = std::process::Command::new("explorer").arg(&dir).spawn();
+    #[cfg(target_os = "macos")]
+    let started = std::process::Command::new("open").arg(&dir).spawn();
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    let started = std::process::Command::new("xdg-open").arg(&dir).spawn();
+    started.map_err(|e| Failure { code: "open_folder", message: e.to_string() })?;
+    Ok(dir.display().to_string())
 }
 
 /// Before an update is installed: let go of the radio port and the sound card so that the
@@ -445,6 +491,8 @@ pub fn run() {
             go_strongest,
             set_auto_tone,
             start_recording,
+            replay,
+            save_rewind,
             stop_recording,
             prepare_update,
             log_add,
@@ -455,6 +503,8 @@ pub fn run() {
             log_next_test_serial,
             log_dupe,
             log_export,
+            open_export_folder,
+            export_text_file,
             link_resend_last,
             lookup_status,
             lookup_set_password,
@@ -467,6 +517,8 @@ pub fn run() {
             activation_end,
             activation_current,
             activation_stats,
+            notch_off,
+            pbt_center,
             cluster_start,
             cluster_stop,
             cluster_status,

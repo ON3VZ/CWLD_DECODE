@@ -117,6 +117,8 @@ pub struct LogFilter {
     pub activation: Option<i64>,
     /// Only QSOs that have not been exported yet.
     pub not_exported: bool,
+    /// Part of the callsign, name, QTH, comment or the other station's reference (any case).
+    pub search: String,
     /// Newest first, at most this many (0: all).
     pub limit: u32,
 }
@@ -301,9 +303,17 @@ impl Logbook {
     /// Replaces the fields of a stored QSO.
     pub fn update(&self, q: &Qso) -> Result<(), LogError> {
         let call = q.call.trim().to_uppercase();
+        // The band follows the frequency whenever the frequency lies in an amateur band.
+        let band = match band_of(q.freq_hz) {
+            "" => q.band.clone(),
+            b => b.to_string(),
+        };
+        let mode = if q.mode.trim().is_empty() { "CW".to_string() } else { q.mode.trim().to_uppercase() };
         self.conn.execute(
-            "UPDATE qso SET ts=?2, call=?3, band=?4, freq_hz=?5, mode=?6, rst_sent=?7, rst_rcvd=?8, nr_sent=?9, nr_rcvd=?10, extra_sent=?11, extra_rcvd=?12, name=?13, qth=?14, comment=?15, their_prog=?16, their_ref=?17, exported_to='' WHERE id=?1",
-            params![q.id, q.ts, call, q.band, q.freq_hz as i64, q.mode, q.rst_sent, q.rst_rcvd, q.nr_sent as i64, q.nr_rcvd, q.extra_sent, q.extra_rcvd, q.name, q.qth, q.comment, q.their_prog, q.their_ref],
+            "UPDATE qso SET ts=?2, call=?3, band=?4, freq_hz=?5, mode=?6, rst_sent=?7, rst_rcvd=?8, nr_sent=?9, nr_rcvd=?10, extra_sent=?11, extra_rcvd=?12, name=?13, qth=?14, comment=?15, their_prog=?16, their_ref=?17,
+                station_call=?18, operator=?19, my_grid=?20, tx_pwr=?21, my_rig=?22, my_antenna=?23, my_wwff=?24, my_pota=?25, my_sota=?26, exported_to='' WHERE id=?1",
+            params![q.id, q.ts, call, band, q.freq_hz as i64, mode, q.rst_sent, q.rst_rcvd, q.nr_sent as i64, q.nr_rcvd, q.extra_sent, q.extra_rcvd, q.name, q.qth, q.comment, q.their_prog, q.their_ref,
+                    q.station_call, q.operator, q.my_grid, q.tx_pwr, q.my_rig, q.my_antenna, q.my_wwff, q.my_pota, q.my_sota],
         )?;
         Ok(())
     }
@@ -352,6 +362,14 @@ impl Logbook {
         }
         if f.not_exported {
             sql.push_str(" AND exported_to NOT LIKE '%adif%'");
+        }
+        let needle = f.search.trim().to_uppercase();
+        if !needle.is_empty() {
+            // LIKE with the wildcards of the text itself escaped, so % and _ are plain characters.
+            let esc = needle.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+            args.push(format!("%{esc}%").into());
+            let n = args.len();
+            sql.push_str(&format!(" AND (UPPER(call) LIKE ?{n} ESCAPE '\\' OR UPPER(name) LIKE ?{n} ESCAPE '\\' OR UPPER(qth) LIKE ?{n} ESCAPE '\\' OR UPPER(comment) LIKE ?{n} ESCAPE '\\' OR UPPER(their_ref) LIKE ?{n} ESCAPE '\\')"));
         }
         sql.push_str(" ORDER BY ts DESC, id DESC");
         if f.limit > 0 {
@@ -473,6 +491,30 @@ mod tests {
     }
 
     #[test]
+    fn update_changes_every_field_and_the_band_follows_the_frequency() {
+        let lb = Logbook::open_memory().unwrap();
+        let mut a = lb.add(&Qso { ts: 1, call: "PA3ABC".into(), freq_hz: 7_030_000, ..Default::default() }).unwrap();
+        a.freq_hz = 14_025_000;
+        a.ts = 5000;
+        a.mode = "ssb".into();
+        a.comment = "fixed".into();
+        a.station_call = "ON3VZ/P".into();
+        a.my_grid = "JO21".into();
+        a.tx_pwr = "5".into();
+        a.their_ref = "ONFF-0001".into();
+        a.exported_to = "adif".into();
+        lb.update(&a).unwrap();
+        let r = &lb.list(&LogFilter::default()).unwrap()[0];
+        assert_eq!((r.band.as_str(), r.freq_hz, r.ts, r.mode.as_str()), ("20m", 14_025_000, 5000, "SSB"));
+        assert_eq!((r.comment.as_str(), r.station_call.as_str(), r.my_grid.as_str(), r.tx_pwr.as_str(), r.their_ref.as_str()), ("fixed", "ON3VZ/P", "JO21", "5", "ONFF-0001"));
+        assert_eq!(r.exported_to, "", "an edited QSO is exported again");
+        let mut a = lb.list(&LogFilter::default()).unwrap().remove(0);
+        a.freq_hz = 9_000_000;
+        lb.update(&a).unwrap();
+        assert_eq!(lb.list(&LogFilter::default()).unwrap()[0].band, "20m", "outside the bands the band stays as it was");
+    }
+
+    #[test]
     fn band_is_filled_from_the_frequency() {
         let lb = Logbook::open_memory().unwrap();
         let a = lb.add(&Qso { ts: 1, call: "PA3ABC".into(), freq_hz: 7_030_000, ..Default::default() }).unwrap();
@@ -520,6 +562,23 @@ mod tests {
         assert_eq!(lb.clear_test().unwrap(), 3);
         assert_eq!(lb.next_test_serial().unwrap(), 1);
         assert_eq!(lb.list(&LogFilter::default()).unwrap().len(), 1, "the real log is untouched");
+    }
+
+    #[test]
+    fn search_finds_part_of_a_call_name_qth_or_reference() {
+        let lb = Logbook::open_memory().unwrap();
+        lb.add(&Qso { name: "Hans".into(), qth: "Berlin".into(), ..q("DL1ABC", 100, "40m") }).unwrap();
+        lb.add(&Qso { their_ref: "ONFF-0599".into(), ..q("ON4XYZ", 200, "40m") }).unwrap();
+        lb.add(&Qso { comment: "100%_good".into(), ..q("PA3ABC", 300, "20m") }).unwrap();
+        let find = |s: &str| lb.list(&LogFilter { search: s.into(), ..Default::default() }).unwrap().into_iter().map(|q| q.call).collect::<Vec<_>>();
+        assert_eq!(find("abc"), vec!["PA3ABC", "DL1ABC"]);
+        assert_eq!(find("berl"), vec!["DL1ABC"]);
+        assert_eq!(find("onff-0599"), vec!["ON4XYZ"]);
+        assert_eq!(find("%_"), vec!["PA3ABC"], "wildcards are plain characters");
+        assert_eq!(find("_"), vec!["PA3ABC"]);
+        assert_eq!(find("  "), vec!["PA3ABC", "ON4XYZ", "DL1ABC"], "an empty search filters nothing");
+        let both = lb.list(&LogFilter { search: "abc".into(), band: "40m".into(), ..Default::default() }).unwrap();
+        assert_eq!(both.len(), 1);
     }
 
     #[test]

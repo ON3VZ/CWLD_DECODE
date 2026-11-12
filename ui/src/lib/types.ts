@@ -54,6 +54,10 @@ export interface AudioSettings {
   gain_db: number;
   /** Double filter bandwidth, for drifting or chirpy signals. */
   wide_filter: boolean;
+  /** The narrow width with steep edges, against a strong station close by. Not with wide. */
+  steep_filter: boolean;
+  /** Join letters a sender spelled out (D L 4 S A V becomes DL4SAV). */
+  join_spelled: boolean;
   /** Read weak dots and dashes in fast fading (QSB). */
   fading: boolean;
   /** Slowest and fastest speed the decoder looks for (5 to 60 WPM). */
@@ -70,9 +74,27 @@ export type DefaultRst = '5NN' | '599';
 export interface Tuning {
   gain_db: number;
   wide_filter: boolean;
+  steep_filter: boolean;
+  join_spelled: boolean;
   min_wpm: number;
   max_wpm: number;
   lock_wpm: number;
+}
+
+/** A keyed tone heard in the stretch that was decoded again. */
+export interface HeardTone {
+  hz: number;
+  score_db: number;
+}
+
+/** The last seconds decoded again (see `Api.replay`). */
+export interface ReplayResult {
+  text: string;
+  conf: number[];
+  tone_hz: number;
+  seconds: number;
+  wpm: number;
+  tones: HeardTone[];
 }
 
 export interface AudioStatus {
@@ -120,6 +142,8 @@ export interface Settings {
   default_rst: DefaultRst;
   /** Close idle conversations after this many minutes. 0: never. */
   tabs_auto_close_minutes: number;
+  /** Most conversation tabs kept open. 0: no limit. */
+  tabs_max: number;
   /** Contest mode: {NR} is filled in. */
   contest_mode: boolean;
   /** The next serial number in contest mode. */
@@ -441,6 +465,12 @@ export interface RadioControls {
   af_level: number | null;
   break_in: number | null;
   squelch: number | null;
+  /** Manual notch (MN) and automatic notch (AN) on the radio. `null`: not reported. */
+  notch?: boolean | null;
+  auto_notch?: boolean | null;
+  /** Twin PBT knobs, 0 to 255; 128 is the middle. */
+  pbt_inner?: number | null;
+  pbt_outer?: number | null;
 }
 
 export type SendOutcome = { kind: 'sent' } | { kind: 'simulated'; seconds: number };
@@ -533,6 +563,8 @@ export interface LogFilter {
   include_deleted?: boolean;
   activation?: number | null;
   not_exported?: boolean;
+  /** Part of the callsign, name, QTH, comment or reference (any case). */
+  search?: string;
   limit?: number;
 }
 
@@ -584,6 +616,11 @@ export interface Api {
   setFading(on: boolean): Promise<void>;
   /** Once: the decoder moves to the strongest keyed tone heard lately. */
   goStrongest(): Promise<void>;
+  /** Decodes the last `seconds` (5 to 60) again with a separate decoder: at the live pitch
+   * (`toneHz` null), at `toneHz`, or at the strongest tone of that stretch. */
+  replay(seconds: number, toneHz: number | null, strongest: boolean): Promise<ReplayResult>;
+  /** Saves the last minute of audio as a WAV file. Returns its path. */
+  saveRewind(): Promise<string>;
   /** Returns the path of the new recording. */
   startRecording(): Promise<string>;
   stopRecording(): Promise<void>;
@@ -597,6 +634,14 @@ export interface Api {
   logDupe(call: string, contest: string, session: number, test: boolean): Promise<DupeInfo>;
   /** Writes an ADIF file in the CWLD folder. `contestId` is the ADIF CONTEST_ID. */
   logExport(filter: LogFilter, contestId: string): Promise<ExportResult>;
+  /** Switches the manual and automatic notch of the radio off. */
+  notchOff(): Promise<void>;
+  /** Puts both Twin PBT knobs of the radio in the middle. */
+  pbtCenter(): Promise<void>;
+  /** Opens the folder with the exported files. Returns its path. */
+  /** Writes a CSV in the export folder. Returns the path, or '(browser)' in the demo. */
+  exportTextFile(name: string, text: string): Promise<string>;
+  openExportFolder(): Promise<string>;
   /** Sends the newest real QSO again to the enabled UDP links (a connection test). */
   linkResendLast(): Promise<LinkReport>;
   lookupStatus(): Promise<LookupStatus>;

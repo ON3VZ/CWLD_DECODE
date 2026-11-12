@@ -14,6 +14,7 @@
   <div class="head">
     <h2>{t('log.title')}{#if app.testMode} <span class="testtag">{t('contest.test.on')}</span>{/if}</h2>
     <span class="muted count">{app.qsoCount}</span>
+    <button class="link" onclick={() => (app.bookOpen = true)}>{t('book.all_qsos')}</button>
     <button class="link" onclick={() => (app.exportOpen = true)}>{t('log.export')}</button>
   </div>
   {#if app.recent.length === 0}

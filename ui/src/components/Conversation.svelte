@@ -21,12 +21,27 @@
   function openMenu(e: MouseEvent, word: string) {
     pick = { word, x: Math.min(e.clientX, window.innerWidth - 190), y: Math.min(e.clientY, window.innerHeight - 230) };
   }
+  /** True while the operator is at the bottom: only then new text scrolls into view. Scrolled up to read, the view stays put. */
+  let atBottom = $state(true);
+  const NEAR = 48;
+  function onScroll() {
+    if (box) atBottom = box.scrollHeight - box.scrollTop - box.clientHeight <= NEAR;
+  }
+  function toBottom() {
+    if (box) box.scrollTop = box.scrollHeight;
+    atBottom = true;
+  }
   $effect(() => {
     app.messages.length;
     app.tail;
     const last = app.messages[app.messages.length - 1];
     last?.text.length;
-    tick().then(() => box && (box.scrollTop = box.scrollHeight));
+    tick().then(() => atBottom && toBottom());
+  });
+  // Another conversation is shown: start at its end.
+  $effect(() => {
+    app.shown.id;
+    tick().then(toBottom);
   });
 
   type Run = { text: string; call: boolean; unsure: boolean };
@@ -83,7 +98,7 @@
 {#if app.decodeHold}
   <div class="hold muted" role="status" title={t(`hold.${app.decodeHold.hold}.help`)}>{t(`hold.${app.decodeHold.hold}`, { mode: app.decodeHold.mode })}</div>
 {/if}
-<div class="conv" bind:this={box}>
+<div class="conv" bind:this={box} onscroll={onScroll}>
   {#each app.messages as m, i (m.id)}
     <div class="row {m.from}">
       <div class="bubble">

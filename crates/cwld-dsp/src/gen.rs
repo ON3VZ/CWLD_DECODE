@@ -56,6 +56,9 @@ pub struct CwSpec {
     pub wpm2: f64,
     /// The speed swings slowly by this share around `wpm` (0.15 = 15 percent up and down).
     pub speed_wobble: f64,
+    /// Gap in units between the letters of a word that starts with `~` in `text`: the sender
+    /// spells that word out (`NAME IS ~HANS`). The `~` is not keyed and not in the truth.
+    pub spell_gap: f64,
     /// Key rise and fall time in milliseconds.
     pub rise_ms: f64,
     pub lead_s: f64,
@@ -90,6 +93,7 @@ impl Default for CwSpec {
             word_gap: 7.0,
             gap_jitter: 0.0,
             speed_wobble: 0.0,
+            spell_gap: 7.0,
             change_after: 0.0,
             char_gap2: 0.0,
             word_gap2: 0.0,
@@ -139,10 +143,12 @@ pub(crate) fn timeline(spec: &CwSpec, text: &str, rng: &mut Rng) -> Vec<(bool, f
         if wi > 0 {
             out.push((false, gjit(pick(spec.word_gap, spec.word_gap2) * unit(&mut n) * spec.gap_scale, rng)));
         }
-        let chars: Vec<char> = word.chars().collect();
+        let spelled = word.starts_with('~');
+        let chars: Vec<char> = word.chars().filter(|c| *c != '~').collect();
         for (ci, c) in chars.iter().enumerate() {
             if ci > 0 {
-                out.push((false, gjit(pick(spec.char_gap, spec.char_gap2) * unit(&mut n) * spec.gap_scale, rng)));
+                let g = if spelled { spec.spell_gap } else { pick(spec.char_gap, spec.char_gap2) * spec.gap_scale };
+                out.push((false, gjit(g * unit(&mut n), rng)));
             }
             let pat = morse::pattern(*c).unwrap_or("");
             for (ei, e) in pat.chars().enumerate() {
@@ -161,9 +167,17 @@ pub(crate) fn timeline(spec: &CwSpec, text: &str, rng: &mut Rng) -> Vec<(bool, f
 }
 
 pub(crate) fn clean_text(text: &str) -> String {
+    clean(text, false)
+}
+
+/// Upper case, unsupported characters removed; with `marks` a `~` at the start of a word stays.
+fn clean(text: &str, marks: bool) -> String {
     let mut out = String::new();
     for w in text.to_ascii_uppercase().split_whitespace() {
-        let word: String = w.chars().filter(|c| morse::pattern(*c).is_some()).collect();
+        let mut word: String = w.chars().filter(|c| morse::pattern(*c).is_some()).collect();
+        if marks && w.starts_with('~') && !word.is_empty() {
+            word.insert(0, '~');
+        }
         if !word.is_empty() {
             if !out.is_empty() {
                 out.push(' ');
@@ -214,7 +228,7 @@ pub fn generate(spec: &CwSpec) -> Generated {
     let mut rng = Rng::new(spec.seed);
     let fs = spec.sample_rate as f64;
     let truth = clean_text(&spec.text);
-    let tl = timeline(spec, &truth, &mut rng);
+    let tl = timeline(spec, &clean(&spec.text, true), &mut rng);
     let body: f64 = tl.iter().map(|(_, d)| d).sum();
     let total = spec.lead_s + body + spec.trail_s;
     let n = (total * fs) as usize;
@@ -324,6 +338,15 @@ mod tests {
         let lead = &a.samples[..(0.4 * 8000.0) as usize];
         let p: f64 = lead.iter().map(|s| (*s as f64).powi(2)).sum::<f64>() / lead.len() as f64;
         assert!((p - 0.1).abs() < 0.02, "{p}");
+    }
+
+    #[test]
+    fn a_spelled_word_has_wide_gaps_and_no_mark_in_the_truth() {
+        let spec = CwSpec { text: "~EE".into(), spell_gap: 7.0, lead_s: 0.0, trail_s: 0.0, ..Default::default() };
+        let g = generate(&spec);
+        assert_eq!(g.truth, "EE");
+        assert_eq!(g.keying.len(), 3);
+        assert!((g.keying[1].1 - 7.0 * 0.06).abs() < 1e-9);
     }
 
     #[test]

@@ -18,6 +18,8 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 pub const DECODE_RATE: u32 = 8000;
+/// Audio kept for listening again (`Engine::rewind`), in seconds.
+pub const REWIND_SECONDS: f64 = 60.0;
 
 #[derive(Clone, Debug)]
 pub enum Source {
@@ -39,6 +41,10 @@ pub struct Tuning {
     pub gain_db: f32,
     /// Double filter bandwidth.
     pub wide: bool,
+    /// The steep filter (narrow width, steep edges). Ignored while `wide` is on.
+    pub steep: bool,
+    /// Join letters a sender spelled out (see `cwld_decoder::join`).
+    pub join: bool,
     pub wpm_min: f32,
     pub wpm_max: f32,
     /// A fixed speed. `None`: follow the speed.
@@ -47,7 +53,7 @@ pub struct Tuning {
 
 impl Default for Tuning {
     fn default() -> Self {
-        Tuning { gain_db: 0.0, wide: false, wpm_min: 5.0, wpm_max: 50.0, fixed_wpm: None }
+        Tuning { gain_db: 0.0, wide: false, steep: false, join: true, wpm_min: 5.0, wpm_max: 50.0, fixed_wpm: None }
     }
 }
 
@@ -126,7 +132,22 @@ enum Command {
     Tuning(Tuning),
     Volume(f32),
     Keying(bool),
+    Rewind(std::sync::mpsc::SyncSender<Rewind>),
     Stop,
+}
+
+/// The last minute of audio as the decoder heard it, with what is needed to decode it again
+/// the same way (see `replay`).
+#[derive(Clone, Debug)]
+pub struct Rewind {
+    /// Mono at `DECODE_RATE`, before the gain.
+    pub samples: Vec<f32>,
+    pub gain: f32,
+    /// The pitch the decoder listens to now.
+    pub tone_hz: f64,
+    pub config: PipelineConfig,
+    pub words: Vec<String>,
+    pub hints: Vec<String>,
 }
 
 pub struct Engine {
@@ -227,6 +248,14 @@ impl Engine {
         let _ = self.cmd.send(Command::Hints(calls));
     }
 
+    /// The last minute of audio and the decoder settings, for listening again. `None` when the
+    /// audio thread does not answer.
+    pub fn rewind(&self) -> Option<Rewind> {
+        let (tx, rx) = sync_channel(1);
+        self.cmd.send(Command::Rewind(tx)).ok()?;
+        rx.recv_timeout(Duration::from_secs(3)).ok()
+    }
+
     /// Hands out the key down and up times (`EngineEvent::Keying`) or stops doing so.
     pub fn set_keying(&self, on: bool) {
         let _ = self.cmd.send(Command::Keying(on));
@@ -314,6 +343,8 @@ struct Worker {
     reported_tone: f64,
     wf: Waterfall,
     rec: Option<Recorder>,
+    /// The last `REWIND_SECONDS` of audio at `DECODE_RATE`, before the gain.
+    rewind: std::collections::VecDeque<f32>,
     level_acc: f64,
     level_n: usize,
     level_peak: f32,
@@ -345,18 +376,14 @@ impl Worker {
                 }
             }
         }
-        // The gain acts on the decoder, the waterfall and the meter. The recording was written above.
-        let gained: Vec<f32>;
-        let samples: &[f32] = if (self.gain - 1.0).abs() > 1e-6 {
-            gained = samples.iter().map(|s| s * self.gain).collect();
-            &gained
-        } else {
-            samples
-        };
+        // The gain acts on the decoder, the waterfall and the meter. The recording was written
+        // above, the rewind buffer below keeps the audio before the gain as well.
+        let g = self.gain;
         for s in samples {
-            self.level_acc += (*s as f64).powi(2);
+            let v = s * g;
+            self.level_acc += (v as f64).powi(2);
             self.level_n += 1;
-            let a = s.abs();
+            let a = v.abs();
             if a > self.level_peak {
                 self.level_peak = a;
             }
@@ -371,6 +398,17 @@ impl Worker {
         self.scratch.clear();
         let mut lo = std::mem::take(&mut self.scratch);
         self.resampler.process(samples, &mut lo);
+        self.rewind.extend(lo.iter().copied());
+        let max = (REWIND_SECONDS * DECODE_RATE as f64) as usize;
+        if self.rewind.len() > max {
+            let extra = self.rewind.len() - max;
+            self.rewind.drain(..extra);
+        }
+        if (g - 1.0).abs() > 1e-6 {
+            for v in lo.iter_mut() {
+                *v *= g;
+            }
+        }
         for row in self.wf.push(&lo) {
             self.send(EngineEvent::Waterfall { bins: row.bins, lo_hz: row.lo_hz, hz_per_bin: row.hz_per_bin });
         }
@@ -441,10 +479,14 @@ impl Worker {
     fn apply_tuning(&mut self, t: &Tuning) {
         self.gain = 10f32.powf(t.gain_db.clamp(-20.0, 20.0) / 20.0);
         self.pcfg.bandwidth_factor = if t.wide { 2.4 } else { 1.2 };
+        self.pcfg.steep_order = steep_order(t);
+        self.pcfg.join_spelled = t.join;
         self.pcfg.decoder.wpm_min = t.wpm_min as f64;
         self.pcfg.decoder.wpm_max = t.wpm_max as f64;
         self.pcfg.decoder.fixed_wpm = t.fixed_wpm.map(|w| w as f64);
         self.pipe.set_wide(t.wide);
+        self.pipe.set_steep(steep_order(t));
+        self.pipe.set_join_spelled(t.join);
         self.pipe.set_speed_range(t.wpm_min as f64, t.wpm_max as f64, t.fixed_wpm.map(|w| w as f64));
     }
 
@@ -521,9 +563,24 @@ impl Worker {
                 self.pcfg.keying = on;
                 self.pipe.set_keying(on);
             }
+            Command::Rewind(reply) => {
+                let mut config = self.pcfg.clone();
+                config.tone_hz = self.pipe.tone_hz();
+                config.keying = false;
+                let _ = reply.try_send(Rewind { samples: self.rewind.iter().copied().collect(), gain: self.gain, tone_hz: self.pipe.tone_hz(), config, words: self.words.clone(), hints: self.hints.clone() });
+            }
             Command::Stop => return false,
         }
         true
+    }
+}
+
+/// The filter order for the tuning: the steep filter only with the narrow width.
+fn steep_order(t: &Tuning) -> usize {
+    if t.steep && !t.wide {
+        cwld_dsp::frontend::STEEP_ORDER
+    } else {
+        0
     }
 }
 
@@ -542,6 +599,8 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
     pcfg.afc = cfg.afc;
     pcfg.fading = cfg.fading;
     pcfg.bandwidth_factor = if cfg.tuning.wide { 2.4 } else { 1.2 };
+    pcfg.steep_order = steep_order(&cfg.tuning);
+    pcfg.join_spelled = cfg.tuning.join;
     pcfg.decoder.wpm_min = cfg.tuning.wpm_min as f64;
     pcfg.decoder.wpm_max = cfg.tuning.wpm_max as f64;
     pcfg.decoder.fixed_wpm = cfg.tuning.fixed_wpm.map(|w| w as f64);
@@ -559,6 +618,7 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
         reported_tone: cfg.tone_hz,
         wf: Waterfall::new(cfg.waterfall_lo_hz, cfg.waterfall_hi_hz),
         rec: None,
+        rewind: std::collections::VecDeque::with_capacity((REWIND_SECONDS * DECODE_RATE as f64) as usize + 4096),
         level_acc: 0.0,
         level_n: 0,
         level_peak: 0.0,
@@ -653,6 +713,10 @@ fn run(source: Source, cfg: EngineConfig, cmds: Receiver<Command>, ev: Sender<En
                     loop {
                         match cmds.recv() {
                             Ok(Command::Stop) | Err(_) => return,
+                            // What was heard can still be asked for.
+                            Ok(c @ Command::Rewind(_)) => {
+                                w.command(c);
+                            }
                             Ok(_) => {}
                         }
                     }
@@ -759,6 +823,32 @@ mod tests {
         // The recording starts when the command arrives, a few chunks may already be past.
         assert!(back.len() > n / 2 && back.len() <= n, "{} of {n}", back.len());
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn the_rewind_buffer_holds_the_audio_before_the_gain() {
+        let g = generate(&CwSpec { text: "QRZ DE F5XYZ".into(), snr_db: Some(20.0), ..Default::default() });
+        let n = g.samples.len();
+        let cfg = EngineConfig { tuning: Tuning { gain_db: 6.0, ..Default::default() }, ..Default::default() };
+        let e = Engine::start(Source::Samples { rate: 8000, data: g.samples.clone(), realtime: false }, cfg).unwrap();
+        let _ = collect_until_stopped(&e);
+        let r = e.rewind().expect("rewind");
+        assert_eq!(r.samples.len(), n);
+        assert!((r.gain - 10f32.powf(0.3)).abs() < 1e-3);
+        // At 8 kHz in and out the resampler passes the samples through (allow for its delay).
+        let peak_in = g.samples.iter().fold(0f32, |m, v| m.max(v.abs()));
+        let peak_out = r.samples.iter().fold(0f32, |m, v| m.max(v.abs()));
+        assert!((peak_out / peak_in - 1.0).abs() < 0.1, "{peak_in} {peak_out}");
+        let back = crate::replay::replay(&r, 30.0, crate::replay::ReplayTone::Current);
+        assert_eq!(back.text, g.truth);
+    }
+
+    #[test]
+    fn the_rewind_buffer_keeps_one_minute() {
+        let data = vec![0.01f32; (75.0 * 8000.0) as usize];
+        let e = Engine::start(Source::Samples { rate: 8000, data, realtime: false }, EngineConfig::default()).unwrap();
+        let _ = collect_until_stopped(&e);
+        assert_eq!(e.rewind().unwrap().samples.len(), (REWIND_SECONDS * 8000.0) as usize);
     }
 
     #[test]

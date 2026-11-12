@@ -25,6 +25,6 @@ pub use icom::IcomRig;
 pub use kenwood::QmxRig;
 pub use null::NullRig;
 pub use ports::{list_ports, PortInfo};
-pub use rig::{AudioControls, Capabilities, CwTextMode, Rig, RigInfo};
+pub use rig::{AudioControls, PBT_CENTER, Capabilities, CwTextMode, Rig, RigInfo};
 pub use sim::SimRig;
 pub use transport::{MockHandle, MockTransport, SerialTransport, Transport};

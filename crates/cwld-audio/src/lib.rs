@@ -6,9 +6,11 @@ pub mod device;
 pub mod engine;
 pub mod fft;
 pub mod record;
+pub mod replay;
 pub mod resample;
 pub mod ring;
 pub mod waterfall;
 
 pub use device::{list_inputs, InputDevice};
-pub use engine::{Engine, EngineConfig, EngineEvent, Source, TentativeOut, Tuning};
+pub use engine::{Engine, EngineConfig, EngineEvent, Rewind, Source, TentativeOut, Tuning, REWIND_SECONDS};
+pub use replay::{HeardTone, ReplayResult, ReplayTone};
