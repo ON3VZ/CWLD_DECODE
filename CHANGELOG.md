@@ -1,3 +1,16 @@
+## 0.20.1 (editable texts, CQ repeat, the paddle goes first)
+
+- New: every chip and function key can be edited, also the contest keys of the built-in profiles. Right click a chip or key, or click the pencil after the chips or the contest keys. The window "Texts of chips and keys" has three groups: Chips, Pile-up F1 to F4 and Contest keys F1 to F8 (per contest profile, for Run and for S&P; when a profile has two exchanges, F2 has a text for each).
+  - Change the text and the name on the button. Buttons insert the variables ({CALL}, {MYCALL}, {NAME}, {QTH}, {RST}, {NR}, {MYNAME}, {MYQTH} and the own contest variables).
+  - "Sent now as" shows the text with the current values, marks variables without a value, and gives the time it takes at the current speed.
+  - Warnings for an unknown variable, characters the radio cannot send, an unknown prosign and a loose curly bracket.
+  - "Restore default" per key and for a whole group. Only changes are stored, so later improvements of the built-in texts still reach you.
+  - Own chips: add, rename, move earlier or later, delete.
+  - A change that is not saved is not lost by accident: CWLD asks before switching or closing.
+- New: CQ repeat. The button "Repeat CQ" (or Alt+R) calls CQ, listens with a countdown and calls again. It sends the CQ chip, in contest mode the F1 text in Run (in S&P there is no CQ). Pause 2 to 60 seconds (default 6), at most 1 to 30 calls in one go (default 10). It never starts by itself and stops at any key, at the paddle, when two or more characters are heard in a pause (an answer), when you send something else, turn the VFO, change the mode, press Stop, minimize CWLD, at an SWR alert and after the last call. The line under the send box says why it stopped.
+- New: typed text waits while the paddle keys. CWLD knows the paddle the same way as before: the radio is on the air while CWLD sent nothing, or the decoder or the radio (QMX) reports paddle text. Text you type or click then shows under "Waits for the paddle" and goes out when the paddle has been quiet for 14 dot lengths (at least one second). Esc clears it. Can be switched off in the texts window.
+- Fixed in passing: chips and keys that cannot send (listen mode) were really disabled, so a right click did nothing. They now look disabled but still open their text.
+
 ## 0.20.0 (listen again, steep filter, spelled letters)
 
 - New: "Listen again" in the Audio card. CWLD keeps the last minute of audio. Choose how far back (10, 20, 30 or 60 seconds) and decode that stretch again at the same pitch, at the strongest keyed tone in it, or at one of the pitches it heard (up to four, strongest first). A separate decoder does this, so the live decoder goes on undisturbed. It reads the stretch twice, the first time only to find the levels, so the first characters come out right too. Callsigns in the result can be clicked like in the conversation.

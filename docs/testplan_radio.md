@@ -473,3 +473,37 @@ Bevindingen ON3VZ met 0.12.0 en 0.13.0: AF op 0 maakte de band stil, maar ook de
 2. Zo ook `DE D L 4 S A V K`. Verwacht: `DL4SAV K`.
 3. Een normaal einde `73 E E` of `R R TU`. Verwacht: blijft zoals het is.
 4. Klik op **Instellingen**, kies links **Decoder** en zet "Gespelde letters samenvoegen" uit. Herhaal stap 1. Verwacht: `H A N S`.
+
+## A65. Teksten van chips en toetsen (0.20.1)
+
+1. Klik met de rechtermuisknop op de chip **CQ**. Verwacht: het venster "Teksten van chips en toetsen" opent op CQ. Verander de tekst in `CQ CQ DE {MYCALL} K` en klik **Bewaren**. Verwacht: in de lijst staat "aangepast" bij CQ.
+2. Klik **Live**, bevestig, en klik op de chip CQ. Verwacht: de radio zendt de nieuwe tekst.
+3. Open het venster opnieuw (rechtsklik op CQ) en klik **Standaard herstellen**. Verwacht: de oude tekst staat terug.
+4. Typ in een tekst `{FOO}` en een `!`. Verwacht: twee oranje waarschuwingen. Klik **Ongedaan maken**.
+5. Klik **+ Eigen chip**, geef de naam `WX` en de tekst `WX HR SUNNY`, bewaar. Verwacht: een chip WX met een stippelrand achteraan. Zet hem met de pijl een plaats naar voren. Verwacht: hij schuift ook op het hoofdscherm. Verwijder hem daarna met **Chip verwijderen** en **Ja**.
+6. Zet contest mode aan, kies het profiel **CQ WW DX Contest CW** en klik rechts op **F3**. Pas de tekst aan naar `TU {MYCALL} TEST`, bewaar, en kies daarna in het venster het profiel **CQ WPX**. Verwacht: daar staat F3 nog op de standaardtekst.
+7. Kies het profiel **UBA DX Contest CW**. Wissel boven de toetsen tussen de twee uitwisselingen en klik telkens rechts op **F2**. Verwacht: twee verschillende teksten.
+8. Verander een tekst en druk **Esc** zonder te bewaren. Verwacht: de vraag of je wilt bewaren. Sluit de app en start opnieuw. Verwacht: bewaarde teksten zijn er nog.
+
+## A66. CQ herhalen (0.20.1)
+
+Veiligheid: laag vermogen of een dummyload. CQ herhalen zendt alleen zolang je aan het station zit.
+
+1. Klik **Live** en daarna **CQ herhalen (Alt+R)**. Verwacht: de knop wordt oranje, de regel "CQ wordt geroepen (1 van 10)". Na de CQ: "Luisteren. Opnieuw CQ over 6 s", aftellend, daarna een nieuwe CQ.
+2. Druk tijdens de pauze op een willekeurige toets (bijvoorbeeld de spatiebalk in het tekstvak). Verwacht: CQ herhalen stopt, met de reden onder het zendvak.
+3. Start opnieuw en sein tijdens de pauze kort met de paddle. Verwacht: stopt met "de paddle seinde".
+4. Start opnieuw en laat een ander station (of een tweede ontvanger) tijdens de pauze antwoorden. Verwacht: stopt met "er lijkt een station te antwoorden". Noteer of ruis het ook soms stopt.
+5. Start opnieuw en draai aan de VFO. Verwacht: stopt. Start opnieuw en minimaliseer CWLD. Verwacht: stopt.
+6. Zet in het tekstvenster onder "CQ herhalen en de paddle" de pauze op 3 s en het maximum op 2. Start. Verwacht: na twee CQ's stopt het vanzelf.
+7. Contest mode, Run: Alt+R roept de F1-tekst. Schakel naar S&P (Ctrl+R). Verwacht: CQ herhalen stopt en de knop is grijs.
+8. Controleer op de radio of Alt+R niets anders doet in Windows of op het toetsenbord (botsing met een andere sneltoets).
+
+## A67. Getypte tekst wacht op de paddle (0.20.1)
+
+1. Klik **Live**. Begin met de paddle een lange zin te seinen en typ intussen `TNX FER CALL` in het zendvak en druk Enter. Verwacht: de tekst staat onder "Wacht op de paddle" en de radio zendt nog niets.
+2. Stop met de paddle. Verwacht: ongeveer een seconde later zendt de radio de getypte tekst, en ze verschijnt in het gesprek.
+3. Herhaal, maar druk **Esc** terwijl de tekst wacht. Verwacht: de wachtende tekst verdwijnt, er wordt niets gezonden.
+4. Klik tijdens het seinen met de paddle op een chip. Verwacht: ook die wacht.
+5. Test met semi break-in en met full break-in (QSK) op de radio. Noteer of de tekst ooit midden in je paddle-zin start (dan is de stilte te kort).
+6. Zet in het tekstvenster "Getypte tekst wacht zolang de paddle zendt" uit en herhaal stap 1. Noteer wat de radio doet als beide tegelijk komen.
+

@@ -2,11 +2,13 @@ import type { RadioControls } from './types';
 import type { Activation, ActivationStats, Api, ClusterProbe, ClusterSettings, ClusterSpot, ClusterStatus, DupeInfo, LogQso, AudioStatus, ReplayResult, Tuning, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
 import { i18n, t } from './i18n.svelte';
 import { activeProfile, activeSent, copyProfile as copyContestProfileData, cutNumber, isBuiltin, mergeImport, newProfileId, ownVars, parseImport, usesSerial, allProfiles, plain } from './contest';
-import { demoMessages, demoSignals, pileupChips, contestChips, type Message, type Signal } from './demo';
+import { demoMessages, demoSignals, contestChips, type Message, type Signal } from './demo';
+import { chipSlots, contestSlots, cqSlot, moveChip, newOwnChip, pileupSlots, removeOwnChip, restoreGroup, restoreSlot, setSlot, textsOf, type Slot } from './texts';
+import type { SendTexts } from './types';
 import { expand } from './template';
 import { bandOf } from './adif';
 import { emptyLogQso } from './types';
-import { contestKeys, enterAction, entryComplete, nextSerial, suggestFrom, type RunMode, type Suggestion } from './contestlog';
+import { enterAction, entryComplete, nextSerial, suggestFrom, type RunMode, type Suggestion } from './contestlog';
 import { heardIn } from './qso';
 import { looksLikeCall } from './callsign';
 
@@ -71,6 +73,20 @@ const STORE_KEY = 'cwld.sessions.v1';
 export const utcHHMM = (ms: number = Date.now()) => new Date(ms).toISOString().slice(11, 16);
 /** A second Esc counts as the emergency stop for this long after a stopped transmission. */
 export const ESC_QRX_MS = 2000;
+/** After our own text the radio may still be on the air this long (keyer finishing, break-in delay). */
+export const APP_TX_TAIL_MS = 1500;
+/** The paddle counts as quiet after this many dot lengths without keying (longer than a word gap). */
+export const PADDLE_QUIET_UNITS = 14;
+/** ... but never shorter than this. */
+export const PADDLE_QUIET_MIN_MS = 1000;
+/** How often held text and CQ repeat look at the clock. */
+export const TX_TICK_MS = 200;
+/** Turning the radio more than this during CQ repeat stops it. */
+export const CQ_FREQ_HZ = 50;
+/** A CQ that is still keyed this long after its expected end is treated as finished anyway. */
+export const CQ_END_GRACE_MS = 4000;
+/** Letters and digits heard in a CQ pause before it counts as an answer. */
+export const CQ_ANSWER_CHARS = 2;
 const clockNow = () => utcHHMM();
 
 export interface WaterfallRow {
@@ -383,6 +399,7 @@ class AppState {
   private frequencyMoved(hz: number, now = false) {
     const live = this.cur;
     if (!live || hz <= 0) return;
+    if (this.cqRepeat && this.cqFreq && Math.abs(hz - this.cqFreq) > CQ_FREQ_HZ) this.stopCqRepeat('freq');
     if (this.settleTimer) {
       clearTimeout(this.settleTimer);
       this.settleTimer = null;
@@ -464,6 +481,7 @@ class AppState {
   async init(api: Api) {
     this.api = api;
     this.escArmedUntil = 0;
+    this.resetTx();
     const snap = await api.getSnapshot();
     this.apply(snap.settings);
     this.policy = snap.policy;
@@ -508,6 +526,7 @@ class AppState {
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
   dispose() {
+    this.resetTx();
     if (this.sweepTimer) clearInterval(this.sweepTimer);
     this.sweepTimer = null;
     if (this.settleTimer) clearTimeout(this.settleTimer);
@@ -561,6 +580,8 @@ class AppState {
           if (!this.paddleEx.result) this.paddleHeard(ev.text);
           continue;
         }
+        if (ev.source === 'paddle' && ev.text.trim()) this.notePaddle();
+        if (ev.source === 'rx') this.cqHeard(ev.text);
         this.decoded(ev.source, ev.text, ev.conf, ev.tentative);
         continue;
       }
@@ -604,6 +625,8 @@ class AppState {
         this.status.transmitting = false;
         this.queue = [];
         this.cancelPractice();
+        this.stopCqRepeat('swr');
+        this.held = [];
         continue;
       }
       if (ev.type === 'practice_done') {
@@ -625,13 +648,17 @@ class AppState {
         case 'tx':
           this.status.transmitting = e.value;
           if (!e.value) this.swr = null;
+          this.txChanged(e.value);
           break;
         case 's_meter': this.status.s_meter = e.value; break;
         case 'cw_speed': this.status.cw_wpm = e.value; break;
         case 'queue': this.queue = e.value; break;
         case 'swr': this.swr = e.value; break;
         case 'warning': this.warning = e.value; break;
-        case 'paddle_text': if (this.paddleEx) { if (!this.paddleEx.result) this.paddleHeard(e.value); } else this.paddle(e.value); break;
+        case 'paddle_text':
+          this.notePaddle();
+          if (this.paddleEx) { if (!this.paddleEx.result) this.paddleHeard(e.value); } else this.paddle(e.value);
+          break;
         case 'scope': this.scopeSweep(e.value); break;
       }
     }
@@ -809,6 +836,8 @@ class AppState {
 
   private async applyPolicy(p: TxPolicy, confirmed: boolean) {
     try {
+      this.stopCqRepeat('policy');
+      this.held = [];
       this.cancelPractice();
       if (p !== 'practice' && this.practiceRun) await this.stopExercise();
       if (p !== 'practice' && this.paddleEx) await this.paddleStop();
@@ -903,12 +932,35 @@ class AppState {
     this.draft = (d && !d.endsWith(' ') ? d + ' ' : d) + text.toUpperCase() + ' ';
   }
 
-  async send(text: string) {
+  async send(text: string, fromCq = false) {
     this.error = null;
-    this.notice = null;
+    if (!fromCq) {
+      this.notice = null;
+      // The operator sends something himself: CQ repeat is over.
+      this.stopCqRepeat('send');
+    }
     const clean = text.trim();
     if (!clean) return;
     this.viewId = this.cur.id;
+    // The paddle is keying: the typed text waits until it is quiet (no mixing of both on the air).
+    if (!fromCq && this.policy === 'live' && this.sendTexts.paddle_wait && (this.held.length || this.paddleActive())) {
+      this.held = [...this.held, clean];
+      this.draft = '';
+      this.startTxTick();
+      return;
+    }
+    await this.transmit(clean);
+  }
+
+  /** Sends now: to the radio (live) or simulated (practice). */
+  private async transmit(clean: string) {
+    const wpm = Math.max(5, this.status.cw_wpm || 20);
+    const before = this.appTxUntil;
+    if (this.policy === 'live') {
+      // Set before the call: the radio's "transmitting" may arrive before the answer does.
+      const now = Date.now();
+      this.appTxUntil = Math.max(now, this.appTxUntil) + durationSeconds(clean, wpm) * 1000 + APP_TX_TAIL_MS;
+    }
     try {
       const out = await this.api.sendText(clean);
       const time = clockNow();
@@ -928,6 +980,7 @@ class AppState {
       this.draft = '';
       this.persist();
     } catch (e) {
+      this.appTxUntil = before;
       this.fail(e);
     }
   }
@@ -958,7 +1011,9 @@ class AppState {
       await this.stopAndQrx();
       return;
     }
-    const wasSending = this.status.transmitting || this.practiceBusy || this.queue.length > 0;
+    const wasSending = this.status.transmitting || this.practiceBusy || this.queue.length > 0 || this.held.length > 0;
+    this.stopCqRepeat('stop');
+    this.held = [];
     this.cancelPractice();
     try {
       await this.api.stopTx();
@@ -975,6 +1030,8 @@ class AppState {
   /** Emergency stop: stops the keyer and the queue, then sends QRX QRX so the other station waits. Only when sending is possible. */
   async stopAndQrx() {
     this.escArmedUntil = 0;
+    this.stopCqRepeat('stop');
+    this.held = [];
     this.cancelPractice();
     try {
       await this.api.stopTx();
@@ -988,6 +1045,8 @@ class AppState {
   /** Stops what is being sent and sends the error prosign (eight dots), so a wrong word can be corrected. */
   async sendError() {
     this.escArmedUntil = 0;
+    this.stopCqRepeat('stop');
+    this.held = [];
     if (this.status.transmitting || this.queue.length > 0 || this.practiceBusy) {
       this.cancelPractice();
       try {
@@ -1279,8 +1338,255 @@ class AppState {
 
   /** A pile-up key (F1 to F4): sends its text when sending is possible. */
   async pressPileup(fkey: string) {
-    const c = pileupChips.find((x) => x.fkey === fkey);
+    const c = this.pileupList.find((x) => x.fkey === fkey);
     if (c && this.canSend) await this.sendChip(c.template);
+  }
+
+  // ---- Send texts: editable chips and keys ----
+
+  /** The operator's changes to chips and keys, with defaults for what an older file lacks. */
+  get sendTexts(): SendTexts {
+    return textsOf(this.settings);
+  }
+  /** The chips outside contest mode, in the operator's order. */
+  get chipList(): Slot[] {
+    return chipSlots(this.sendTexts);
+  }
+  /** The pile-up keys F1 to F4. */
+  get pileupList(): Slot[] {
+    return pileupSlots(this.sendTexts);
+  }
+
+  /** The text editor: open on one slot (right click), on the list (null), or closed. */
+  textEdit = $state<{ focus: string | null } | null>(null);
+
+  openTextEditor(focus: string | null = null) {
+    this.textEdit = { focus };
+  }
+  closeTextEditor() {
+    this.textEdit = null;
+  }
+
+  private async saveTexts(next: SendTexts) {
+    // The parts come from the reactive settings: take a plain copy before saving.
+    await this.patchSettings({ send_texts: $state.snapshot(next) as SendTexts });
+  }
+  async saveSlot(slot: Slot, template: string, label: string) {
+    await this.saveTexts(setSlot(this.sendTexts, slot, template, label));
+  }
+  async restoreSlot(id: string) {
+    await this.saveTexts(restoreSlot(this.sendTexts, id));
+  }
+  /** Forgets all changes whose slot starts with `prefix` (`chip.`, `pileup.`, `contest.<profile>.`). */
+  async restoreTexts(prefix: string) {
+    const t = restoreGroup(this.sendTexts, prefix);
+    await this.saveTexts(prefix === 'chip.' ? { ...t, chip_order: [] } : t);
+  }
+  /** Adds an own chip and returns its slot id. */
+  async addOwnChip(label: string, template: string): Promise<string> {
+    const r = newOwnChip(this.sendTexts, label, template);
+    await this.saveTexts(r.texts);
+    return r.id;
+  }
+  async removeOwnChip(id: string) {
+    await this.saveTexts(removeOwnChip(this.sendTexts, id));
+  }
+  async moveChip(id: string, dir: -1 | 1) {
+    await this.saveTexts(moveChip(this.sendTexts, id, dir));
+  }
+  async setCqRepeatSettings(pause: number, max: number) {
+    await this.saveTexts(textsOf({ send_texts: { ...this.sendTexts, cq_pause_s: pause, cq_max: max } }));
+  }
+  async setPaddleWait(on: boolean) {
+    await this.saveTexts({ ...this.sendTexts, paddle_wait: on });
+    if (!on && this.held.length) this.releaseHeld();
+  }
+
+  // ---- The paddle on the radio: typed text waits ----
+
+  /** Typed text that waits until the paddle is quiet. */
+  held = $state<string[]>([]);
+  /** Until when the radio is (probably) sending our own text, in ms. */
+  private appTxUntil = 0;
+  /** The radio transmits and it is not our text: the paddle. */
+  private paddleKeying = false;
+  private paddleSeenAt = 0;
+  private txTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** The radio started or stopped transmitting. Outside our own text that is the paddle. */
+  private txChanged(on: boolean, now = Date.now()) {
+    const ours = now < this.appTxUntil;
+    if (on && !ours) {
+      this.paddleKeying = true;
+      this.notePaddle(now);
+    } else if (!on && this.paddleKeying) {
+      this.paddleKeying = false;
+      this.paddleSeenAt = now;
+    }
+  }
+
+  /** The paddle keyed something (heard in the audio, reported by the radio, or the radio went on the air). */
+  notePaddle(now = Date.now()) {
+    this.paddleSeenAt = now;
+    if (this.cqRepeat) this.stopCqRepeat('paddle');
+    if (this.held.length) this.startTxTick();
+  }
+
+  /** Quiet time after the last paddle element before held text goes out. */
+  get paddleQuietMs(): number {
+    const unit = 1200 / Math.max(5, this.status.cw_wpm || 20);
+    return Math.max(PADDLE_QUIET_MIN_MS, Math.round(PADDLE_QUIET_UNITS * unit));
+  }
+
+  /** The paddle is keying, or keyed a moment ago. */
+  paddleActive(now = Date.now()): boolean {
+    if (this.paddleKeying && now >= this.appTxUntil) return true;
+    return this.paddleSeenAt > 0 && now - this.paddleSeenAt < this.paddleQuietMs;
+  }
+
+  /** Waiting for the paddle: text is held. */
+  get waitingForPaddle(): boolean {
+    return this.held.length > 0;
+  }
+
+  private releaseHeld() {
+    const all = this.held;
+    this.held = [];
+    for (const text of all) void this.transmit(text);
+  }
+
+  /** Forgets held text, CQ repeat and what is known about the paddle (start and close). */
+  private resetTx() {
+    this.stopTxTick();
+    this.cqRepeat = null;
+    this.cqStopped = null;
+    this.held = [];
+    this.appTxUntil = 0;
+    this.paddleKeying = false;
+    this.paddleSeenAt = 0;
+  }
+
+  private startTxTick() {
+    if (!this.txTimer) this.txTimer = setInterval(() => this.txTick(), TX_TICK_MS);
+  }
+  private stopTxTick() {
+    if (this.txTimer) clearInterval(this.txTimer);
+    this.txTimer = null;
+  }
+
+  /** Every 200 ms while text is held or CQ repeats. */
+  txTick(now = Date.now()) {
+    this.cqNow = now;
+    if (this.held.length && !this.paddleActive(now)) {
+      if (this.policy === 'live' && !this.swrAlert) this.releaseHeld();
+      else this.held = [];
+    }
+    this.cqStep(now);
+    if (!this.held.length && !this.cqRepeat) this.stopTxTick();
+  }
+
+  // ---- CQ repeat ----
+
+  /** CQ repeat under way: how many calls, what it does now, and when the pause ends. */
+  cqRepeat = $state<{ count: number; max: number; phase: 'sending' | 'pause'; sendEnd: number; until: number; heard: number } | null>(null);
+  /** The clock for the countdown on screen. */
+  cqNow = $state(Date.now());
+  /** Why the last CQ repeat stopped (for the line under the send box). */
+  cqStopped = $state<string | null>(null);
+  private cqFreq = 0;
+
+  /** The slot that CQ repeat sends now, or null when there is none (S&P in contest mode). */
+  get cqRepeatSlot(): Slot | null {
+    return cqSlot(!!this.settings?.contest_mode, this.runMode, this.settings?.contest, this.sendTexts);
+  }
+
+  /** Starts or stops CQ repeat. It only ever starts on the operator's request, never by itself. */
+  async toggleCqRepeat() {
+    if (this.cqRepeat) {
+      this.stopCqRepeat('button');
+      return;
+    }
+    await this.startCqRepeat();
+  }
+
+  async startCqRepeat(now = Date.now()) {
+    const slot = this.cqRepeatSlot;
+    if (!slot || !this.canSend) return;
+    this.cqStopped = null;
+    const t = this.sendTexts;
+    this.cqRepeat = { count: 0, max: t.cq_max, phase: 'sending', sendEnd: now, until: 0, heard: 0 };
+    this.cqFreq = this.status.frequency_hz;
+    await this.cqSend(now);
+  }
+
+  /** Sends the CQ once more. */
+  private async cqSend(now = Date.now()) {
+    const r = this.cqRepeat;
+    const slot = this.cqRepeatSlot;
+    if (!r || !slot) return;
+    const ex = expand(slot.template, this.vars);
+    if (ex.missing.length) {
+      this.error = t('composer.missing', { vars: ex.missing.join(', ') });
+      this.stopCqRepeat('error');
+      return;
+    }
+    const wpm = Math.max(5, this.status.cw_wpm || 20);
+    this.cqRepeat = { ...r, count: r.count + 1, phase: 'sending', sendEnd: now + durationSeconds(ex.text, wpm) * 1000, heard: 0 };
+    this.startTxTick();
+    await this.send(ex.text, true);
+    if (this.error) this.stopCqRepeat('error');
+  }
+
+  /** One step of CQ repeat: wait for the end of the call, listen, call again. */
+  private cqStep(now: number) {
+    const r = this.cqRepeat;
+    if (!r) return;
+    if (!this.canSend) {
+      this.stopCqRepeat('policy');
+      return;
+    }
+    if (r.phase === 'sending') {
+      const keyed = this.status.transmitting || this.practiceBusy || this.queue.length > 0;
+      const over = now >= r.sendEnd && (!keyed || now >= r.sendEnd + CQ_END_GRACE_MS);
+      if (!over) return;
+      if (r.count >= r.max) {
+        this.stopCqRepeat('max');
+        return;
+      }
+      this.cqRepeat = { ...r, phase: 'pause', until: now + this.sendTexts.cq_pause_s * 1000, heard: 0 };
+      return;
+    }
+    // Pause: the radio going on the air now can only be the paddle.
+    if (this.status.transmitting && now >= this.appTxUntil) {
+      this.stopCqRepeat('paddle');
+      return;
+    }
+    if (now >= r.until) void this.cqSend(now);
+  }
+
+  /** Decoded text from the other side. In a CQ pause, a few letters count as an answer. */
+  private cqHeard(text: string) {
+    const r = this.cqRepeat;
+    if (!r || r.phase !== 'pause') return;
+    const n = (text.match(/[A-Z0-9]/gi) ?? []).length;
+    if (!n) return;
+    const heard = r.heard + n;
+    if (heard >= CQ_ANSWER_CHARS) this.stopCqRepeat('answer');
+    else this.cqRepeat = { ...r, heard };
+  }
+
+  /** Stops CQ repeat. What is being sent now goes on (Esc stops that too). */
+  stopCqRepeat(reason: 'key' | 'paddle' | 'answer' | 'max' | 'button' | 'stop' | 'send' | 'policy' | 'swr' | 'freq' | 'mode' | 'error' | 'hidden') {
+    if (!this.cqRepeat) return;
+    this.cqRepeat = null;
+    this.cqStopped = reason === 'send' || reason === 'error' ? null : reason;
+  }
+
+  /** Seconds until the next call, for the countdown. */
+  get cqSecondsLeft(): number {
+    const r = this.cqRepeat;
+    if (!r || r.phase !== 'pause') return 0;
+    return Math.max(0, Math.ceil((r.until - this.cqNow) / 1000));
   }
 
   /** Saves a change of the settings without the "saved" notice (for switches on the main screen). */
@@ -1373,6 +1679,7 @@ class AppState {
   /** Contest mode on: with a stored number the operator chooses to continue or restart. */
   async requestContest(on: boolean) {
     if (!this.settings) return;
+    this.stopCqRepeat('mode');
     if (!on) {
       this.contestAsk = false;
       await this.patchSettings({ contest_mode: false });
@@ -1841,7 +2148,7 @@ class AppState {
   }
   /** The messages behind F1 to F8 for the current mode. */
   get contestKeyList() {
-    return contestKeys(this.runMode, this.settings?.contest);
+    return contestSlots(this.runMode, this.settings?.contest, this.sendTexts);
   }
   get entryComplete(): boolean {
     return entryComplete(this.settings?.contest, this.qso.call, this.entry.nr, this.entry.extra);
@@ -2027,6 +2334,7 @@ class AppState {
   }
 
   setRunMode(m: RunMode) {
+    if (m !== this.runMode) this.stopCqRepeat('mode');
     this.runMode = m;
   }
 

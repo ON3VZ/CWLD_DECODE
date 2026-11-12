@@ -5,6 +5,7 @@
   import { allProfiles, plain, recvApplies } from '../lib/contest';
   import { rates } from '../lib/contestlog';
   import { expand } from '../lib/template';
+  import { slotLabel } from '../lib/texts';
 
   let now = $state(Math.floor(Date.now() / 1000));
   onMount(() => {
@@ -131,12 +132,15 @@
   <div class="keys" role="group" aria-label={t('contest.keys')}>
     {#each app.contestKeyList as k (k.key)}
       {@const miss = expand(k.template, app.vars).missing}
-      <button class="btn key" disabled={!app.canSend} title={expand(k.template, app.vars).text} onclick={() => app.pressContestKey(k.key)}>
+      <button class="btn key" class:changed={k.changed} aria-disabled={!app.canSend} title={`${expand(k.template, app.vars).text}\n${t('texts.rightclick')}`} onclick={() => app.canSend && app.pressContestKey(k.key)} oncontextmenu={(e) => { e.preventDefault(); app.openTextEditor(k.id); }}>
         <span class="fk">{k.key}</span>
-        <span>{t(k.label)}</span>
+        <span>{slotLabel(k, t)}</span>
         {#if miss.length}<span class="dotwarn" title={t('composer.missing', { vars: miss.join(', ') })}></span>{/if}
       </button>
     {/each}
+    <button class="btn key edit" onclick={() => app.openTextEditor(app.contestKeyList[0]?.id ?? null)} title={t('texts.open.help')} aria-label={t('texts.open.help')}>
+      <span class="fk">&nbsp;</span><span>✎</span>
+    </button>
   </div>
 </div>
 
@@ -173,5 +177,7 @@
   .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(6em, 1fr)); gap: 6px; }
   .key { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 3px 6px 5px; position: relative; font-size: 14px; }
   .key .fk { align-self: flex-end; line-height: 1; }
+  .key.changed .fk { color: var(--accent); opacity: 1; }
+  .key.edit { color: var(--muted); }
   .dotwarn { position: absolute; top: 6px; left: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
 </style>

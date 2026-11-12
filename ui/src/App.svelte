@@ -25,13 +25,35 @@
   import ExportDialog from './components/ExportDialog.svelte';
   import LogBook from './components/LogBook.svelte';
   import Wizard from './components/Wizard.svelte';
+  import TextEditor from './components/TextEditor.svelte';
 
   onMount(() => {
     createApi().then((api) => app.init(api));
-    return () => app.dispose();
+    // CQ repeat only runs while the operator is at the station: minimizing CWLD stops it.
+    const vis = () => {
+      if (document.visibilityState === 'hidden') app.stopCqRepeat('hidden');
+    };
+    document.addEventListener('visibilitychange', vis);
+    return () => {
+      document.removeEventListener('visibilitychange', vis);
+      app.dispose();
+    };
   });
 
+  function isRepeatKey(e: KeyboardEvent): boolean {
+    return e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'r' || e.key === 'R' || e.code === 'KeyR');
+  }
+
   function onKey(e: KeyboardEvent) {
+    // The text editor has its own keys, Esc included (it asks first when a change is not saved).
+    if (app.textEdit) return;
+    // Alt+R starts or stops CQ repeat. Any other key stops it, and still does what it always does.
+    if (isRepeatKey(e)) {
+      e.preventDefault();
+      if (!app.settingsOpen && !app.confirmLive && !app.wizardOpen) void app.toggleCqRepeat();
+      return;
+    }
+    if (app.cqRepeat && !['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock'].includes(e.key)) app.stopCqRepeat('key');
     if (e.key === 'Escape') {
       if (app.wizardOpen) return;
       if (app.confirmLive) app.confirmLive = false;
@@ -137,6 +159,7 @@
   {#if app.bookOpen}<LogBook />{/if}
   {#if app.exportOpen}<ExportDialog />{/if}
   {#if app.editing}<LogEdit />{/if}
+  {#if app.textEdit}<TextEditor />{/if}
   {#if app.closeAllAsk}
     <div class="scrim" role="presentation">
       <div class="ask" role="alertdialog" aria-modal="true" aria-labelledby="ca-title">

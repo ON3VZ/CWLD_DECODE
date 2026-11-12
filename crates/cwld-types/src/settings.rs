@@ -3,6 +3,7 @@
 
 use crate::policy::TxPolicy;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -281,6 +282,64 @@ pub struct Settings {
     pub lookup: LookupSettings,
     /// DX cluster spots on the band scope (read only, over Telnet).
     pub cluster: ClusterSettings,
+    /// Texts behind the chips and function keys that the operator changed, own chips, CQ repeat
+    /// and holding typed text while the paddle keys.
+    pub send_texts: SendTexts,
+}
+
+/// A chip the operator added.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct OwnChip {
+    pub id: String,
+    pub label: String,
+    pub template: String,
+}
+
+/// Texts behind the chips and function keys. Only what the operator changed is stored: a slot
+/// without an entry uses its built-in text, so later improvements of the built-in texts still
+/// reach the operator.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SendTexts {
+    /// Changed texts by slot, for example `chip.cq`, `pileup.F3` or `contest.cqww-cw.run.F2`.
+    pub texts: BTreeMap<String, String>,
+    /// Changed button names by slot.
+    pub labels: BTreeMap<String, String>,
+    /// Chips the operator added, in the order they were made.
+    pub own_chips: Vec<OwnChip>,
+    /// Order of the chips by slot. Chips that are not in the list follow in their own order.
+    pub chip_order: Vec<String>,
+    /// Seconds of listening between two calls when CQ repeats.
+    pub cq_pause_s: u32,
+    /// Most calls in one go. After that CQ repeat stops by itself.
+    pub cq_max: u32,
+    /// Hold typed text while the paddle on the radio keys, and send it when the paddle is quiet.
+    pub paddle_wait: bool,
+}
+
+pub const CQ_PAUSE_DEFAULT: u32 = 6;
+pub const CQ_PAUSE_MIN: u32 = 2;
+pub const CQ_PAUSE_MAX: u32 = 60;
+pub const CQ_MAX_DEFAULT: u32 = 10;
+pub const CQ_MAX_LIMIT: u32 = 30;
+
+impl Default for SendTexts {
+    fn default() -> Self {
+        SendTexts { texts: BTreeMap::new(), labels: BTreeMap::new(), own_chips: Vec::new(), chip_order: Vec::new(), cq_pause_s: CQ_PAUSE_DEFAULT, cq_max: CQ_MAX_DEFAULT, paddle_wait: true }
+    }
+}
+
+impl SendTexts {
+    /// The pause between two calls, kept inside its range even if the file was edited by hand.
+    pub fn safe_cq_pause_s(&self) -> u32 {
+        self.cq_pause_s.clamp(CQ_PAUSE_MIN, CQ_PAUSE_MAX)
+    }
+
+    /// The most calls in one go. Never unlimited: CQ repeat must not go on without the operator.
+    pub fn safe_cq_max(&self) -> u32 {
+        self.cq_max.clamp(1, CQ_MAX_LIMIT)
+    }
 }
 
 /// One DX cluster node.
@@ -656,6 +715,7 @@ impl Default for Settings {
             link: LinkSettings::default(),
             lookup: LookupSettings::default(),
             cluster: ClusterSettings::default(),
+            send_texts: SendTexts::default(),
         }
     }
 }
@@ -840,6 +900,39 @@ mod tests {
         assert_eq!(s.scope_size_contest, ScopeSize::Small);
         assert_eq!(s.profiles[1].on_air("on3vz"), "ON3VZ/P");
         assert_eq!(s.profiles[0].on_air("ON3VZ"), "ON3VZ");
+    }
+
+    #[test]
+    fn send_texts_start_empty_and_an_old_file_still_loads() {
+        let s: Settings = serde_json::from_str(r#"{"schema_version":1}"#).unwrap();
+        assert!(s.send_texts.texts.is_empty());
+        assert!(s.send_texts.own_chips.is_empty());
+        assert_eq!(s.send_texts.cq_pause_s, CQ_PAUSE_DEFAULT);
+        assert_eq!(s.send_texts.cq_max, CQ_MAX_DEFAULT);
+        assert!(s.send_texts.paddle_wait);
+    }
+
+    #[test]
+    fn changed_texts_survive_a_save_and_cq_repeat_stays_in_range() {
+        let d = tmpdir("texts");
+        let p = d.join("settings.json");
+        let mut s = Settings::default();
+        s.send_texts.texts.insert("chip.cq".into(), "CQ CQ DE {MYCALL} K".into());
+        s.send_texts.labels.insert("chip.cq".into(), "CQ short".into());
+        s.send_texts.own_chips.push(OwnChip { id: "own-1".into(), label: "WX".into(), template: "WX HR SUNNY".into() });
+        s.send_texts.chip_order = vec!["chip.own-1".into(), "chip.cq".into()];
+        s.save(&p).unwrap();
+        let back = Settings::load(&p);
+        assert_eq!(back.send_texts, s.send_texts);
+        let mut t = SendTexts::default();
+        t.cq_pause_s = 0;
+        t.cq_max = 0;
+        assert_eq!(t.safe_cq_pause_s(), CQ_PAUSE_MIN);
+        assert_eq!(t.safe_cq_max(), 1);
+        t.cq_pause_s = 999;
+        t.cq_max = 999;
+        assert_eq!(t.safe_cq_pause_s(), CQ_PAUSE_MAX);
+        assert_eq!(t.safe_cq_max(), CQ_MAX_LIMIT);
     }
 
     #[test]

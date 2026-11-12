@@ -63,6 +63,7 @@ export function defaultSettings(): Settings {
     link: { adif_enabled: false, adif_host: '127.0.0.1', adif_port: 2333, n1mm_enabled: false, n1mm_targets: '127.0.0.1:12060' },
     practice: { exercise: 'they_cq', wpm_min: 18, wpm_max: 26, strength: 'medium', noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5, quiet_radio: true, paddle: { exercise: 'chars', stats: [], sessions: [] }, koch: { chars: 'KMRSUAPTLOWINJEF0YVG5/Q9ZH38B?427C1D6X', char_wpm: 20, eff_wpm: 12, tone_hz: 650, listen: 'groups', stats: [], sessions: [] } },
     contest: { active: '', sent_index: 0, session: 1, profiles: [], vars: [{ name: 'SEC', value: 'WLD' }, { name: 'ZONE', value: '14' }, { name: 'ITU', value: '27' }, { name: 'PWR', value: '20' }] },
+    send_texts: { texts: {}, labels: {}, own_chips: [], chip_order: [], cq_pause_s: 6, cq_max: 10, paddle_wait: true },
   };
 }
 

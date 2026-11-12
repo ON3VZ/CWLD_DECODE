@@ -162,6 +162,32 @@ export interface Settings {
   link: LinkSettings;
   lookup: LookupSettings;
   cluster: ClusterSettings;
+  /** Changed chip and key texts, own chips, CQ repeat and holding text while the paddle keys. */
+  send_texts: SendTexts;
+}
+
+/** A chip the operator added. */
+export interface OwnChip {
+  id: string;
+  label: string;
+  template: string;
+}
+
+/** Texts behind the chips and function keys. Only changes are stored; a slot without an entry uses its built-in text. */
+export interface SendTexts {
+  /** Changed texts by slot: `chip.cq`, `pileup.F3`, `contest.cqww-cw.run.F2`, ... */
+  texts: Record<string, string>;
+  /** Changed button names by slot. */
+  labels: Record<string, string>;
+  own_chips: OwnChip[];
+  /** Order of the chips by slot. Chips not in the list follow in their own order. */
+  chip_order: string[];
+  /** Seconds of listening between two calls when CQ repeats (2 to 60). */
+  cq_pause_s: number;
+  /** Most calls in one go (1 to 30). */
+  cq_max: number;
+  /** Hold typed text while the paddle keys. */
+  paddle_wait: boolean;
 }
 
 /** One DX cluster node. */

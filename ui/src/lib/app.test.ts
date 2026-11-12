@@ -1676,3 +1676,154 @@ describe('logbook window', () => {
     expect((await app.bookList({ test: false, not_exported: true })).map((q) => q.call)).toEqual(['PA3ABC']);
   });
 });
+
+describe('editable texts, CQ repeat and the paddle', () => {
+  const on = (e: unknown[]) => (app as unknown as { onEvents(e: unknown[]): void }).onEvents(e);
+  const flush = () => vi.advanceTimersByTimeAsync(0);
+  let api: MockApi;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_800_000_000_000);
+    api = await fresh();
+    await app.requestPolicy('live');
+    await app.confirmLiveSwitch();
+    app.status.transmitting = false;
+  });
+  afterEach(() => {
+    app.stopCqRepeat('button');
+    app.dispose();
+    vi.useRealTimers();
+  });
+
+  it('a changed chip text is what is sent, and restoring brings the old one back', async () => {
+    const cq = app.chipList.find((c) => c.id === 'chip.cq')!;
+    await app.saveSlot(cq, 'CQ CQ DE {MYCALL} K', '');
+    const now = app.chipList.find((c) => c.id === 'chip.cq')!;
+    expect(now.template).toBe('CQ CQ DE {MYCALL} K');
+    expect((await api.getSnapshot()).settings.send_texts.texts['chip.cq']).toBe('CQ CQ DE {MYCALL} K');
+    await app.sendChip(now.template);
+    expect(app.messages[app.messages.length - 1].text).toBe('CQ CQ DE ON3VZ K');
+    await app.restoreSlot('chip.cq');
+    expect(app.chipList[0].changed).toBe(false);
+  });
+
+  it('a changed pile-up key is what F3 sends', async () => {
+    await app.saveSlot(app.pileupList[2], 'TU {RST}', '');
+    await app.pressPileup('F3');
+    expect(app.messages[app.messages.length - 1].text).toBe('TU 5NN');
+  });
+
+  it('CQ repeat calls, listens with a countdown and calls again, up to the maximum', async () => {
+    await app.setCqRepeatSettings(5, 2);
+    await app.startCqRepeat();
+    expect(api.transmitCommands).toBe(1);
+    const r = app.cqRepeat!;
+    expect(r.phase).toBe('sending');
+    app.txTick(r.sendEnd + 10);
+    expect(app.cqRepeat!.phase).toBe('pause');
+    app.cqNow = r.sendEnd + 10;
+    expect(app.cqSecondsLeft).toBe(5);
+    vi.setSystemTime(app.cqRepeat!.until + 10);
+    app.txTick(app.cqRepeat!.until + 10);
+    await flush();
+    expect(api.transmitCommands).toBe(2);
+    expect(app.cqRepeat!.count).toBe(2);
+    app.txTick(app.cqRepeat!.sendEnd + 10);
+    expect(app.cqRepeat).toBeNull();
+    expect(app.cqStopped).toBe('max');
+  });
+
+  it('waits for the end of the call while the radio still keys, but not forever', async () => {
+    await app.startCqRepeat();
+    const r = app.cqRepeat!;
+    app.status.transmitting = true;
+    app.txTick(r.sendEnd + 10);
+    expect(app.cqRepeat!.phase).toBe('sending');
+    app.txTick(r.sendEnd + 4100);
+    expect(app.cqRepeat!.phase).toBe('pause');
+  });
+
+  it('an answer in the pause stops CQ repeat, one noise character does not', async () => {
+    await app.startCqRepeat();
+    app.txTick(app.cqRepeat!.sendEnd + 10);
+    on([{ type: 'decode', source: 'rx', text: 'E', conf: [1], tentative: [] }]);
+    expect(app.cqRepeat).not.toBeNull();
+    on([{ type: 'decode', source: 'rx', text: 'DL', conf: [1, 1], tentative: [] }]);
+    expect(app.cqRepeat).toBeNull();
+    expect(app.cqStopped).toBe('answer');
+  });
+
+  it('the paddle stops CQ repeat', async () => {
+    await app.startCqRepeat();
+    const r = app.cqRepeat!;
+    app.txTick(r.sendEnd + 10);
+    vi.setSystemTime(r.sendEnd + 3000);
+    on([{ type: 'rig', event: { kind: 'tx', value: true } }]);
+    expect(app.cqRepeat).toBeNull();
+    expect(app.cqStopped).toBe('paddle');
+  });
+
+  it('sending something else, turning the VFO or Stop ends CQ repeat', async () => {
+    await app.startCqRepeat();
+    await app.send('QRL?');
+    expect(app.cqRepeat).toBeNull();
+    app.status.frequency_hz = 7_020_000;
+    await app.startCqRepeat();
+    (app as unknown as { frequencyMoved(hz: number): void }).frequencyMoved(7_020_500);
+    expect(app.cqStopped).toBe('freq');
+    await app.startCqRepeat();
+    await app.stop();
+    expect(app.cqRepeat).toBeNull();
+  });
+
+  it('never starts in S&P, where there is no CQ', async () => {
+    await app.requestContest(true);
+    app.setRunMode('sp');
+    await app.startCqRepeat();
+    expect(app.cqRepeat).toBeNull();
+    expect(api.transmitCommands).toBe(0);
+  });
+
+  it('typed text waits while the paddle keys and goes out when it is quiet', async () => {
+    on([{ type: 'rig', event: { kind: 'tx', value: true } }]);
+    await app.send('TNX FER CALL');
+    expect(api.transmitCommands).toBe(0);
+    expect(app.held).toEqual(['TNX FER CALL']);
+    expect(app.draft).toBe('');
+    const t0 = Date.now();
+    on([{ type: 'rig', event: { kind: 'tx', value: false } }]);
+    app.txTick(t0 + app.paddleQuietMs - 50);
+    expect(app.held.length).toBe(1);
+    vi.setSystemTime(t0 + app.paddleQuietMs + 10);
+    app.txTick(t0 + app.paddleQuietMs + 10);
+    await flush();
+    expect(app.held).toEqual([]);
+    expect(api.transmitCommands).toBe(1);
+    expect(app.messages[app.messages.length - 1].text).toBe('TNX FER CALL');
+  });
+
+  it('our own transmission is not taken for the paddle', async () => {
+    await app.send('CQ DE ON3VZ');
+    on([{ type: 'rig', event: { kind: 'tx', value: true } }]);
+    await app.send('K');
+    expect(app.held).toEqual([]);
+    expect(api.transmitCommands).toBe(2);
+  });
+
+  it('paddle text heard in the audio also holds typed text, and Esc clears it', async () => {
+    on([{ type: 'decode', source: 'paddle', text: 'R R', conf: [1, 1, 1], tentative: [] }]);
+    await app.send('UR 599');
+    expect(app.held).toEqual(['UR 599']);
+    await app.stop();
+    expect(app.held).toEqual([]);
+    expect(api.transmitCommands).toBe(0);
+  });
+
+  it('with waiting switched off, text goes out at once', async () => {
+    await app.setPaddleWait(false);
+    on([{ type: 'rig', event: { kind: 'tx', value: true } }]);
+    await app.send('UR 599');
+    expect(api.transmitCommands).toBe(1);
+  });
+});
