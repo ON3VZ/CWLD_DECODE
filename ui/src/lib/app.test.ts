@@ -1555,7 +1555,7 @@ describe('DX cluster spots', () => {
     await app.clusterConnect();
     api.flush();
     expect(app.clusterStatus.state).toBe('online');
-    expect(app.clusterSpots.length).toBe(4);
+    expect(app.clusterSpots.length).toBe(5);
     expect(app.clusterSpots.every((s) => s.status === 'new')).toBe(true);
     // Work a station that is on the list: its label turns to "worked" after the refresh.
     const spot = app.clusterSpots[0];
@@ -1565,7 +1565,7 @@ describe('DX cluster spots', () => {
     await Promise.resolve();
     await app.clusterRefresh();
     expect(app.clusterSpots.find((s) => s.call === spot.call)?.status).toBe('worked');
-    expect(app.clusterSpots.filter((s) => s.status === 'new').length).toBe(3);
+    expect(app.clusterSpots.filter((s) => s.status === 'new').length).toBe(4);
   });
 
   it('a spot on another band of a worked station is "other_band"', async () => {
@@ -1583,10 +1583,10 @@ describe('DX cluster spots', () => {
     api.flush();
     const first = app.clusterSpots[0];
     api.emitNow([{ type: 'cluster_spots', spots: [{ ...first, snr: 30, hits: 2, freq_hz: first.freq_hz + 100 }] }]);
-    expect(app.clusterSpots.length).toBe(4);
+    expect(app.clusterSpots.length).toBe(5);
     expect(app.clusterSpots[0].snr).toBe(30);
     api.emitNow([{ type: 'cluster_spots', spots: [{ ...first, call: 'NEW1AA', freq_hz: first.freq_hz + 5000 }] }]);
-    expect(app.clusterSpots.length).toBe(5);
+    expect(app.clusterSpots.length).toBe(6);
   });
 
   it('disconnecting clears the spots, and the labels switch is remembered', async () => {
@@ -1825,5 +1825,115 @@ describe('editable texts, CQ repeat and the paddle', () => {
     on([{ type: 'rig', event: { kind: 'tx', value: true } }]);
     await app.send('UR 599');
     expect(api.transmitCommands).toBe(1);
+  });
+});
+
+describe('split', () => {
+  const RX = 7_025_400;
+
+  async function withSpots() {
+    const api = await fresh();
+    await app.clusterConnect();
+    api.flush();
+    return api;
+  }
+
+  it('a click on a spot with "UP 1" sets receive, transmit and split in one go', async () => {
+    const api = await withSpots();
+    const dx = app.clusterSpots.find((s) => s.call === 'ZD7DEMO')!;
+    expect(dx.skimmer, 'the newest report is a skimmer, the remark of a person is kept').toBe(true);
+    expect(app.spotSplit(dx)).toMatchObject({ txHz: dx.freq_hz + 1000, label: 'UP 1', assumed: false });
+    await app.spotClick(dx);
+    api.flush();
+    expect(app.status.frequency_hz).toBe(dx.freq_hz);
+    expect(app.split).toEqual({ on: true, tx_hz: dx.freq_hz + 1000 });
+    expect(app.splitInfo).toMatchObject({ label: 'UP 1', call: 'ZD7DEMO' });
+    expect(api.transmitCommands, 'setting split sends nothing').toBe(0);
+  });
+
+  it('a click on a spot without split switches a split that is still on off, and says why', async () => {
+    const api = await withSpots();
+    await app.spotClick(app.clusterSpots.find((s) => s.call === 'ZD7DEMO')!);
+    const plain = app.clusterSpots.find((s) => s.call === 'OK1TEST')!;
+    expect(app.spotSplit(plain)).toBeNull();
+    await app.spotClick(plain);
+    api.flush();
+    expect(app.split.on).toBe(false);
+    expect(app.splitEnded).toBe('spot');
+    expect(app.splitOpen, 'the bar stays to tell it').toBe(true);
+    expect(app.status.frequency_hz).toBe(plain.freq_hz);
+  });
+
+  it('can be set by hand, without any spot, also while only listening', async () => {
+    const api = await fresh();
+    expect(app.policy).toBe('listen_only');
+    expect(await app.splitFromText('up 2')).toBe(true);
+    api.flush();
+    expect(app.split).toEqual({ on: true, tx_hz: RX + 2000 });
+    expect(app.status.frequency_hz, 'the receive frequency stays').toBe(RX);
+    expect(await app.splitFromText('7027.5')).toBe(true);
+    expect(app.split.tx_hz).toBe(7_027_500);
+    expect(app.splitInfo?.label).toBe('UP 2.1');
+    // Shift+click on the band scope and the nudge buttons use the same path.
+    await app.splitSet(7_026_004);
+    expect(app.split.tx_hz).toBe(7_026_000);
+    await app.splitNudge(-500);
+    expect(app.split.tx_hz).toBe(7_025_500);
+    await app.splitOff();
+    api.flush();
+    expect(app.split).toEqual({ on: false, tx_hz: null });
+    expect(app.splitEnded).toBeNull();
+  });
+
+  it('refuses what cannot be right and leaves the radio alone', async () => {
+    const api = await fresh();
+    expect(await app.splitFromText('hello')).toBe(false);
+    expect(app.error).toBeTruthy();
+    app.clearError();
+    expect(await app.splitSet(14_025_000)).toBe(false);
+    expect(app.error).toBeTruthy();
+    expect(await app.splitSet(RX)).toBe(false);
+    api.flush();
+    expect(app.split.on).toBe(false);
+    // Outside the amateur bands there is no split at all.
+    await app.setFrequency(9_000_000);
+    expect(await app.splitFromText('UP 1')).toBe(false);
+    expect(app.split.on).toBe(false);
+  });
+
+  it('follows the SPLIT button and the transmit VFO of the radio', async () => {
+    const api = await fresh();
+    api.radioSplit(true, 7_026_500);
+    api.flush();
+    expect(app.split).toEqual({ on: true, tx_hz: 7_026_500 });
+    api.radioSplit(false);
+    api.flush();
+    expect(app.split.on).toBe(false);
+    expect(app.splitEnded, 'the operator did it, CWLD has nothing to explain').toBeNull();
+  });
+
+  it('goes off when the receive frequency leaves the band of the transmit frequency', async () => {
+    const api = await fresh();
+    await app.splitFromText('UP 1');
+    api.flush();
+    // Tuning around inside the band keeps split.
+    await app.setFrequency(7_024_000);
+    api.flush();
+    expect(app.split.on).toBe(true);
+    await app.setFrequency(14_025_000);
+    // CWLD switches split off by itself; give that call a moment to finish.
+    await new Promise((r) => setTimeout(r, 0));
+    api.flush();
+    expect(app.split.on).toBe(false);
+    expect(app.splitEnded).toBe('band');
+  });
+
+  it('does not take a split from a spot when the transmit frequency would leave the band', async () => {
+    await fresh();
+    const edge = { call: 'XX1XX', freq_hz: 7_300_000, band: '40m', spotter: 'K1ABC', comment: 'UP 1', snr: null, wpm: null, skimmer: false, ts: 0, hits: 1, status: 'new' as const };
+    expect(app.spotSplit(edge)).toBeNull();
+    expect(app.spotSplit({ ...edge, freq_hz: 7_010_000 })?.txHz).toBe(7_011_000);
+    // The kept remark of a person wins over the comment of the skimmer report.
+    expect(app.spotSplit({ ...edge, freq_hz: 7_010_000, comment: 'CW 20 dB 25 WPM CQ', note: 'QSX 7012.5' })?.txHz).toBe(7_012_500);
   });
 });

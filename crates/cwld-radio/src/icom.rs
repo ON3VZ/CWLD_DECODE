@@ -7,7 +7,7 @@ use crate::error::RigError;
 use crate::keyer::{self, KeyerError, ProsignStyle};
 use crate::rig::{Capabilities, CwTextMode, Rig, RigInfo};
 use crate::transport::Transport;
-use cwld_types::{RadioCommand, RadioMode, RadioStatus, RigEvent, ScopeSweep};
+use cwld_types::{RadioCommand, RadioMode, RadioStatus, RigEvent, ScopeSweep, SplitState};
 use std::collections::VecDeque;
 
 /// CI-V 0x17 takes at most 30 characters per command.
@@ -18,6 +18,9 @@ const MARGIN_MS: u64 = 200;
 const TX_START_DEADLINE_MS: u64 = 2_000;
 /// No frame from the radio for this long counts as "not connected".
 const SILENCE_MS: u64 = 3_000;
+/// After CWLD set or cleared split, answers to older reads are ignored for this long, so the
+/// split state does not flicker.
+const SPLIT_HOLD_MS: u64 = 800;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Ack {
@@ -52,6 +55,7 @@ pub struct IcomRig<T: Transport> {
     /// The newest complete scope sweep. Only the newest is passed on, at most one per poll.
     scope_latest: Option<ScopeSweep>,
     audio: crate::AudioControls,
+    split_hold_until: u64,
 }
 
 impl<T: Transport> IcomRig<T> {
@@ -71,6 +75,7 @@ impl<T: Transport> IcomRig<T> {
                 cw_wpm: 20,
                 transmitting: false,
                 s_meter: 0,
+                split: Default::default(),
             },
             events: Vec::new(),
             queue: VecDeque::new(),
@@ -85,6 +90,15 @@ impl<T: Transport> IcomRig<T> {
             scope: ScopeAssembler::default(),
             scope_latest: None,
             audio: crate::AudioControls::default(),
+            split_hold_until: 0,
+        }
+    }
+
+    /// Takes a new split state and reports it when it differs.
+    fn set_split_state(&mut self, next: SplitState) {
+        if next != self.status.split {
+            self.status.split = next;
+            self.events.push(RigEvent::Split(next));
         }
     }
 
@@ -153,7 +167,10 @@ impl<T: Transport> IcomRig<T> {
         match b[0] {
             cmd::FREQ_PUSH | cmd::READ_FREQ => {
                 if let Some(hz) = civ::bcd_to_freq(&b[1..]) {
-                    if hz != self.status.frequency_hz {
+                    // While transmitting in split an Icom shows (and reports) the transmit
+                    // frequency. That is not a move of the receive frequency **[TEST]**.
+                    let is_tx_side = self.status.split.on && self.status.split.tx_hz == Some(hz);
+                    if hz != self.status.frequency_hz && !is_tx_side {
                         self.status.frequency_hz = hz;
                         self.events.push(RigEvent::Frequency(hz));
                     }
@@ -234,6 +251,24 @@ impl<T: Transport> IcomRig<T> {
                 self.answered_read();
                 self.audio.break_in = Some(b[2].min(2));
             }
+            // Split state: `0F 00` off, `0F 01` on. The radio does not push it, CWLD reads it.
+            cmd::SPLIT if b.len() >= 2 => {
+                self.answered_read();
+                if now >= self.split_hold_until {
+                    let on = b[1] == 0x01;
+                    let tx_hz = if on { self.status.split.tx_hz } else { None };
+                    self.set_split_state(SplitState { on, tx_hz });
+                }
+            }
+            // Frequency of the unselected VFO: where the radio transmits while split is on.
+            cmd::VFO_FREQ if b.len() >= 7 && b[1] == cmd::UNSELECTED => {
+                self.answered_read();
+                if let Some(hz) = civ::bcd_to_freq(&b[2..]) {
+                    if now >= self.split_hold_until && self.status.split.on {
+                        self.set_split_state(SplitState { on: true, tx_hz: Some(hz) });
+                    }
+                }
+            }
             0x1C if b.len() >= 3 && b[1] == 0x00 => {
                 let tx = b[2] != 0;
                 if tx != self.status.transmitting {
@@ -313,7 +348,7 @@ impl<T: Transport> Rig for IcomRig<T> {
                 // At most one pair of these reads under way, so a radio that does not answer them
                 // never fills the list of expected answers.
                 if !self.acks.contains(&Ack::Read) {
-                    for body in [&cmd::AF_LEVEL[..], &cmd::BREAK_IN[..], &cmd::SQUELCH[..], &cmd::NOTCH[..], &cmd::AUTO_NOTCH[..], &cmd::PBT_INNER[..], &cmd::PBT_OUTER[..]] {
+                    for body in [&cmd::AF_LEVEL[..], &cmd::BREAK_IN[..], &cmd::SQUELCH[..], &cmd::NOTCH[..], &cmd::AUTO_NOTCH[..], &cmd::PBT_INNER[..], &cmd::PBT_OUTER[..], &[cmd::SPLIT][..], &[cmd::VFO_FREQ, cmd::UNSELECTED][..]] {
                         self.send(body)?;
                         self.acks.push_back(Ack::Read);
                     }
@@ -405,6 +440,31 @@ impl<T: Transport> Rig for IcomRig<T> {
                 self.send_set(&[cmd::PBT_OUTER[0], cmd::PBT_OUTER[1], raw[0], raw[1]])?;
                 self.audio.pbt_inner = Some(crate::PBT_CENTER);
                 self.audio.pbt_outer = Some(crate::PBT_CENTER);
+                Ok(())
+            }
+            RadioCommand::SetSplit(tx_hz) => {
+                // The transmit VFO first (frequency, then the mode of the receive VFO), split
+                // last: the radio never transmits on a half set VFO.
+                let mut body = vec![cmd::VFO_FREQ, cmd::UNSELECTED];
+                body.extend_from_slice(&civ::freq_to_bcd(*tx_hz));
+                self.send_set(&body)?;
+                if let Some(code) = civ::mode_code(self.status.mode) {
+                    let mut body = vec![cmd::VFO_MODE, cmd::UNSELECTED, code];
+                    // Data mode off and the same filter, when the radio told which one.
+                    if let Some(fil) = self.status.filter.filter(|f| (1..=3).contains(f)) {
+                        body.extend_from_slice(&[0x00, fil]);
+                    }
+                    self.send_set(&body)?;
+                }
+                self.send_set(&[cmd::SPLIT, 0x01])?;
+                self.split_hold_until = self.clock.now_ms() + SPLIT_HOLD_MS;
+                self.set_split_state(SplitState { on: true, tx_hz: Some(*tx_hz) });
+                Ok(())
+            }
+            RadioCommand::SplitOff => {
+                self.send_set(&[cmd::SPLIT, 0x00])?;
+                self.split_hold_until = self.clock.now_ms() + SPLIT_HOLD_MS;
+                self.set_split_state(SplitState::default());
                 Ok(())
             }
         }

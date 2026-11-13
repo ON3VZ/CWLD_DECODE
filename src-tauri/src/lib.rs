@@ -281,6 +281,16 @@ fn lookup_clear_password(core: Core) -> Result<(), Failure> {
 }
 
 #[tauri::command]
+fn split_set(core: Core, tx_hz: u64, rx_hz: Option<u64>) -> Result<(), Failure> {
+    Ok(core.split_set(tx_hz, rx_hz)?)
+}
+
+#[tauri::command]
+fn split_off(core: Core) -> Result<(), Failure> {
+    Ok(core.split_off()?)
+}
+
+#[tauri::command]
 fn notch_off(core: Core) -> Result<(), Failure> {
     Ok(core.notch_off()?)
 }
@@ -517,6 +527,8 @@ pub fn run() {
             activation_end,
             activation_current,
             activation_stats,
+            split_set,
+            split_off,
             notch_off,
             pbt_center,
             cluster_start,

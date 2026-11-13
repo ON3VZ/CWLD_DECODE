@@ -1,6 +1,6 @@
 use crate::error::RigError;
 use crate::rig::{Capabilities, CwTextMode, Rig, RigInfo};
-use cwld_types::{morse, CommandClass, RadioCommand, RadioMode, RadioStatus, RigEvent, ScopeSweep};
+use cwld_types::{morse, CommandClass, RadioCommand, RadioMode, RadioStatus, RigEvent, ScopeSweep, SplitState};
 
 /// Made-up stations for the simulated band scope (absolute frequencies in Hz, strength 0 to 160).
 const SIM_STATIONS: [(u64, u8); 5] = [(7_012_300, 120), (7_018_000, 70), (7_023_600, 95), (7_025_400, 140), (7_041_200, 85)];
@@ -35,6 +35,7 @@ impl SimRig {
                 cw_wpm: 22,
                 transmitting: false,
                 s_meter: 55,
+                split: Default::default(),
             },
             pending: vec![RigEvent::Connected(true)],
             received: Vec::new(),
@@ -173,6 +174,16 @@ impl Rig for SimRig {
             RadioCommand::CenterPbt => {
                 self.audio.pbt_inner = Some(crate::PBT_CENTER);
                 self.audio.pbt_outer = Some(crate::PBT_CENTER);
+            }
+            RadioCommand::SetSplit(tx_hz) => {
+                self.status.split = SplitState { on: true, tx_hz: Some(*tx_hz) };
+                self.pending.push(RigEvent::Split(self.status.split));
+            }
+            RadioCommand::SplitOff => {
+                if self.status.split.on {
+                    self.status.split = SplitState::default();
+                    self.pending.push(RigEvent::Split(self.status.split));
+                }
             }
         }
         Ok(())

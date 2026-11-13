@@ -79,6 +79,7 @@ export class MockApi implements Api {
     cw_wpm: 22,
     transmitting: false,
     s_meter: 55,
+    split: { on: false, tx_hz: null } as { on: boolean; tx_hz: number | null },
   };
   private radioName = 'Simulated radio';
   private swr = 1.1;
@@ -252,6 +253,8 @@ export class MockApi implements Api {
       call, freq_hz: Math.round((f + off) / 100) * 100, band, spotter: 'DL1ABC-#', comment: `CW ${snr} dB ${wpm} WPM CQ`, snr, wpm, skimmer: true, ts: now, hits: 1, status: this.spotStatus(call, band),
     });
     this.clusterList = [make('PA3ABC', -2400, 24, 22), make('DL1XYZ', -900, 12, 26), make('OK1TEST', 600, 18, 20), make('SP9ZZ', 1700, 9, 24)];
+    // One station works split: a person said "UP 1", skimmers report it since.
+    this.clusterList.push({ ...make('ZD7DEMO', 3100, 15, 28), note: 'UP 1' });
     this.pending.push({ type: 'cluster_status', status: { ...this.clusterState } });
     this.pending.push({ type: 'cluster_spots', spots: this.colorSpots() });
     return { ...this.clusterState };
@@ -497,6 +500,31 @@ export class MockApi implements Api {
     if (hz < 30_000 || hz > 74_800_000) fail('frequency_out_of_range');
     this.status.frequency_hz = hz;
     this.pending.push({ type: 'rig', event: { kind: 'frequency', value: hz } });
+  }
+
+  /** Same checks as the core: not while transmitting, inside one amateur band, not on the receive frequency. */
+  async splitSet(txHz: number, rxHz?: number) {
+    const inRange = (hz: number) => hz >= 30_000 && hz <= 74_800_000;
+    if (!inRange(txHz) || (rxHz !== undefined && !inRange(rxHz))) fail('frequency_out_of_range');
+    if (this.status.transmitting) fail('split_while_transmitting');
+    const rx = rxHz ?? this.status.frequency_hz;
+    const band = bandOf(rx);
+    if (!band || bandOf(txHz) !== band) fail('split_other_band');
+    if (Math.abs(txHz - rx) < 10) fail('split_same_frequency');
+    if (rxHz !== undefined) await this.setFrequency(rxHz);
+    this.status.split = { on: true, tx_hz: txHz };
+    this.pending.push({ type: 'rig', event: { kind: 'split', value: { on: true, tx_hz: txHz } } });
+  }
+
+  async splitOff() {
+    this.status.split = { on: false, tx_hz: null };
+    this.pending.push({ type: 'rig', event: { kind: 'split', value: { on: false, tx_hz: null } } });
+  }
+
+  /** Test helper: the operator presses SPLIT on the radio itself. */
+  radioSplit(on: boolean, txHz: number | null = null) {
+    this.status.split = { on, tx_hz: on ? txHz : null };
+    this.pending.push({ type: 'rig', event: { kind: 'split', value: { ...this.status.split } } });
   }
 
   async saveSettings(settings: Settings) {

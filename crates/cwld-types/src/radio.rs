@@ -25,6 +25,16 @@ pub struct RadioStatus {
     pub transmitting: bool,
     /// Normalised S-meter, 0 (S0) to 100 (S9+60).
     pub s_meter: u8,
+    /// Split: the radio transmits on another frequency than it receives on.
+    #[serde(default)]
+    pub split: SplitState,
+}
+
+/// The split state of a radio. `tx_hz` is the transmit frequency when the driver knows it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SplitState {
+    pub on: bool,
+    pub tx_hz: Option<u64>,
 }
 
 /// Unsolicited or polled changes reported by a radio driver.
@@ -47,6 +57,8 @@ pub enum RigEvent {
     Warning(String),
     /// One sweep of the radio's own spectrum scope (band scope).
     Scope(ScopeSweep),
+    /// Split went on or off, or the transmit frequency changed.
+    Split(SplitState),
 }
 
 /// One sweep of a radio's spectrum scope: the level at evenly spaced points from `lo_hz` to
@@ -91,6 +103,11 @@ pub enum RadioCommand {
     SetAutoNotch(bool),
     /// Both Twin PBT knobs back to the middle, so the filter is not shifted. Receive only.
     CenterPbt,
+    /// Split on: keep receiving where the radio is, transmit on this frequency (Hz). The
+    /// transmit VFO gets the mode of the receive VFO. Does not key the radio by itself.
+    SetSplit(u64),
+    /// Split off: transmit where the radio receives again.
+    SplitOff,
 }
 
 /// Safety class of a command. Outside `TxPolicy::Live` only the first three are allowed.
@@ -127,6 +144,8 @@ impl RadioCommand {
             RadioCommand::SetNotch(_) => CommandClass::Config,
             RadioCommand::SetAutoNotch(_) => CommandClass::Config,
             RadioCommand::CenterPbt => CommandClass::Config,
+            RadioCommand::SetSplit(_) => CommandClass::Config,
+            RadioCommand::SplitOff => CommandClass::Config,
         }
     }
 
@@ -149,6 +168,8 @@ impl RadioCommand {
             RadioCommand::SetNotch(false),
             RadioCommand::SetAutoNotch(false),
             RadioCommand::CenterPbt,
+            RadioCommand::SetSplit(7_026_000),
+            RadioCommand::SplitOff,
         ]
     }
 
@@ -170,6 +191,8 @@ impl RadioCommand {
             RadioCommand::SetNotch(_) => "set_notch",
             RadioCommand::SetAutoNotch(_) => "set_auto_notch",
             RadioCommand::CenterPbt => "center_pbt",
+            RadioCommand::SetSplit(_) => "set_split",
+            RadioCommand::SplitOff => "split_off",
         }
     }
 }
@@ -198,6 +221,8 @@ mod tests {
             ("set_notch", Config),
             ("set_auto_notch", Config),
             ("center_pbt", Config),
+            ("set_split", Config),
+            ("split_off", Config),
         ];
         let examples = RadioCommand::examples();
         assert_eq!(examples.len(), expected.len());

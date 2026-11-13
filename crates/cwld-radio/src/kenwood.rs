@@ -66,6 +66,7 @@ impl<T: Transport> QmxRig<T> {
                 cw_wpm: 20,
                 transmitting: false,
                 s_meter: 0,
+                split: Default::default(),
             },
             events: Vec::new(),
             words: VecDeque::new(),
@@ -181,7 +182,10 @@ impl<T: Transport> QmxRig<T> {
             "FA" | "IF" => {
                 if let Some(d) = arg.get(..11).filter(|d| d.bytes().all(|b| b.is_ascii_digit())) {
                     if let Ok(hz) = d.parse::<u64>() {
-                        if hz != self.status.frequency_hz {
+                        // An `IF` push while transmitting in split may carry the transmit
+                        // frequency (VFO B). That is not a move of the receive frequency **[TEST]**.
+                        let is_tx_side = cmd == "IF" && self.status.split.on && self.status.split.tx_hz == Some(hz);
+                        if hz != self.status.frequency_hz && !is_tx_side {
                             self.status.frequency_hz = hz;
                             self.events.push(RigEvent::Frequency(hz));
                         }
@@ -201,6 +205,15 @@ impl<T: Transport> QmxRig<T> {
                 if m != self.status.mode {
                     self.status.mode = m;
                     self.events.push(RigEvent::Mode(m));
+                }
+            }
+            // `SP0` simplex, `SP1` split (receive on VFO A, transmit on VFO B). The transmit
+            // frequency is the one CWLD set: VFO B is not read back **[TEST]**.
+            "SP" => {
+                let on = arg == "1";
+                if on != self.status.split.on {
+                    self.status.split = cwld_types::SplitState { on, tx_hz: if on { self.status.split.tx_hz } else { None } };
+                    self.events.push(RigEvent::Split(self.status.split));
                 }
             }
             "TQ" => {
@@ -262,7 +275,7 @@ impl<T: Transport> Rig for QmxRig<T> {
 
     fn execute(&mut self, c: &RadioCommand) -> Result<(), RigError> {
         match c {
-            RadioCommand::ReadStatus => self.send("FA;MD;TQ;KS;KY;"),
+            RadioCommand::ReadStatus => self.send("FA;MD;TQ;KS;KY;SP;"),
             RadioCommand::SetFrequency(hz) => self.send(&format!("FA{hz:011};")),
             RadioCommand::SetMode(m) => {
                 let d = match m {
@@ -321,6 +334,21 @@ impl<T: Transport> Rig for QmxRig<T> {
             // The QMX has no band scope.
             RadioCommand::SetScope(_) => Ok(()),
             // Not built for the QMX: its speaker volume and break-in are not changed by CWLD.
+            // QMX: VFO A receives, VFO B transmits. From the QMX CAT manual (FB, SP) **[TEST]**.
+            RadioCommand::SetSplit(tx_hz) => {
+                self.send(&format!("FB{tx_hz:011};SP1;"))?;
+                self.status.split = cwld_types::SplitState { on: true, tx_hz: Some(*tx_hz) };
+                self.events.push(RigEvent::Split(self.status.split));
+                Ok(())
+            }
+            RadioCommand::SplitOff => {
+                self.send("SP0;")?;
+                if self.status.split.on {
+                    self.status.split = cwld_types::SplitState::default();
+                    self.events.push(RigEvent::Split(self.status.split));
+                }
+                Ok(())
+            }
             RadioCommand::SetAfLevel(_) | RadioCommand::SetBreakIn(_) | RadioCommand::SetSquelch(_) | RadioCommand::SetNotch(_) | RadioCommand::SetAutoNotch(_) | RadioCommand::CenterPbt => Err(RigError::InvalidArgument("not_supported".into())),
         }
     }

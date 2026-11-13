@@ -507,3 +507,36 @@ Veiligheid: laag vermogen of een dummyload. CQ herhalen zendt alleen zolang je a
 5. Test met semi break-in en met full break-in (QSK) op de radio. Noteer of de tekst ooit midden in je paddle-zin start (dan is de stilte te kort).
 6. Zet in het tekstvenster "Getypte tekst wacht zolang de paddle zendt" uit en herhaal stap 1. Noteer wat de radio doet als beide tegelijk komen.
 
+## A68. Split met de hand (0.20.2)
+
+Veiligheid: laag vermogen of een dummyload voor de stappen waarin je zendt. Split instellen zelf zendt niets.
+
+1. Zet de radio op 7025,0 kHz in CW, VFO A. Klik in CWLD op **SPLIT** (rechts van de frequentie). Verwacht: een balk met een invoervak en de knoppen UP 1, UP 2, UP 5, DWN 1.
+2. Klik **UP 1**. Verwacht: de balk wordt oranje met "Je luistert op 7025.00, je zendt op 7026.00 kHz" en het merkje UP 1. Op de radio brandt SPLIT en staat VFO B op 7.026.00 in CW. Op de bandscoop staat een oranje stippellijn met TX. Noteer of dit klopt, en of de radio een foutpiep gaf.
+3. Klik in de balk op **+0.5** en daarna op **−0.1**. Verwacht: de zendfrequentie wordt 7026,50 en dan 7026,40, ook op de radio.
+4. Typ in het vak in de balk `7027.5` en druk Enter. Verwacht: zenden op 7027,50. Typ `dwn 2` en druk Enter. Verwacht: zenden op 7023,00.
+5. Houd **Shift** ingedrukt en klik op de bandscoop, een paar kHz boven de rode lijn. Verwacht: de oranje TX-lijn springt daarheen, de rode lijn (luisteren) blijft.
+6. Klik **Live**, bevestig, en klik op de chip CQ. Verwacht: de radio zendt op de zendfrequentie (kijk op de radio of op een tweede ontvanger). **Let op tijdens het zenden:** de grote frequentie in CWLD moet op de luisterfrequentie blijven staan, en er mag geen nieuw tabblad opengaan. Noteer wat er gebeurt.
+7. Probeer tijdens het zenden op **+0.1** te klikken. Verwacht: de knoppen zijn grijs. Druk **Esc**. Verwacht: het zenden stopt.
+8. Klik **Split uit**. Verwacht: de balk verdwijnt, SPLIT op de radio is uit, VFO A is niet veranderd.
+9. Typ in het splitvak `14030` (andere band). Verwacht: een rode melding dat de zendfrequentie in dezelfde band moet liggen, en de radio verandert niet.
+10. Zet split aan (UP 1) en druk op de radio op een andere bandtoets. Verwacht: CWLD zet split uit en de balk zegt waarom.
+
+## A69. Split op de radio zelf (0.20.2)
+
+1. Split is uit in CWLD. Houd op de radio **SPLIT** ingedrukt (Quick Split) of druk kort op SPLIT. Verwacht: binnen ongeveer een seconde toont CWLD de oranje balk met de zendfrequentie van de andere VFO. Noteer hoe lang het duurt.
+2. Houd op de radio **XFC** ingedrukt en draai aan de afstemknop (de zendfrequentie verschuift). Verwacht: de zendfrequentie in CWLD en de TX-lijn volgen. Noteer of de luisterfrequentie in CWLD daarbij blijft staan.
+3. Druk op de radio SPLIT uit. Verwacht: de balk in CWLD verdwijnt.
+4. Druk op de radio op **A/B** terwijl split aan staat. Noteer wat CWLD toont (luister- en zendfrequentie zouden van plaats moeten wisselen).
+5. Klik **Live** en zend een korte tekst (chip CQ) met split uit. Verwacht: zenden werkt zoals voorheen. Werkt het niet meer of komt de melding dat de radio tekst weigert: noteer dat meteen, dan weigert de radio mogelijk een van de nieuwe leescommando's (`0F` of `25 01`).
+
+## A70. Split uit een spot en de labels op de bandscoop (0.20.2)
+
+1. Klik onder de bandscoop op **Clusterspots tonen** en wacht tot er labels staan. Verwacht: elk label heeft een dun lijntje met een pijlpunt naar zijn frequentie. Labels overlappen elkaar niet. Op een drukke band staan labels wat opzij of een rij lager, en het lijntje loopt schuin naar de juiste frequentie.
+2. Kijk naar de linker- en rechterrand van de bandscoop. Verwacht: labels daar zijn volledig leesbaar (niet afgesneden).
+3. Zoek een label met een oranje merkje (bijvoorbeeld `UP 1`); op 20 m of 40 m is er tijdens een DX-peditie bijna altijd een. Houd de muis erop. Verwacht: de tekst zegt "Werkt split" met de zendfrequentie.
+4. Klik op dat label. Verwacht: de radio stemt af op het station, VFO B staat op de zendfrequentie, SPLIT brandt, de oranje balk toont de roepletters en het merkje.
+5. Stond er alleen `UP` zonder getal: verwacht de melding dat CWLD 1 kHz nam.
+6. Klik daarna op een label zonder merkje. Verwacht: de radio stemt daarheen af, split gaat uit en de balk zegt "het station waarop je klikte werkt niet split".
+7. Noteer spots waarvan de opmerking fout gelezen werd (een merkje waar geen split bedoeld was, of geen merkje bij een duidelijke split), met de letterlijke opmerking van de spot.
+

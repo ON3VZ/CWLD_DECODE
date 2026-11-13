@@ -41,6 +41,15 @@ pub mod cmd {
     /// Automatic notch (AN) and manual notch (MN), 00 off and 01 on **[TEST]** on the MK II.
     pub const AUTO_NOTCH: [u8; 2] = [0x16, 0x41];
     pub const NOTCH: [u8; 2] = [0x16, 0x48];
+    /// Split: `0F` alone reads (answer `0F 00` off or `0F 01` on), `0F 00` switches off and
+    /// `0F 01` on. From the IC-7300 MK II CI-V Reference Guide (October 2025), page 4.
+    pub const SPLIT: u8 = 0x0F;
+    /// Frequency of the selected (`25 00`) or unselected (`25 01`) VFO, 5 BCD bytes as with 05.
+    /// With split on the radio transmits on the unselected VFO. Guide page 23.
+    pub const VFO_FREQ: u8 = 0x25;
+    /// Mode, data mode and filter of the selected (`26 00`) or unselected (`26 01`) VFO.
+    pub const VFO_MODE: u8 = 0x26;
+    pub const UNSELECTED: u8 = 0x01;
 }
 
 /// Builds one frame: `FE FE to from body FD`.

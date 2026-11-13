@@ -455,6 +455,41 @@ impl AppCore {
         Ok(())
     }
 
+    /// Split on: the radio transmits on `tx_hz`. With `rx_hz` the radio first tunes there (a
+    /// click on a spot: receive, transmit and split in one go), without it the radio keeps
+    /// receiving where it is. Allowed in every mode, it does not key the radio. Refused while
+    /// transmitting, outside the amateur bands and when the transmit frequency lies in another
+    /// band than the receive frequency. Nothing is sent to the radio when it is refused.
+    pub fn split_set(&self, tx_hz: u64, rx_hz: Option<u64>) -> Result<(), CoreError> {
+        if !(MIN_FREQ_HZ..=MAX_FREQ_HZ).contains(&tx_hz) || rx_hz.is_some_and(|r| !(MIN_FREQ_HZ..=MAX_FREQ_HZ).contains(&r)) {
+            return Err(CoreError::FrequencyOutOfRange);
+        }
+        let mut rig = self.rig.lock().unwrap();
+        let st = rig.status();
+        if st.transmitting {
+            return Err(CoreError::Invalid("split_while_transmitting"));
+        }
+        let rx = rx_hz.unwrap_or(st.frequency_hz);
+        let band = cwld_log::band_of(rx);
+        if band.is_empty() || cwld_log::band_of(tx_hz) != band {
+            return Err(CoreError::Invalid("split_other_band"));
+        }
+        if tx_hz.abs_diff(rx) < 10 {
+            return Err(CoreError::Invalid("split_same_frequency"));
+        }
+        if let Some(r) = rx_hz {
+            rig.execute(&RadioCommand::SetFrequency(r))?;
+        }
+        rig.execute(&RadioCommand::SetSplit(tx_hz))?;
+        Ok(())
+    }
+
+    /// Split off: the radio transmits where it receives again. Always allowed.
+    pub fn split_off(&self) -> Result<(), CoreError> {
+        self.rig.lock().unwrap().execute(&RadioCommand::SplitOff)?;
+        Ok(())
+    }
+
     /// Switches the manual and the automatic notch of the radio off. Only on the operator's
     /// click: a notch set on purpose against a carrier must not disappear by itself.
     pub fn notch_off(&self) -> Result<(), CoreError> {
@@ -743,6 +778,46 @@ mod tests {
         c.set_policy(TxPolicy::Practice, false).unwrap();
         assert!(matches!(c.send_text("CQ").unwrap(), SendOutcome::Simulated { .. }));
         assert_eq!(c.transmit_commands_reached_radio(), 0);
+    }
+
+    #[test]
+    fn split_is_set_and_cleared_and_checked() {
+        let c = AppCore::new(None);
+        c.set_frequency(7_025_000).unwrap();
+        // Allowed while only listening.
+        c.split_set(7_026_000, None).unwrap();
+        assert_eq!(c.snapshot().status.split, cwld_types::SplitState { on: true, tx_hz: Some(7_026_000) });
+        let ev = c.tick();
+        assert!(ev.contains(&CoreEvent::Rig { event: RigEvent::Split(cwld_types::SplitState { on: true, tx_hz: Some(7_026_000) }) }));
+        c.split_off().unwrap();
+        assert!(!c.snapshot().status.split.on);
+        // Another band, outside the bands, the same frequency, nonsense: refused.
+        assert_eq!(c.split_set(14_026_000, None).unwrap_err().code(), "split_other_band");
+        assert_eq!(c.split_set(7_025_000, None).unwrap_err().code(), "split_same_frequency");
+        assert_eq!(c.split_set(5, None).unwrap_err().code(), "frequency_out_of_range");
+        // A click on a spot: receive, transmit and split in one go, checked against the new
+        // receive frequency. A refused one does not move the radio.
+        assert_eq!(c.split_set(14_026_000, Some(14_026_000)).unwrap_err().code(), "split_same_frequency");
+        assert_eq!(c.snapshot().status.frequency_hz, 7_025_000);
+        c.split_set(14_026_000, Some(14_025_000)).unwrap();
+        let snap = c.snapshot();
+        assert_eq!((snap.status.frequency_hz, snap.status.split.tx_hz), (14_025_000, Some(14_026_000)));
+        c.split_off().unwrap();
+        c.set_frequency(9_000_000).unwrap();
+        assert_eq!(c.split_set(9_001_000, None).unwrap_err().code(), "split_other_band");
+        assert!(!c.snapshot().status.split.on);
+        assert_eq!(c.transmit_commands_reached_radio(), 0);
+    }
+
+    #[test]
+    fn split_is_not_changed_while_transmitting() {
+        let c = AppCore::new(None);
+        c.set_frequency(7_025_000).unwrap();
+        c.set_policy(TxPolicy::Live, true).unwrap();
+        c.send_text("CQ CQ CQ").unwrap();
+        assert_eq!(c.split_set(7_026_000, None).unwrap_err().code(), "split_while_transmitting");
+        // Switching off is never refused.
+        c.split_off().unwrap();
     }
 
     #[test]

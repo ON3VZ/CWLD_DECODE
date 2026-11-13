@@ -23,7 +23,7 @@ fn first_poll_identifies_asks_for_pushes_and_reads_status() {
     r.poll();
     let w = h.take_written_text();
     assert!(w.starts_with("ID;AI2;"), "{w}");
-    assert!(w.contains("FA;MD;TQ;KS;KY;"), "{w}");
+    assert!(w.contains("FA;MD;TQ;KS;KY;SP;"), "{w}");
     assert!(w.contains("TB;"), "{w}");
     // Identification is asked once.
     r.poll();
@@ -265,4 +265,27 @@ fn empty_or_nonsense_swr_answer_is_no_reading() {
 fn qmx_reports_swr_capability() {
     let (r, _h, _c) = rig();
     assert!(r.capabilities().swr_meter);
+}
+
+#[test]
+fn split_uses_vfo_b_and_sp() {
+    let (mut r, h, _c) = rig();
+    h.feed_text("FA00007025000;");
+    r.poll();
+    let _ = h.take_written_text();
+    r.execute(&RadioCommand::SetSplit(7_026_000)).unwrap();
+    assert_eq!(h.take_written_text(), "FB00007026000;SP1;");
+    assert_eq!(r.status().split, cwld_types::SplitState { on: true, tx_hz: Some(7_026_000) });
+    // An IF push with the transmit frequency while sending is not a retune.
+    h.feed_text("IF00007026000     +00000000001000000 ;");
+    assert!(!r.poll().iter().any(|e| matches!(e, RigEvent::Frequency(_))));
+    let _ = h.take_written_text();
+    // Split switched off on the radio is read back.
+    h.feed_text("SP0;");
+    assert!(r.poll().contains(&RigEvent::Split(cwld_types::SplitState::default())));
+    let _ = h.take_written_text();
+    r.execute(&RadioCommand::SetSplit(7_027_000)).unwrap();
+    r.execute(&RadioCommand::SplitOff).unwrap();
+    assert_eq!(h.take_written_text(), "FB00007027000;SP1;SP0;");
+    assert!(!r.status().split.on);
 }

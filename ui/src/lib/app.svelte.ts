@@ -7,6 +7,7 @@ import { chipSlots, contestSlots, cqSlot, moveChip, newOwnChip, pileupSlots, rem
 import type { SendTexts } from './types';
 import { expand } from './template';
 import { bandOf } from './adif';
+import { offsetLabel, splitFromComment, splitFromInput, splitProblem, type SplitHint } from './split';
 import { emptyLogQso } from './types';
 import { enterAction, entryComplete, nextSerial, suggestFrom, type RunMode, type Suggestion } from './contestlog';
 import { heardIn } from './qso';
@@ -109,7 +110,7 @@ class AppState {
   demo = $state(false);
   policy = $state<TxPolicy>('listen_only');
   status = $state<RadioStatus>({
-    connected: false, frequency_hz: 0, mode: 'cw', filter: null, cw_wpm: 20, transmitting: false, s_meter: 0,
+    connected: false, frequency_hz: 0, mode: 'cw', filter: null, cw_wpm: 20, transmitting: false, s_meter: 0, split: { on: false, tx_hz: null },
   });
   radioName = $state('');
   settings = $state<Settings | null>(null);
@@ -643,6 +644,7 @@ class AppState {
         case 'frequency':
           this.status.frequency_hz = e.value;
           this.frequencyMoved(e.value);
+          this.splitGuard();
           break;
         case 'mode': this.status.mode = e.value; break;
         case 'tx':
@@ -660,6 +662,7 @@ class AppState {
           if (this.paddleEx) { if (!this.paddleEx.result) this.paddleHeard(e.value); } else this.paddle(e.value);
           break;
         case 'scope': this.scopeSweep(e.value); break;
+        case 'split': this.splitReported(e.value); break;
       }
     }
   }
@@ -1087,6 +1090,7 @@ class AppState {
       await this.api.setFrequency(hz);
       this.status.frequency_hz = hz;
       this.frequencyMoved(hz, true);
+      this.splitGuard();
     } catch (e) {
       this.fail(e);
     }
@@ -1166,6 +1170,120 @@ class AppState {
   async tuneTo(hz: number) {
     const r = Math.round(hz / 10) * 10;
     if (r > 0) await this.setFrequency(r);
+  }
+
+  // ---- Split: transmit on another frequency than the one CWLD listens on ----
+
+  /** The bar for setting split by hand is open (it is always shown while split is on). */
+  splitOpen = $state(false);
+  /** What the spot or the operator said about the split that is on now: the label, a range, the station. */
+  splitInfo = $state<{ label: string; toHz: number | null; assumed: boolean; call: string } | null>(null);
+  /** Why CWLD switched split off by itself, for the bar: `band` or `spot`. */
+  splitEnded = $state<'band' | 'spot' | null>(null);
+
+  get split(): { on: boolean; tx_hz: number | null } {
+    return this.status.split ?? { on: false, tx_hz: null };
+  }
+
+  /** The radio (or the driver) says where split stands. Also when the operator pressed SPLIT on the radio. */
+  private splitReported(v: { on: boolean; tx_hz: number | null }) {
+    this.status.split = { on: v.on, tx_hz: v.on ? v.tx_hz : null };
+    if (!v.on) this.splitInfo = null;
+    else {
+      // The transmit frequency was moved (on the radio or with the buttons): the words of the spot no longer fit.
+      if (this.splitInfo && v.tx_hz !== null && this.splitInfoTx !== null && Math.abs(v.tx_hz - this.splitInfoTx) >= 10) this.splitInfo = null;
+    }
+    this.splitGuard();
+  }
+
+  private splitInfoTx: number | null = null;
+
+  /** Split with the transmit frequency in another band than the receive frequency makes no sense: off. */
+  private splitGuard() {
+    const s = this.split;
+    if (!s.on || s.tx_hz === null || this.status.frequency_hz <= 0) return;
+    if (bandOf(s.tx_hz) !== bandOf(this.status.frequency_hz)) void this.splitOff('band');
+  }
+
+  /** The split a spot asks for, when its comment holds one that can be set. */
+  spotSplit(s: ClusterSpot): SplitHint | null {
+    const h = splitFromComment(s.note || s.comment, s.freq_hz);
+    return h && !splitProblem(s.freq_hz, h.txHz) ? h : null;
+  }
+
+  /**
+   * Split on: transmit on `txHz`. With `rxHz` the radio tunes there first. Allowed in every
+   * mode: it sets the radio up and sends nothing.
+   */
+  async splitSet(txHz: number, opts: { rxHz?: number; hint?: SplitHint; call?: string } = {}): Promise<boolean> {
+    const tx = Math.round(txHz / 10) * 10;
+    const rx = opts.rxHz !== undefined ? Math.round(opts.rxHz / 10) * 10 : this.status.frequency_hz;
+    const problem = splitProblem(rx, tx);
+    if (problem) {
+      this.error = t(`error.${problem}`);
+      return false;
+    }
+    try {
+      await this.api.splitSet(tx, opts.rxHz !== undefined ? rx : undefined);
+      if (opts.rxHz !== undefined) {
+        this.status.frequency_hz = rx;
+        this.frequencyMoved(rx, true);
+      }
+      this.status.split = { on: true, tx_hz: tx };
+      this.splitInfoTx = tx;
+      this.splitInfo = { label: opts.hint?.label ?? offsetLabel(rx, tx), toHz: opts.hint?.toHz ?? null, assumed: opts.hint?.assumed ?? false, call: opts.call ?? '' };
+      this.splitEnded = null;
+      this.error = null;
+      return true;
+    } catch (e) {
+      this.fail(e);
+      return false;
+    }
+  }
+
+  /** What the operator typed in the split bar: "UP 1", "DWN 2", "+1.5", "7027.5". */
+  async splitFromText(text: string): Promise<boolean> {
+    const hint = splitFromInput(text, this.status.frequency_hz);
+    if (!hint) {
+      this.error = t('error.split_not_understood');
+      return false;
+    }
+    return this.splitSet(hint.txHz, { hint });
+  }
+
+  /** Moves the transmit frequency while split is on (the buttons in the split bar). */
+  async splitNudge(deltaHz: number) {
+    const s = this.split;
+    if (!s.on || s.tx_hz === null) return;
+    await this.splitSet(s.tx_hz + deltaHz);
+  }
+
+  /** Split off. `why` is set when CWLD does it by itself, so the bar can say so. */
+  async splitOff(why: 'band' | 'spot' | null = null) {
+    try {
+      await this.api.splitOff();
+      this.status.split = { on: false, tx_hz: null };
+      this.splitInfo = null;
+      this.splitEnded = why;
+      if (why) this.splitOpen = true;
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /**
+   * A click on a spot label. The radio tunes to the station. When the spot says where the
+   * station listens, the transmit frequency and split are set too. A spot without split
+   * switches a split that is still on off: it belonged to another station.
+   */
+  async spotClick(s: ClusterSpot) {
+    const hint = this.spotSplit(s);
+    if (hint) {
+      await this.splitSet(hint.txHz, { rxHz: s.freq_hz, hint, call: s.call });
+      return;
+    }
+    if (this.split.on) await this.splitOff('spot');
+    await this.tuneTo(s.freq_hz);
   }
 
   // ---- DX cluster ----

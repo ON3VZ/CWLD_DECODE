@@ -38,6 +38,8 @@ export async function createTauriApi(): Promise<Api> {
     stopTx: () => invoke<void>('stop_tx'),
     setSpeed: (wpm: number) => invoke<void>('set_speed', { wpm }),
     setFrequency: (hz: number) => invoke<void>('set_frequency', { hz }),
+    splitSet: (txHz: number, rxHz?: number) => invoke<void>('split_set', { txHz, rxHz: rxHz ?? null }),
+    splitOff: () => invoke<void>('split_off'),
     saveSettings: (settings: Settings) => invoke<void>('save_settings', { settings }),
     listPorts: () => invoke<PortInfo[]>('list_ports'),
     connect: (radio: RadioSettings) => invoke<Snapshot>('connect', { radio }),

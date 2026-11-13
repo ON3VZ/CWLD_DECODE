@@ -231,6 +231,8 @@ export interface ClusterSpot {
   band: string;
   spotter: string;
   comment: string;
+  /** The last comment a person (not a skimmer) gave, kept for a while: "UP 1" lives here. */
+  note?: string;
   snr: number | null;
   wpm: number | null;
   skimmer: boolean;
@@ -419,6 +421,14 @@ export interface RadioStatus {
   cw_wpm: number;
   transmitting: boolean;
   s_meter: number;
+  /** Split: the radio transmits on `tx_hz` instead of where it receives. */
+  split?: SplitState;
+}
+
+export interface SplitState {
+  on: boolean;
+  /** The transmit frequency in Hz, when the radio (or CWLD) knows it. */
+  tx_hz: number | null;
 }
 
 export interface Snapshot {
@@ -441,7 +451,8 @@ export type RigEvent =
   | { kind: 'queue'; value: string[] }
   | { kind: 'warning'; value: string }
   | { kind: 'swr'; value: number }
-  | { kind: 'scope'; value: ScopeSweep };
+  | { kind: 'scope'; value: ScopeSweep }
+  | { kind: 'split'; value: SplitState };
 
 /** One sweep of the radio's own band scope: levels (0 to 160) evenly spread from lo_hz to hi_hz. */
 export interface ScopeSweep {
@@ -622,6 +633,10 @@ export interface Api {
   stopTx(): Promise<void>;
   setSpeed(wpm: number): Promise<void>;
   setFrequency(hz: number): Promise<void>;
+  /** Split on: transmit on `txHz`. With `rxHz` the radio first tunes there. Does not key the radio. */
+  splitSet(txHz: number, rxHz?: number): Promise<void>;
+  /** Split off: transmit where the radio receives. */
+  splitOff(): Promise<void>;
   saveSettings(settings: Settings): Promise<void>;
   listPorts(): Promise<PortInfo[]>;
   connect(radio: RadioSettings): Promise<Snapshot>;

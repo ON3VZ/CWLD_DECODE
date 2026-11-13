@@ -55,6 +55,7 @@ impl Rig for NullRig {
             cw_wpm: 20,
             transmitting: false,
             s_meter: 0,
+            split: Default::default(),
         }
     }
 }

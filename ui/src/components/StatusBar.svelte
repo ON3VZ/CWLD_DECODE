@@ -40,6 +40,11 @@
       <button class="mono f" onclick={startEdit} title={t('status.frequency')}>{mhz}</button>
       <span class="muted">MHz</span>
     {/if}
+    {#if app.split.on}
+      <span class="splitchip on mono" title={t('split.chip.on.help')}>SPLIT TX {app.split.tx_hz !== null ? (app.split.tx_hz / 1000).toFixed(2) : '?'}</span>
+    {:else}
+      <button class="splitchip" class:open={app.splitOpen} onclick={() => { app.splitEnded = null; app.splitOpen = !app.splitOpen; }} title={t('split.chip.help')} disabled={!app.status.connected}>SPLIT</button>
+    {/if}
   </div>
   <div class="info">
     {#if app.settings && app.settings.profiles.length > 1}
@@ -85,6 +90,10 @@
   .f { background: none; border: none; font-size: 26px; font-weight: 600; padding: 0; }
   .f:hover { color: var(--accent); }
   .edit { font-size: 22px; width: 9em; background: var(--panel2); border: 1px solid var(--accent); border-radius: 6px; padding: 2px 6px; }
+  .splitchip { align-self: center; margin-left: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel2); color: var(--muted); }
+  button.splitchip { cursor: pointer; }
+  button.splitchip:hover:not(:disabled), .splitchip.open { color: var(--text); border-color: var(--accent); }
+  .splitchip.on { background: var(--warn); border-color: var(--warn); color: #1a1205; }
   .info { display: flex; gap: 6px; }
   .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 13px; }
   .chip.sig { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }

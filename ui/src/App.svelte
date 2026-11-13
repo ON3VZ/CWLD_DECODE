@@ -5,6 +5,7 @@
   import { t } from './lib/i18n.svelte';
   import StatusBar from './components/StatusBar.svelte';
   import Banner from './components/Banner.svelte';
+  import SplitBar from './components/SplitBar.svelte';
   import UpdateBar from './components/UpdateBar.svelte';
   import BandScope from './components/BandScope.svelte';
   import SwrAlert from './components/SwrAlert.svelte';
@@ -118,6 +119,7 @@
     <StatusBar />
     <SwrAlert />
     <Banner />
+    <SplitBar />
     <UpdateBar />
     {#if app.settings.band_scope}<BandScope />{/if}
     {#if !app.settings.band_scope || !app.settings.audio_waterfall}

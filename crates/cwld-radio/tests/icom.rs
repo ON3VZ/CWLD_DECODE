@@ -1,6 +1,6 @@
 use cwld_radio::civ::{self, encode, CONTROLLER};
 use cwld_radio::{GuardedRig, IcomRig, ManualClock, MockHandle, MockTransport, Rig, RigError};
-use cwld_types::{PolicyHandle, RadioCommand, RadioMode, RigEvent, TxPolicy};
+use cwld_types::{PolicyHandle, RadioCommand, RadioMode, RigEvent, SplitState, TxPolicy};
 
 const RADIO: u8 = 0xB6;
 
@@ -33,7 +33,7 @@ fn poll_asks_for_the_status_values() {
     r.poll();
     let frames = written_frames(&h);
     let bodies: Vec<Vec<u8>> = frames.iter().map(|f| f.body.clone()).collect();
-    assert_eq!(bodies, vec![vec![0x03], vec![0x04], vec![0x1C, 0x00], vec![0x14, 0x0C], vec![0x15, 0x02], vec![0x14, 0x01], vec![0x16, 0x47], vec![0x14, 0x03], vec![0x16, 0x48], vec![0x16, 0x41], vec![0x14, 0x07], vec![0x14, 0x08]]);
+    assert_eq!(bodies, vec![vec![0x03], vec![0x04], vec![0x1C, 0x00], vec![0x14, 0x0C], vec![0x15, 0x02], vec![0x14, 0x01], vec![0x16, 0x47], vec![0x14, 0x03], vec![0x16, 0x48], vec![0x16, 0x41], vec![0x14, 0x07], vec![0x14, 0x08], vec![0x0F], vec![0x25, 0x01]]);
     assert!(frames.iter().all(|f| f.to == RADIO && f.from == CONTROLLER));
 }
 
@@ -228,6 +228,8 @@ fn radio_refusing_a_block_without_pipeline_is_retried_then_given_up() {
                 [0x16, 0x41] => h.feed(&from_radio(&[0x16, 0x41, 0x00])),
                 [0x14, 0x07] => h.feed(&from_radio(&[0x14, 0x07, 0x01, 0x28])),
                 [0x14, 0x08] => h.feed(&from_radio(&[0x14, 0x08, 0x01, 0x28])),
+                [0x0F] => h.feed(&from_radio(&[0x0F, 0x00])),
+                [0x25, 0x01] => h.feed(&from_radio(&[0x25, 0x01, 0x00, 0x00, 0x03, 0x07, 0x00])),
                 _ => {}
             }
         }
@@ -399,4 +401,84 @@ fn scope_sweeps_arrive_and_only_the_newest_is_passed_on() {
     assert_eq!((sweeps[0].lo_hz, sweeps[0].hi_hz), (7_006_000, 7_056_000));
     assert_eq!(sweeps[0].data.len(), 475);
     assert!(sweeps[0].data.iter().all(|v| *v == 90));
+}
+
+#[test]
+fn split_sets_the_transmit_vfo_first_and_switches_split_on_last() {
+    let (mut r, h, _c) = rig(false);
+    // The radio is on 7025.0 kHz in CW with filter 2.
+    h.feed(&from_radio(&[0x03, 0x00, 0x50, 0x02, 0x07, 0x00]));
+    h.feed(&from_radio(&[0x04, 0x03, 0x02]));
+    r.poll();
+    let _ = written_frames(&h);
+    // Allowed while only listening: it cannot key the radio.
+    let mut g = GuardedRig::new(r, PolicyHandle::new(TxPolicy::ListenOnly));
+    g.execute(&RadioCommand::SetSplit(7_026_000)).unwrap();
+    let bodies: Vec<Vec<u8>> = written_frames(&h).into_iter().map(|f| f.body).collect();
+    assert_eq!(
+        bodies,
+        vec![
+            vec![0x25, 0x01, 0x00, 0x60, 0x02, 0x07, 0x00], // unselected VFO to 7026.0 kHz
+            vec![0x26, 0x01, 0x03, 0x00, 0x02],             // its mode: CW, data off, filter 2
+            vec![0x0F, 0x01],                               // split on
+        ]
+    );
+    assert_eq!(g.status().split, SplitState { on: true, tx_hz: Some(7_026_000) });
+    g.execute(&RadioCommand::SplitOff).unwrap();
+    let bodies: Vec<Vec<u8>> = written_frames(&h).into_iter().map(|f| f.body).collect();
+    assert_eq!(bodies, vec![vec![0x0F, 0x00]]);
+    assert_eq!(g.status().split, SplitState::default());
+}
+
+#[test]
+fn split_set_on_the_radio_itself_is_read_back() {
+    let (mut r, h, clock) = rig(false);
+    // The operator presses SPLIT on the radio: the next read says on, with the other VFO.
+    h.feed(&from_radio(&[0x0F, 0x01]));
+    h.feed(&from_radio(&[0x25, 0x01, 0x00, 0x70, 0x02, 0x07, 0x00]));
+    let ev = r.poll();
+    assert!(ev.contains(&RigEvent::Split(SplitState { on: true, tx_hz: Some(7_027_000) })), "{ev:?}");
+    // The operator turns the transmit VFO: the frequency follows.
+    h.feed(&from_radio(&[0x25, 0x01, 0x00, 0x75, 0x02, 0x07, 0x00]));
+    let ev = r.poll();
+    assert!(ev.contains(&RigEvent::Split(SplitState { on: true, tx_hz: Some(7_027_500) })), "{ev:?}");
+    // And off again on the radio.
+    clock.advance(1_000);
+    h.feed(&from_radio(&[0x0F, 0x00]));
+    let ev = r.poll();
+    assert!(ev.contains(&RigEvent::Split(SplitState::default())), "{ev:?}");
+    // With split off the other VFO is only the other VFO, not a transmit frequency.
+    h.feed(&from_radio(&[0x25, 0x01, 0x00, 0x75, 0x02, 0x07, 0x00]));
+    assert!(!r.poll().iter().any(|e| matches!(e, RigEvent::Split(_))));
+}
+
+#[test]
+fn an_old_answer_right_after_setting_split_does_not_switch_it_off() {
+    let (mut r, h, clock) = rig(false);
+    r.execute(&RadioCommand::SetSplit(7_026_000)).unwrap();
+    // The answer to a read that was sent just before the command: still "off".
+    h.feed(&from_radio(&[0x0F, 0x00]));
+    r.poll();
+    assert!(r.status().split.on);
+    // Later the radio really says off (the operator pressed SPLIT): believed.
+    clock.advance(1_000);
+    h.feed(&from_radio(&[0x0F, 0x00]));
+    r.poll();
+    assert!(!r.status().split.on);
+}
+
+#[test]
+fn the_transmit_frequency_shown_while_sending_in_split_is_not_a_retune() {
+    let (mut r, h, _c) = rig(false);
+    h.feed(&from_radio(&[0x03, 0x00, 0x50, 0x02, 0x07, 0x00]));
+    r.poll();
+    r.execute(&RadioCommand::SetSplit(7_026_000)).unwrap();
+    // While transmitting the radio reports the transmit frequency as its frequency.
+    h.feed(&from_radio(&[0x03, 0x00, 0x60, 0x02, 0x07, 0x00]));
+    let ev = r.poll();
+    assert!(!ev.iter().any(|e| matches!(e, RigEvent::Frequency(_))), "{ev:?}");
+    assert_eq!(r.status().frequency_hz, 7_025_000);
+    // A real move of the receive frequency still comes through.
+    h.feed(&from_radio(&[0x00, 0x00, 0x52, 0x02, 0x07, 0x00]));
+    assert!(r.poll().contains(&RigEvent::Frequency(7_025_200)));
 }

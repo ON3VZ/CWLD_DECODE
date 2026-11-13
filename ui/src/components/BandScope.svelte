@@ -3,6 +3,8 @@
   import { app } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
   import type { ClusterSpot } from '../lib/types';
+  import type { SplitHint } from '../lib/split';
+  import { labelWidth, placeLabels } from '../lib/scopelabels';
 
   let spectrum: HTMLCanvasElement;
   let fall: HTMLCanvasElement;
@@ -65,7 +67,9 @@
 
   function click(e: MouseEvent) {
     if (!app.scopeLive) return;
-    app.tuneTo(freqAt(e));
+    // Shift+click sets the transmit frequency and split; a plain click tunes the receiver.
+    if (e.shiftKey) void app.splitSet(freqAt(e));
+    else void app.tuneTo(freqAt(e));
   }
 
   /** Rows of history kept for the waterfall. */
@@ -268,43 +272,51 @@
   const size = $derived((app.settings?.contest_mode ? app.settings?.scope_size_contest : app.settings?.scope_size) ?? 'medium');
 
   // ---- DX cluster labels ----
-  const ROW_PX = 18;
+  const ROW_PX = 20;
   const PRIORITY = { new: 0, other_band: 1, worked: 2 } as const;
   const rowsMax = $derived(size === 'small' ? 1 : size === 'large' ? 4 : 3);
   const cluster = $derived(app.settings?.cluster);
   const showLabels = $derived(!!cluster?.show_labels && app.clusterStatus.state !== 'off');
-  /** Spots in view with a row each. A crowded stretch shows the stations that are not in the log first. */
+  type Placed = ClusterSpot & { row: number; left: number; attach: number; anchor: number; split: SplitHint | null };
+  /**
+   * Spots in view with a place each. Stations that are not in the log go first. A label that
+   * finds its own spot taken moves a little aside or a row down; a leader line keeps pointing
+   * at its frequency.
+   */
   const placed = $derived.by(() => {
-    if (!app.scopeLive || !showLabels || !cluster) return { items: [] as Array<ClusterSpot & { x: number; row: number }>, hidden: 0 };
+    if (!app.scopeLive || !showLabels || !cluster) return { items: [] as Placed[], hidden: 0 };
     const maxAge = Math.max(1, cluster.max_age_minutes) * 60;
     const inView = app.clusterSpots
       .filter((s) => s.freq_hz >= lo && s.freq_hz <= hi && nowSec - s.ts <= maxAge)
-      .sort((a, b) => PRIORITY[a.status] - PRIORITY[b.status] || b.ts - a.ts);
-    const rows: Array<Array<[number, number]>> = Array.from({ length: rowsMax }, () => []);
-    const items: Array<ClusterSpot & { x: number; row: number }> = [];
-    for (const s of inView) {
-      const x = ((s.freq_hz - lo) / span) * areaW - 8;
-      const end = x + s.call.length * 6.4 + 24;
-      const row = rows.findIndex((r) => r.every(([a, b]) => end + 3 <= a || x >= b + 3));
-      if (row < 0) continue;
-      rows[row].push([x, end]);
-      items.push({ ...s, x: (s.freq_hz - lo) / span, row });
-    }
-    return { items, hidden: inView.length - items.length };
+      .sort((a, b) => PRIORITY[a.status] - PRIORITY[b.status] || b.ts - a.ts)
+      .map((s) => ({ s, split: app.spotSplit(s) }));
+    const res = placeLabels(inView.map(({ s, split }) => ({ anchor: ((s.freq_hz - lo) / span) * areaW, width: labelWidth(s.call, split?.label ?? '') })), areaW, rowsMax);
+    const items: Placed[] = res.placed.map((p) => ({ ...inView[p.index].s, split: inView[p.index].split, row: p.row, left: p.left, attach: p.attach, anchor: p.anchor }));
+    return { items, hidden: res.hidden };
   });
 
   /** The labels get their own lane above the spectrum, only as high as the rows in use. */
-  const lanePx = $derived(showLabels && placed.items.length ? (Math.max(...placed.items.map((p) => p.row)) + 1) * ROW_PX + 6 : 0);
+  const lanePx = $derived(showLabels && placed.items.length ? (Math.max(...placed.items.map((p) => p.row)) + 1) * ROW_PX + 8 : 0);
+
+  // ---- Split: where the radio transmits ----
+  const split = $derived(app.split);
+  const txX = $derived(split.on && split.tx_hz !== null ? (split.tx_hz - lo) / span : null);
+  /** The far end of the range the station listens over ("UP 1-2"), when the spot gave one. */
+  const txToX = $derived(split.on && app.splitInfo?.toHz ? (app.splitInfo.toHz - lo) / span : null);
 
   function spotTitle(s: ClusterSpot): string {
     const mins = Math.max(0, Math.round((nowSec - s.ts) / 60));
     const extra = [s.snr !== null ? `${s.snr} dB` : '', s.wpm !== null ? `${s.wpm} WPM` : ''].filter(Boolean).join(', ');
-    return t('spot.title', { call: s.call, khz: (s.freq_hz / 1000).toFixed(1), spotter: s.spotter, extra: extra ? ` (${extra})` : '', mins, status: t(`spot.status.${s.status}`) });
+    const base = t('spot.title', { call: s.call, khz: (s.freq_hz / 1000).toFixed(1), spotter: s.spotter, extra: extra ? ` (${extra})` : '', mins, status: t(`spot.status.${s.status}`) });
+    const h = app.spotSplit(s);
+    if (!h) return base;
+    const note = t('spot.title.split', { label: h.label, tx: (h.txHz / 1000).toFixed(1) }) + (h.assumed ? ` ${t('spot.title.split.assumed')}` : '');
+    return `${base}\n${note}`;
   }
 
-  function spotClick(e: MouseEvent, hz: number) {
+  function spotClick(e: MouseEvent, s: ClusterSpot) {
     e.stopPropagation();
-    app.tuneTo(hz);
+    void app.spotClick(s);
   }
 
   const cs = $derived(app.clusterStatus);
@@ -331,13 +343,22 @@
     onmouseleave={() => (hoverHz = null)}
     onclick={click}
     bind:clientWidth={areaW}
-    title={app.scopeLive ? t('scope.click') : ''}>
+    title={app.scopeLive ? `${t('scope.click')} ${t('scope.click.split')}` : ''}>
     <div class="upper">
       <canvas class="spectrum" bind:this={spectrum}></canvas>
       {#if app.scopeLive}
+        <!-- Leader lines: from every label to its exact frequency, then down into the spectrum. -->
+        <svg class="leaders" aria-hidden="true">
+          {#each placed.items as sp (`${sp.call}|${sp.band}|${sp.freq_hz}`)}
+            <g class={sp.status}>
+              <line x1={sp.attach} y1={3 + sp.row * ROW_PX + 16} x2={sp.anchor} y2={lanePx} />
+              <line class="drop" x1={sp.anchor} y1={lanePx} x2={sp.anchor} y2="100%" />
+              <path class="tip" d={`M ${sp.anchor - 3} ${lanePx - 4} L ${sp.anchor + 3} ${lanePx - 4} L ${sp.anchor} ${lanePx + 1} Z`} />
+            </g>
+          {/each}
+        </svg>
         {#each placed.items as sp (`${sp.call}|${sp.band}|${sp.freq_hz}`)}
-          <div class="pin {sp.status}" style:left={`${sp.x * 100}%`} style:top={`${3 + sp.row * ROW_PX + 15}px`}></div>
-          <button class="spot {sp.status}" style:left={`${sp.x * 100}%`} style:top={`${3 + sp.row * ROW_PX}px`} title={spotTitle(sp)} onclick={(e) => spotClick(e, sp.freq_hz)} onmousemove={(e) => e.stopPropagation()}><i></i>{sp.call}</button>
+          <button class="spot {sp.status}" class:split={!!sp.split} style:left={`${sp.left}px`} style:top={`${3 + sp.row * ROW_PX}px`} title={spotTitle(sp)} onclick={(e) => spotClick(e, sp)} onmousemove={(e) => e.stopPropagation()}><i></i>{sp.call}{#if sp.split}<span class="badge">{sp.split.label}</span>{/if}</button>
         {/each}
       {/if}
     </div>
@@ -350,6 +371,16 @@
     {#if app.scopeLive}
       {#if vfoX >= 0 && vfoX <= 1}
         <div class="vfo" style:left={`${vfoX * 100}%`}></div>
+      {/if}
+      {#if txX !== null}
+        {#if txToX !== null}
+          <div class="txrange" style:left={`${Math.max(0, Math.min(txX, txToX)) * 100}%`} style:width={`${Math.max(0, Math.min(1, Math.max(txX, txToX)) - Math.max(0, Math.min(txX, txToX))) * 100}%`}></div>
+        {/if}
+        {#if txX >= 0 && txX <= 1}
+          <div class="txline" style:left={`${txX * 100}%`}><span>TX</span></div>
+        {:else}
+          <span class="txaway mono" class:right={txX > 1}>{txX > 1 ? 'TX →' : '← TX'}</span>
+        {/if}
       {/if}
       {#if hoverHz !== null}
         <div class="hover" style:left={`${hoverX * 100}%`}></div>
@@ -396,14 +427,32 @@
   .dot.connecting { background: #fbbf24; }
   .dot.offline { background: #f87171; }
   /* Spot labels: quiet tags. The color lives in the small dot only; worked stations fade. */
-  .spot { position: absolute; z-index: 3; display: inline-flex; align-items: center; gap: 5px; height: 15px; padding: 0 7px 0 5px; border: 1px solid rgba(160, 185, 210, 0.22); border-radius: 8px; background: rgba(22, 30, 40, 0.92); color: #d5dee8; font: 500 10.5px/1 var(--mono, ui-monospace, monospace); letter-spacing: 0.02em; cursor: pointer; white-space: nowrap; transform: translateX(-8px); transition: background 0.12s, border-color 0.12s; }
+  .spot { position: absolute; z-index: 3; display: inline-flex; align-items: center; gap: 5px; height: 17px; padding: 0 7px 0 5px; border: 1px solid rgba(160, 185, 210, 0.3); border-radius: 8px; background: rgba(18, 26, 36, 0.96); color: #e3eaf2; font: 600 11.5px/1 var(--mono, ui-monospace, monospace); letter-spacing: 0.02em; cursor: pointer; white-space: nowrap; transition: background 0.12s, border-color 0.12s; }
   .spot i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
   .spot.new i { color: #5fc79a; }
   .spot.other_band i { color: #d9a84a; }
   .spot.worked i { color: #7d8894; }
-  .spot.worked { color: #8b96a2; background: rgba(22, 30, 40, 0.65); border-color: rgba(160, 185, 210, 0.12); }
-  .spot:hover { background: rgba(38, 50, 64, 0.98); border-color: rgba(160, 185, 210, 0.55); color: #fff; z-index: 5; }
-  .pin { position: absolute; bottom: 0; width: 0; border-left: 1px solid rgba(160, 185, 210, 0.2); pointer-events: none; z-index: 1; }
-  .pin.worked { border-left-color: rgba(160, 185, 210, 0.08); }
+  .spot.worked { color: #97a2ae; background: rgba(18, 26, 36, 0.8); border-color: rgba(160, 185, 210, 0.16); font-weight: 500; }
+  .spot:hover { background: rgba(38, 50, 64, 0.98); border-color: rgba(160, 185, 210, 0.7); color: #fff; z-index: 5; }
+  /* A station that works split: the badge says where it listens. */
+  .spot.split { border-color: rgba(245, 165, 36, 0.65); }
+  .badge { margin-left: 2px; padding: 1px 4px; border-radius: 5px; background: #f5a524; color: #1a1205; font-size: 10px; font-weight: 700; letter-spacing: 0; }
+  .leaders { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 2; }
+  .leaders line { stroke: rgba(170, 195, 220, 0.55); stroke-width: 1; }
+  .leaders .drop { stroke: rgba(170, 195, 220, 0.2); }
+  .leaders .tip { fill: rgba(190, 210, 230, 0.85); }
+  .leaders .new line:not(.drop) { stroke: rgba(95, 199, 154, 0.75); }
+  .leaders .new .tip { fill: #5fc79a; }
+  .leaders .other_band line:not(.drop) { stroke: rgba(217, 168, 74, 0.7); }
+  .leaders .other_band .tip { fill: #d9a84a; }
+  .leaders .worked line { stroke: rgba(160, 185, 210, 0.22); }
+  .leaders .worked .drop { stroke: rgba(160, 185, 210, 0.08); }
+  .leaders .worked .tip { fill: rgba(125, 136, 148, 0.8); }
+  /* Split: the amber line is where the radio transmits, the red line where it listens. */
+  .txline { position: absolute; top: var(--lane, 0px); bottom: 0; width: 0; border-left: 1px dashed #f5a524; box-shadow: 0 0 8px 1px rgba(245, 165, 36, 0.4); pointer-events: none; z-index: 2; }
+  .txline span { position: absolute; top: 2px; left: 3px; padding: 0 4px; border-radius: 4px; background: #f5a524; color: #1a1205; font: 700 10px/14px var(--mono, ui-monospace, monospace); }
+  .txrange { position: absolute; top: var(--lane, 0px); bottom: 0; background: rgba(245, 165, 36, 0.1); border-right: 1px dotted rgba(245, 165, 36, 0.6); border-left: 1px dotted rgba(245, 165, 36, 0.6); pointer-events: none; z-index: 1; }
+  .txaway { position: absolute; top: calc(var(--lane, 0px) + 4px); left: 4px; padding: 0 5px; border-radius: 4px; background: #f5a524; color: #1a1205; font-size: 10px; font-weight: 700; line-height: 15px; pointer-events: none; z-index: 4; }
+  .txaway.right { left: auto; right: 4px; }
   .link { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }
 </style>

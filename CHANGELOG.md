@@ -1,3 +1,21 @@
+## 0.20.2 (split, clearer labels on the band scope)
+
+- New: split, from a spot or by hand. With split on the radio listens on one frequency and transmits on another, as a DX station in a pile-up asks.
+  - From a spot: CWLD reads the comment of the spot. Understood are `UP`, `UP 1`, `UP1`, `UP 1.5`, `UP 1-2`, `UP 1 TO 2`, `DWN 2`, `DN 2`, `DOWN 2`, `QSX 7027.5`, `QSX 7.0275` and `QSX 27.5`. Such a spot gets an amber badge on its label (for example `UP 1`). One click on the label sets the receive frequency, the transmit frequency and split. `UP` without a number is taken as 1 kHz, and the bar says so.
+  - A remark of a person is kept for 20 minutes while only skimmers report the station. Before, the next skimmer report wiped "UP 1" out.
+  - By hand: click **SPLIT** next to the frequency. In the bar that opens, type `UP 1`, `DWN 2`, `+1.5`, `-2` or a frequency such as `7027.5` and press Enter, or click one of the buttons UP 1, UP 2, UP 5, DWN 1. Or hold Shift and click on the band scope: the radio transmits there.
+  - While split is on an amber bar says "You listen on ... you transmit on ...", with buttons to move the transmit frequency (0.1 and 0.5 kHz), a box to type another one, and the button **Split off**. The status bar shows `SPLIT TX` with the frequency, and the band scope shows a dashed amber line marked TX (and a shaded stretch when the station listens over a range such as UP 1-2).
+  - Split set on the radio itself (the SPLIT button, the other VFO) shows in CWLD too: CWLD reads the split state and the transmit frequency about twice a second.
+  - Safety: setting split sends nothing and is allowed in every mode. CWLD refuses a transmit frequency outside the amateur band of the receive frequency, and changes nothing while the radio transmits. When you leave the band, or click a spot of a station that does not work split, CWLD switches split off and says why. "Split off" always works. Esc stays the emergency stop, also with the cursor in the split box.
+  - Icom: the commands come from the IC-7300 MK II CI-V Reference Guide (October 2025): `0F` reads split, `0F 00` and `0F 01` switch it, `25 01` sets and reads the frequency of the unselected VFO (the transmit VFO), `26 01` gives it the mode and filter of the receive VFO. Order: transmit VFO first, split last. Not yet tried on the radio (tests A68 and A69).
+  - QMX: `FB` (VFO B) and `SP1` or `SP0`, from the QMX CAT manual. VFO B is not read back, CWLD shows the frequency it set. Not yet tried on a QMX.
+  - Known limit: the logbook stores the frequency you listen on (where the DX station transmits), as before. Your own transmit frequency is not stored yet.
+- Better labels on the band scope:
+  - Every label has a leader line with a small arrow tip that points at its exact frequency, and a faint line down into the spectrum.
+  - A label whose place is taken moves a little aside (at most 64 pixels) or a row down instead of disappearing. Labels at the left or right edge stay inside the scope. Only what really does not fit counts as hidden.
+  - Slightly larger and bolder text, more contrast. The color of the leader line follows the logbook (green: not in the log, amber: other band, grey: worked).
+- Under the hood: new radio commands `SetSplit` and `SplitOff` (class Config: they cannot key the radio), the split state in the radio status, and tests for the Icom and QMX bytes.
+
 ## 0.20.1 (editable texts, CQ repeat, the paddle goes first)
 
 - New: every chip and function key can be edited, also the contest keys of the built-in profiles. Right click a chip or key, or click the pencil after the chips or the contest keys. The window "Texts of chips and keys" has three groups: Chips, Pile-up F1 to F4 and Contest keys F1 to F8 (per contest profile, for Run and for S&P; when a profile has two exchanges, F2 has a text for each).

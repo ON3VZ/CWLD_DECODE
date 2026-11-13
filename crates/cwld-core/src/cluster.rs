@@ -40,6 +40,9 @@ pub struct SpotOut {
     pub band: String,
     pub spotter: String,
     pub comment: String,
+    /// The last comment a person (not a skimmer) gave for this station, kept for a while.
+    /// A skimmer report that follows would otherwise wipe out a remark such as "UP 1".
+    pub note: String,
     pub snr: Option<i32>,
     pub wpm: Option<u16>,
     pub skimmer: bool,
@@ -68,6 +71,19 @@ struct Stored {
     band: &'static str,
     ts: i64,
     hits: u32,
+    /// The last comment of a person and when it came.
+    note: Option<(String, i64)>,
+}
+
+/// A person's comment is kept this long while only skimmers report the station.
+const NOTE_KEEP_SECS: i64 = 20 * 60;
+
+/// The comment of a person in this report, or the one kept from an earlier report.
+fn note_of(sp: &Spot, earlier: Option<&(String, i64)>, now: i64) -> Option<(String, i64)> {
+    if !sp.skimmer && !sp.comment.trim().is_empty() {
+        return Some((sp.comment.trim().to_string(), now));
+    }
+    earlier.filter(|(_, t)| now - *t <= NOTE_KEEP_SECS).cloned()
 }
 
 #[derive(Default)]
@@ -131,6 +147,7 @@ fn out_of(s: &Stored, worked: &HashSet<(String, String)>) -> SpotOut {
         band: s.band.to_string(),
         spotter: s.spot.spotter.clone(),
         comment: s.spot.comment.clone(),
+        note: s.note.as_ref().filter(|(_, t)| now_secs() - *t <= NOTE_KEEP_SECS).map(|(n, _)| n.clone()).unwrap_or_default(),
         snr: s.spot.snr,
         wpm: s.spot.wpm,
         skimmer: s.spot.skimmer,
@@ -330,11 +347,13 @@ impl AppCore {
                     match same {
                         Some(i) => {
                             let hits = st.spots[i].hits + 1;
-                            st.spots[i] = Stored { spot: sp, band, ts: now, hits };
+                            let note = note_of(&sp, st.spots[i].note.as_ref(), now);
+                            st.spots[i] = Stored { spot: sp, band, ts: now, hits, note };
                             changed.push(i);
                         }
                         None => {
-                            st.spots.push(Stored { spot: sp, band, ts: now, hits: 1 });
+                            let note = note_of(&sp, None, now);
+                            st.spots.push(Stored { spot: sp, band, ts: now, hits: 1, note });
                             changed.push(st.spots.len() - 1);
                         }
                     }
@@ -491,7 +510,7 @@ mod tests {
 
     #[test]
     fn hints_are_the_spots_next_to_the_vfo_nearest_first() {
-        let mk = |line: &str| Stored { spot: cwld_cluster::parse_spot(line).unwrap(), band: "40m", ts: now_secs(), hits: 1 };
+        let mk = |line: &str| Stored { spot: cwld_cluster::parse_spot(line).unwrap(), band: "40m", ts: now_secs(), hits: 1, note: None };
         let spots = vec![
             mk("DX de K1ABC: 7030.6 DL1XYZ CW 1234Z"),
             mk("DX de K1ABC: 7030.1 PA3ABC/P CW 1234Z"),
@@ -507,7 +526,7 @@ mod tests {
         {
             let mut st = core.cluster.lock().unwrap();
             let sp = cwld_cluster::parse_spot("DX de K1ABC: 7030.0 PA3ABC CW 1234Z").unwrap();
-            st.spots.push(Stored { spot: sp, band: "40m", ts: now_secs(), hits: 1 });
+            st.spots.push(Stored { spot: sp, band: "40m", ts: now_secs(), hits: 1, note: None });
             st.client = Some(Client::start(Config::new(vec![], "ON3VZ")));
         }
         core.set_frequency(7_030_200).unwrap();
@@ -524,12 +543,30 @@ mod tests {
     }
 
     #[test]
+    fn a_remark_of_a_person_survives_the_skimmer_reports_that_follow() {
+        let human = cwld_cluster::parse_spot("DX de K1ABC: 7025.0 3B8XX UP 1 1234Z").unwrap();
+        let skim = cwld_cluster::parse_spot("DX de DK9IP-#: 7025.0 3B8XX CW 24 dB 22 WPM CQ 1235Z").unwrap();
+        let first = note_of(&human, None, 1000);
+        assert_eq!(first, Some(("UP 1".to_string(), 1000)));
+        // A skimmer says nothing about split: the remark stays.
+        assert_eq!(note_of(&skim, first.as_ref(), 1100), first);
+        // But not for ever.
+        assert_eq!(note_of(&skim, first.as_ref(), 1000 + NOTE_KEEP_SECS + 1), None);
+        // A newer remark of a person replaces it; a skimmer alone never makes one.
+        let later = cwld_cluster::parse_spot("DX de PA3ABC: 7025.0 3B8XX QSX 7027.5 1240Z").unwrap();
+        assert_eq!(note_of(&later, first.as_ref(), 1200), Some(("QSX 7027.5".to_string(), 1200)));
+        assert_eq!(note_of(&skim, None, 1200), None);
+        let s = Stored { spot: skim, band: "40m", ts: now_secs(), hits: 2, note: Some(("UP 1".into(), now_secs())) };
+        assert_eq!(out_of(&s, &HashSet::new()).note, "UP 1");
+    }
+
+    #[test]
     fn old_spots_expire() {
         let core = AppCore::new(None);
         {
             let mut st = core.cluster.lock().unwrap();
             let sp = cwld_cluster::parse_spot("DX de K1ABC: 7030.0 PA3ABC CW 1234Z").unwrap();
-            st.spots.push(Stored { spot: sp, band: "40m", ts: now_secs() - 3600, hits: 1 });
+            st.spots.push(Stored { spot: sp, band: "40m", ts: now_secs() - 3600, hits: 1, note: None });
             st.client = Some(Client::start(Config::new(vec![], "ON3VZ")));
         }
         let mut s = core.settings();
