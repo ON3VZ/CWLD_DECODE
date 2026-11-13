@@ -6,6 +6,7 @@
   import { rates } from '../lib/contestlog';
   import { expand } from '../lib/template';
   import { slotLabel } from '../lib/texts';
+  import PlaceLine from './PlaceLine.svelte';
 
   let now = $state(Math.floor(Date.now() / 1000));
   onMount(() => {
@@ -83,6 +84,13 @@
     </div>
   {/if}
 
+  {#if app.decoderNote}
+    <div class="note decnote" role="note">
+      <span>{t('contest.decoder.note')}</span>
+      <button class="btn" type="button" onclick={() => (app.decoderNote = false)} aria-label={t('contest.decoder.close')} title={t('contest.decoder.close')}>×</button>
+    </div>
+  {/if}
+
   <div class="entry">
     <label>{t('qso.call')}
       <input id="ce-call" class="mono call" class:isdupe={!!dupe} value={app.qso.call} oninput={typeCall} onkeydown={(e) => keydown(e, 'ce-rst')} autocomplete="off" autocapitalize="characters" />
@@ -107,6 +115,7 @@
       </div>
     {/if}
     <button class="btn primary logbtn" onclick={() => app.logQso()} disabled={!app.qso.call.trim()} title={t('contest.log.help')}>{t('contest.log')}</button>
+  <div class="placerow"><PlaceLine /></div>
   <div class="info" aria-live="polite">
     {#if dupe}
       <strong class="dupe">{t('contest.dupe')}</strong>
@@ -157,6 +166,7 @@
   .profile { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; color: var(--text); max-width: 16em; }
   .note { display: flex; align-items: center; gap: 8px; font-size: 12px; background: color-mix(in srgb, var(--warn) 18%, var(--bg)); border: 1px solid var(--warn); border-radius: 8px; padding: 4px 10px; }
   .note span { flex: 1; }
+  .placerow { min-width: 11em; }
   .info { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; font-size: 12px; margin-left: auto; max-width: 22em; justify-content: flex-end; }
   .contest.on { border-color: var(--accent); color: var(--accent); border-radius: 999px; }
   .dupe { color: var(--live); font-size: 15px; letter-spacing: 0.06em; }

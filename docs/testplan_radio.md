@@ -549,3 +549,41 @@ Veiligheid: laag vermogen of een dummyload voor de stappen waarin je zendt. Spli
 5. Exporteer naar ADIF (knop **Deze N QSO's exporteren (ADIF)**) en open het bestand met Kladblok (rechtsklik op het bestand, **Openen met**, **Kladblok**). Verwacht: bij het split-QSO staat `<FREQ:8>7.026000` en `<FREQ_RX:8>7.025000`; bij een gewoon QSO staat geen FREQ_RX.
 6. Staat de koppeling met Log4OM aan: log een split-QSO en kijk in Log4OM welke frequentie het toont. Noteer of Log4OM de zendfrequentie, de ontvangstfrequentie of beide overneemt.
 
+## A72. Land, richting en afstand (0.20.4)
+
+Dit werkt ook zonder zenden. Het is het handigst met een paar stations in het gesprek of met de zender uit.
+
+1. Open **Instellingen** (tandwiel) en kijk bij **Locator**. Staat daar je locator (bijvoorbeeld `JO20EE`)? Zo niet: vul ze in en bewaar.
+2. Klik in het gesprek op een roepletter van een station buiten Europa (of typ er een in het veld Roepletters van het QSO-paneel, bijvoorbeeld `W1AW`). Verwacht: onder de roepletters staat het land (United States), het werelddeel (NA), een richting in graden en een afstand met een `~` ervoor (bijvoorbeeld `~6 300 km`). Kloppen de richting en afstand ongeveer met wat je van een kaart verwacht (Hoboken naar de oostkust van de VS is ongeveer 290 tot 300 graden)?
+3. Houd de muis op de regel met het land. Verwacht: een tooltip met de versie van de tabel en de uitleg dat de afstand naar het midden van het land gaat, plus de lange weg in graden.
+4. Typ `ON4ABC`. Verwacht: Belgium en "je eigen land", zonder afstand.
+5. Typ `EA8/ON3VZ`. Verwacht: Canary Islands. Typ `ON3VZ/P`. Verwacht: Belgium. Typ `ON3VZ/MM`. Verwacht: geen land.
+6. Heb je QRZ.com aan (Instellingen, rubriek Opzoeken) en een abonnement dat een locator geeft: typ een roepletter van een station dicht bij je (bijvoorbeeld een Nederlands station). Verwacht: de afstand heeft geen `~` en het is een korte afstand. De tooltip zegt dat de locator van QRZ.com gebruikt is.
+7. Maak in Instellingen het veld Locator leeg en bewaar. Verwacht: bij een roepletter staat alleen het land en de hint dat je je locator moet invullen.
+8. Zet de contestmodus aan (knop **Contest**). Verwacht: dezelfde regel (land, richting, afstand) staat in de invoerlijn voor de contest, naast de tellers.
+9. Noteer landen die je in het echt tegenkomt en die verkeerd of niet herkend worden, met de roepletter erbij. De tabel is met de hand gemaakt en kan gaten hebben, vooral bij speciale prefixen.
+
+## A73. Herinnering over de decoder in de contestmodus (0.20.4)
+
+1. Klik op **Contest** om de contestmodus aan te zetten. Verwacht: boven de invoerlijn staat een gele melding dat een decoder in sommige contesten als hulp telt of verboden is. Het is alleen een melding: er verandert niets aan het log en er wordt niets gezonden.
+2. Klik op het kruisje rechts in de melding. Verwacht: ze verdwijnt.
+3. Zet de contestmodus uit en weer aan. Verwacht: de melding komt opnieuw.
+4. Log een QSO en bekijk het logboek of de ADIF. Verwacht: nergens staat iets over de melding.
+
+## A74. Toetsen zoals N1MM (0.20.4)
+
+Veiligheid: laag vermogen of een dummyload voor de stappen waarin je zendt. Alle toetsen werken alleen terwijl er geen venster open is (zoals Instellingen).
+
+Zet de contestmodus aan, kies een profiel (bijvoorbeeld UBA DX CW) en kies **Live** (bevestig). Klik in het gesprek op een roepletter, zodat ze in de invoerlijn staat.
+
+1. **Insert.** Klik in het vak Roepletters in de contest-invoerlijn en druk op de toets Insert (rechts van Backspace, op veel laptops via Fn plus een andere toets). Verwacht: CWLD zendt de roepletters van het station en je uitwisseling in één keer (bijvoorbeeld `PA3ABC 5NN 001 WLD`). De roepletters komen maar één keer voor. Houd Insert ingedrukt. Verwacht: er wordt maar één keer gezonden.
+2. **Insert zonder roepletters.** Maak het vak Roepletters leeg en druk op Insert. Verwacht: er wordt niets gezonden en er staat een melding.
+3. **Punt.** Vul bij een station de roepletters in, laat de uitwisseling leeg en druk op de punt-toets (op een Belgisch toetsenbord Shift plus de toets waarop de puntkomma (;) staat, of de punt van het numerieke blok). Verwacht: een melding dat de uitwisseling niet compleet is, en er is niets gezonden of gelogd. Vul nu het nummer (en het veld voor de sectie als dat er is) in en druk opnieuw op de punt. Verwacht: CWLD zendt TU en logt het QSO, het volgnummer gaat omhoog en de invoerlijn wordt leeg.
+4. **Punt in een tekstvak.** Klik in het zendvak (waar je antwoorden typt) en typ een punt. Verwacht: de punt komt gewoon in de tekst.
+5. **PgUp en PgDn.** Druk op Page Up (de toets boven Page Down, rechts op het toetsenbord). Verwacht: de snelheid in de statusbalk gaat 2 WPM omhoog, ook op de radio. Page Down: 2 WPM omlaag. Houd de toets ingedrukt om snel te veranderen. Verwacht: nooit onder 5 of boven 60.
+6. **Ctrl plus pijl.** Zet de clusterspots aan en zet de radio op een band met spots. Druk Ctrl+pijl omhoog. Verwacht: de radio stemt af op de eerstvolgende spot boven je frequentie en de roepletters staan in de invoerlijn. Nog eens: de volgende. Ctrl+pijl omlaag gaat de andere kant op. Verwacht: gewerkte stations (grijs) worden overgeslagen. Is er geen spot meer in die richting, dan verschijnt een melding en blijft de frequentie staan. Heeft de spot een UP-merkje, dan staat ook split aan.
+7. **Alt+Q.** Roep CQ (chip CQ of F1 in Run) op bijvoorbeeld 7025,0 kHz. Stem daarna af naar een andere frequentie (met Ctrl+pijl of de afstemknop). Verwacht: naast Stop staat een knop `CQ 7025.0 (Alt+Q)`. Druk Alt+Q. Verwacht: de radio gaat terug naar 7025,0 en split gaat uit. Zonder eerder CQ te roepen: een melding dat er nog geen CQ-frequentie is.
+8. **Alt+F7.** Druk Alt+F7. Verwacht: de splitbalk opent. Zet split aan (UP 1) en druk nog eens Alt+F7. Verwacht: split gaat uit. Verwacht ook: F7 alleen schakelt nog altijd de AFC (buiten de contestmodus), Alt+F7 doet dat niet.
+9. **Geen botsingen.** Controleer dat F1 tot F8, Ctrl+R, Ctrl+W, Ctrl+Q, Alt+R, Esc en Shift plus klik op de bandscoop nog doen wat ze deden.
+10. **Venster open.** Open Instellingen en druk op Page Up en Insert. Verwacht: er verandert niets aan de radio.
+11. Noteer toetsen die op je toetsenbord niet werken of botsen met iets op je pc.

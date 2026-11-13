@@ -1,3 +1,24 @@
+## 0.20.4 (country, direction and distance, keys after N1MM Logger+)
+
+- New: **country, direction and distance** of the callsign in the QSO panel and in the contest entry line. For example `United States  NA  305°  ~6 450 km`. The country comes from a prefix table inside CWLD (longest prefix wins, so `KH6` is Hawaii and `K` is the United States). Portable calls are understood: `ON3VZ/P` is Belgium, `EA8/ON3VZ` and `ON3VZ/EA8` are the Canary Islands, `/MM` and `/AM` belong to no country.
+  - Direction (short path) and distance start from your own locator: the one of the activation, else of the station profile, else of the settings. Without a locator only the country is shown, with a hint.
+  - When QRZ.com gave a locator for the station, the direction and the distance go to that locator. Otherwise they go to the middle of the country and have a `~` in front of the distance, because that is only rough. The long path is in the tooltip.
+  - A station in your own country shows "your own country" and no distance, because the middle of the country says nothing there (unless QRZ.com gave a locator).
+  - Hold the mouse on a callsign in the conversation to see the same in a tooltip.
+  - Everything is only shown on the screen. Nothing of it is written to the logbook or sent to another program or station.
+  - The prefix table is made by hand (about 300 entities) and can have gaps, mainly for special prefixes. It is a plain data file (`ui/src/lib/dxcc-data.ts`) and `node tools/update_prefixes.mjs cty.dat` rebuilds it from a Country Files list (see the top of that tool). The version of the table is in the tooltip.
+- New: **reminder in contest mode** that in some contests a decoder counts as assistance (a separate Assisted class) or is not allowed. It shows every time contest mode is switched on, with a button to close it. It is only on the screen: nothing goes into the log and nothing to another station.
+- New: **keys after N1MM Logger+** (they never start while a window such as Settings or the text editor is open):
+  - **Insert**: sends his callsign and your exchange in one go (contest mode). When the exchange text already starts with `{CALL}`, as the built-in ones do, only the exchange is sent, so the callsign does not go out twice.
+  - **. (period)**: sends TU (F3) and logs the QSO, but only when the exchange is complete, as Enter does. Outside contest mode it only logs. In a text field (the send box, the name, the split box) the period stays a character. Only in the entry line of the contest mode it is the key. Works with Shift (AZERTY) and with the period of the numeric keypad.
+  - **PgUp and PgDn**: speed 2 WPM faster or slower, between 5 and 60 WPM. Only the speed of the keyer changes.
+  - **Ctrl+Up and Ctrl+Down**: tune to the next spot above or below on the current band and put its callsign in the entry line. Worked stations and spots older than the cluster limit are skipped. A spot with "UP 1" also sets split, as a click does.
+  - **Alt+Q**: back to the frequency where you last called CQ, with split off. CWLD remembers it when you send a CQ (chip, typed, CQ repeat, F1 in Run). A button "CQ 7025.0 (Alt+Q)" shows next to Stop as soon as you are on another frequency.
+  - **Alt+F7**: split off when it is on, else opens the split bar (as the SPLIT button does).
+  - Insert, the period, Alt+Q, Ctrl+arrow and Alt+F7 do nothing when the key is held down, so a QSO is never sent or logged twice by accident. Nothing here sends without a key press, and CWLD still only sends in LIVE mode.
+  - No clash with the existing keys (F1 to F8, F6, F7, Ctrl+F6, Ctrl+F7, Ctrl+R, Ctrl+W, Ctrl+Q, Alt+R, S, Esc). The plain F-keys now ignore the Alt key, so Alt+F7 does not switch AFC. Shift+click on the band scope (transmit frequency of a split) is a mouse action and does not clash.
+- Under the hood: `hotkeys.ts` decides which key means what, with a test that lists the old keys against the new ones. New tests for the prefix table (no prefix belongs to two countries), the lookup, bearing and distance, the keys and the spot jump.
+
 ## 0.20.3 (the logbook keeps the transmit and the receive frequency)
 
 - The logbook now has two frequencies for every QSO: **TX kHz** (where you transmitted) and **RX kHz** (where you listened). They are nearly always the same. For a QSO made in split they differ: with the DX station on 7025.0 and you calling on 7026.0, TX is 7026.0 and RX is 7025.0.

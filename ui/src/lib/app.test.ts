@@ -1952,3 +1952,227 @@ describe('split', () => {
     expect(app.lastLogged).toMatchObject({ call: 'PA3ABC', freq_hz: RX, freq_rx_hz: 0 });
   });
 });
+
+describe('place of a callsign', () => {
+  it('shows country, direction and distance from the own locator', async () => {
+    await fresh();
+    app.selectCall('W1AW');
+    const p = app.qsoPlace!;
+    expect(p.country).toBe('United States');
+    expect(p.basis).toBe('country');
+    expect(p.km!).toBeGreaterThan(6000);
+    expect(app.placeText('JA1ABC')).toMatch(/^Japan \(AS\), \d+°, \d+ km$/);
+    expect(app.placeText('QQ1ABC')).toBe('');
+  });
+
+  it('the own station profile or activation locator is the starting point when there is one', async () => {
+    await fresh();
+    expect(app.myGrid).toBe('JO20EE');
+  });
+
+  it('without a locator only the country is shown', async () => {
+    await fresh(['ON3VZ'], { locator: '' });
+    app.selectCall('W1AW');
+    expect(app.qsoPlace).toMatchObject({ country: 'United States', km: null, bearing: null });
+  });
+
+  it('a call of the own country has no distance to the middle of it', async () => {
+    await fresh();
+    app.selectCall('ON4ABC');
+    expect(app.qsoPlace).toMatchObject({ country: 'Belgium', home: true, km: null });
+  });
+
+  it('the decoder reminder is shown again every time contest mode is switched on', async () => {
+    await fresh();
+    await app.requestContest(true);
+    expect(app.decoderNote).toBe(true);
+    app.decoderNote = false;
+    await app.requestContest(false);
+    await app.requestContest(true);
+    expect(app.decoderNote).toBe(true);
+  });
+});
+
+describe('N1MM keys', () => {
+  const flush = () => vi.advanceTimersByTimeAsync(0);
+  const lastText = () => app.messages[app.messages.length - 1].text;
+  let api: MockApi;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_800_000_000_000);
+    api = await fresh();
+    await app.requestPolicy('live');
+    await app.confirmLiveSwitch();
+    app.status.transmitting = false;
+    app.setRunMode('run');
+    if (app.settings?.contest_mode) await app.requestContest(false);
+  });
+  afterEach(() => {
+    app.stopCqRepeat('button');
+    app.dispose();
+    vi.useRealTimers();
+  });
+
+  it('Insert sends his callsign and your exchange as one text, in contest mode only', async () => {
+    app.selectCall('PA3ABC');
+    await app.hotkey('send_call_exchange');
+    expect(api.transmitCommands, 'outside contest mode it does nothing').toBe(0);
+    expect(app.notice).toMatch(/contest mode/);
+    await app.requestContest(true);
+    await app.selectContestProfile('uba-dx-cw');
+    app.selectCall('PA3ABC');
+    await app.hotkey('send_call_exchange');
+    expect(api.transmitCommands).toBe(1);
+    expect(lastText()).toBe('PA3ABC 5NN 001 WLD');
+    expect(app.exchangeSent).toBe(true);
+  });
+
+  it('Insert adds his callsign (F5) when the exchange text does not hold it', async () => {
+    await app.requestContest(true);
+    await app.selectContestProfile('uba-dx-cw');
+    const f2 = app.contestKeyList.find((k) => k.key === 'F2')!;
+    await app.saveSlot(f2, '{RST} {NR}', '');
+    app.selectCall('PA3ABC');
+    await app.hotkey('send_call_exchange');
+    expect(lastText()).toBe('PA3ABC 5NN 001');
+  });
+
+  it('Insert without a callsign sends nothing', async () => {
+    await app.requestContest(true);
+    app.clearEntry();
+    await app.hotkey('send_call_exchange');
+    expect(api.transmitCommands).toBe(0);
+    expect(app.notice).toBe('No callsign in the entry line, nothing sent.');
+  });
+
+  it('Insert in listen mode sends nothing', async () => {
+    await app.requestContest(true);
+    await app.requestPolicy('listen_only');
+    app.selectCall('PA3ABC');
+    await app.hotkey('send_call_exchange');
+    expect(api.transmitCommands).toBe(0);
+  });
+
+  it('the period sends TU and logs, when the exchange is complete', async () => {
+    await app.requestContest(true);
+    await app.selectContestProfile('uba-dx-cw');
+    app.selectCall('PA3ABC');
+    await app.hotkey('log_confirm');
+    expect(api.transmitCommands, 'not complete: nothing sent, nothing logged').toBe(0);
+    expect(app.recent).toHaveLength(0);
+    expect(app.warning).toMatch(/not complete/);
+    app.entry.nr = '012';
+    await app.hotkey('log_confirm');
+    await flush();
+    expect(api.transmitCommands).toBe(1);
+    expect(lastText()).toBe('TU ON3VZ');
+    expect(app.recent).toHaveLength(1);
+    expect(app.recent[0]).toMatchObject({ call: 'PA3ABC', nr_rcvd: '012' });
+  });
+
+  it('outside contest mode the period only logs', async () => {
+    app.selectCall('PA3ABC');
+    await app.hotkey('log_confirm');
+    expect(api.transmitCommands).toBe(0);
+    expect(app.lastLogged).toMatchObject({ call: 'PA3ABC' });
+  });
+
+  it('PgUp and PgDn change the speed by 2 WPM inside 5 to 60', async () => {
+    const w = app.status.cw_wpm;
+    await app.hotkey('speed_up');
+    expect(app.status.cw_wpm).toBe(w + 2);
+    await app.hotkey('speed_down');
+    await app.hotkey('speed_down');
+    expect(app.status.cw_wpm).toBe(w - 2);
+    expect(api.transmitCommands, 'only the keyer speed changes').toBe(0);
+    app.status.cw_wpm = 60;
+    await app.hotkey('speed_up');
+    expect(app.status.cw_wpm).toBe(60);
+  });
+
+  it('Ctrl+Up and Ctrl+Down jump through the spots of the band and fill in the call', async () => {
+    await app.clusterConnect();
+    api.flush();
+    const band = app.clusterSpots.filter((s) => s.freq_hz >= 7_000_000 && s.freq_hz <= 7_300_000 && s.status !== 'worked');
+    expect(band.length).toBeGreaterThan(1);
+    app.status.frequency_hz = 7_000_500;
+    const seen: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      await app.hotkey('spot_up');
+      api.flush();
+      seen.push(app.qso.call);
+    }
+    expect(new Set(seen).size, 'every key press moves to another station').toBe(seen.length);
+    const f1 = app.status.frequency_hz;
+    await app.hotkey('spot_down');
+    api.flush();
+    expect(app.status.frequency_hz).toBeLessThan(f1);
+    expect(api.transmitCommands).toBe(0);
+  });
+
+  it('with no spot in that direction it only says so', async () => {
+    await app.clusterConnect();
+    api.flush();
+    app.status.frequency_hz = 7_299_000;
+    await app.hotkey('spot_up');
+    expect(app.notice).toBe('No other spot on this band in that direction.');
+    expect(app.status.frequency_hz).toBe(7_299_000);
+  });
+
+  it('Alt+Q goes back to where you called CQ, and split goes off', async () => {
+    await app.hotkey('cq_freq');
+    expect(app.notice).toMatch(/No CQ frequency yet/);
+    await app.tuneTo(7_025_000);
+    api.flush();
+    await app.send('CQ CQ DE ON3VZ K');
+    expect(app.cqHome).toEqual({ hz: 7_025_000 });
+    // The call is over: the radio does not key any more (split is refused while it does).
+    await vi.advanceTimersByTimeAsync(20_000);
+    api.flush();
+    app.status.transmitting = false;
+    await app.tuneTo(7_031_000);
+    api.flush();
+    await app.splitFromText('UP 1');
+    api.flush();
+    expect(app.split.on).toBe(true);
+    await app.hotkey('cq_freq');
+    api.flush();
+    expect(app.status.frequency_hz).toBe(7_025_000);
+    expect(app.split.on).toBe(false);
+  });
+
+  it('a CQ in contest mode (F1 in Run) is remembered, calling your own call in S&P is not', async () => {
+    await app.requestContest(true);
+    await app.tuneTo(7_027_000);
+    api.flush();
+    app.setRunMode('sp');
+    await app.pressContestKey('F1');
+    expect(app.cqHome).toBeNull();
+    app.setRunMode('run');
+    await app.pressContestKey('F1');
+    expect(app.cqHome).toEqual({ hz: 7_027_000 });
+  });
+
+  it('Alt+F7 opens the split bar, and switches split off when it is on', async () => {
+    app.splitOpen = false;
+    await app.hotkey('split_toggle');
+    expect(app.splitOpen).toBe(true);
+    await app.splitFromText('UP 2');
+    api.flush();
+    expect(app.split.on).toBe(true);
+    await app.hotkey('split_toggle');
+    api.flush();
+    expect(app.split.on).toBe(false);
+  });
+
+  it('a window that is open keeps its keys', async () => {
+    expect(app.dialogOpen).toBe(false);
+    app.settingsOpen = true;
+    expect(app.dialogOpen).toBe(true);
+    app.settingsOpen = false;
+    app.openTextEditor(null);
+    expect(app.dialogOpen).toBe(true);
+    app.closeTextEditor();
+  });
+});

@@ -3,6 +3,7 @@
   import { createApi } from './lib/api';
   import { app } from './lib/app.svelte';
   import { t } from './lib/i18n.svelte';
+  import { hotkeyAction } from './lib/hotkeys';
   import StatusBar from './components/StatusBar.svelte';
   import Banner from './components/Banner.svelte';
   import SplitBar from './components/SplitBar.svelte';
@@ -73,8 +74,18 @@
       app.qOpen = !app.qOpen;
       return;
     }
+    // The keys after N1MM Logger+. Nothing here while a window is open, so the window keeps its own keys.
+    if (!app.dialogOpen && !e.isComposing) {
+      const el = e.target as HTMLElement | null;
+      const action = hotkeyAction(e, { tag: el?.tagName ?? '', id: el?.id ?? '' });
+      if (action) {
+        e.preventDefault();
+        void app.hotkey(action);
+        return;
+      }
+    }
     const contest = !!app.settings?.contest_mode;
-    if (contest && !app.settingsOpen && !app.confirmLive && /^F[1-8]$/.test(e.key) && !e.ctrlKey) {
+    if (contest && !app.settingsOpen && !app.confirmLive && /^F[1-8]$/.test(e.key) && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       void app.pressContestKey(e.key);
       return;
@@ -89,18 +100,18 @@
       app.clearEntry();
       return;
     }
-    if (!contest && (e.key === 'F1' || e.key === 'F2' || e.key === 'F3' || e.key === 'F4')) {
+    if (!contest && !e.altKey && (e.key === 'F1' || e.key === 'F2' || e.key === 'F3' || e.key === 'F4')) {
       e.preventDefault();
       if (!app.settingsOpen && !app.confirmLive) void app.pressPileup(e.key);
       return;
     }
     // Strongest and AFC: F6 and F7, in contest mode Ctrl+F6 and Ctrl+F7 (the plain keys send messages there).
-    if (e.key === 'F6' && (!contest || e.ctrlKey)) {
+    if (e.key === 'F6' && !e.altKey && (!contest || e.ctrlKey)) {
       e.preventDefault();
       void app.goStrongest();
       return;
     }
-    if (e.key === 'F7' && (!contest || e.ctrlKey)) {
+    if (e.key === 'F7' && !e.altKey && (!contest || e.ctrlKey)) {
       e.preventDefault();
       void app.setAfc(!(app.settings?.audio.afc ?? true));
       return;

@@ -12,6 +12,8 @@ import { emptyLogQso } from './types';
 import { enterAction, entryComplete, nextSerial, suggestFrom, type RunMode, type Suggestion } from './contestlog';
 import { heardIn } from './qso';
 import { looksLikeCall } from './callsign';
+import { describeCall, type PlaceInfo } from './dxcc';
+import { nextSpot, SPEED_STEP, stepSpeed, type HotkeyAction } from './hotkeys';
 
 /** Pause after the last change of the call before QRZ.com is asked. */
 export const LOOKUP_DELAY_MS = 700;
@@ -498,6 +500,7 @@ class AppState {
     this.scopeLive = false;
     this.clusterSpots = [];
     this.clusterLines = [];
+    this.cqHome = null;
     this.lastDecodeAt = { rx: 0, paddle: 0 };
     const earlier = api.demo ? [] : this.restore();
     for (const e of earlier) e.touched = Date.now();
@@ -953,6 +956,7 @@ class AppState {
       return;
     }
     await this.transmit(clean);
+    if (!this.error && /^CQ\b/i.test(clean)) this.noteCqSent();
   }
 
   /** Sends now: to the radio (live) or simulated (practice). */
@@ -1803,6 +1807,7 @@ class AppState {
       await this.patchSettings({ contest_mode: false });
       return;
     }
+    this.decoderNote = true;
     if (this.settings.contest_nr > 1) this.contestAsk = true;
     else {
       await this.patchSettings({ contest_mode: true });
@@ -1813,6 +1818,7 @@ class AppState {
 
   async answerContest(restart: boolean) {
     this.contestAsk = false;
+    this.decoderNote = true;
     if (restart && this.settings) {
       // A new contest: the number starts again and earlier QSOs no longer count as dupes.
       const c = $state.snapshot(this.settings.contest) as Settings['contest'];
@@ -2303,6 +2309,34 @@ class AppState {
 
   /** Name, QTH and country that QRZ.com gave for the call in the panel, shown under the fields. */
   lookupNote = $state<{ call: string; text: string } | null>(null);
+  /** The locator QRZ.com gave for a call: direction and distance use it instead of the middle of the country. */
+  lookupGrid = $state<{ call: string; grid: string } | null>(null);
+
+  /** The own locator: the activation, else the station profile, else the station settings. */
+  get myGrid(): string {
+    return (this.activation?.grid || this.profile?.grid || this.settings?.station.locator || '').trim();
+  }
+
+  /** Country, direction and distance for a call (null when the prefix is unknown). Shown only, never stored or sent. */
+  placeOf(call: string): PlaceInfo | null {
+    const c = call.trim().toUpperCase();
+    if (!c) return null;
+    const g = this.lookupGrid && this.lookupGrid.call === c ? this.lookupGrid.grid : '';
+    return describeCall(c, this.myGrid, g, this.myCall);
+  }
+
+  /** The place of the call in the QSO panel. */
+  get qsoPlace(): PlaceInfo | null {
+    return this.placeOf(this.qso.call);
+  }
+
+  /** Short text for a tooltip on a callsign: country, direction and distance. */
+  placeText(call: string): string {
+    const p = this.placeOf(call);
+    if (!p) return '';
+    const base = `${p.country} (${p.continent})`;
+    return p.km !== null && p.bearing !== null ? `${base}, ${p.bearing}°, ${p.km} km` : base;
+  }
   private lookupTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Waits until the call stops changing (typing), then asks QRZ.com once. */
@@ -2310,6 +2344,7 @@ class AppState {
     if (this.lookupTimer) clearTimeout(this.lookupTimer);
     this.lookupTimer = null;
     if (this.lookupNote && this.lookupNote.call !== call) this.lookupNote = null;
+    if (this.lookupGrid && this.lookupGrid.call !== call) this.lookupGrid = null;
     // Name and QTH that CWLD filled in for another station go; what the operator typed stays.
     const s = this.shown;
     if (s.auto && s.autoCall !== call) {
@@ -2351,6 +2386,7 @@ class AppState {
       s.autoCall = call;
       const place = [info.qth, info.country].filter(Boolean).join(', ');
       this.lookupNote = { call, text: [info.first_name, place, info.grid].filter(Boolean).join(' · ') };
+      this.lookupGrid = info.grid ? { call, grid: info.grid } : null;
     } catch (e) {
       this.lookupError(e);
     }
@@ -2478,6 +2514,130 @@ class AppState {
     if (key === 'F2' && template.includes('{NR}') && this.serialUsed) this.sentPending = { call: this.qso.call.trim().toUpperCase(), nr: this.serialText };
     if (key === 'F2') this.exchangeSent = true;
     if (key === 'F1' && this.runMode === 'sp') this.mycallSent = true;
+    if (key === 'F1' && this.runMode === 'run') this.noteCqSent();
+  }
+
+  // ---- Keys after N1MM Logger+ (see hotkeys.ts) ----
+
+  /** Where you last called CQ: Alt+Q goes back there. The frequency you transmit on, so with split the transmit one. */
+  cqHome = $state<{ hz: number } | null>(null);
+
+  private noteCqSent() {
+    const sp = this.split;
+    this.cqHome = { hz: sp.on && sp.tx_hz !== null ? sp.tx_hz : this.status.frequency_hz };
+  }
+
+  /** A window or question is open: the N1MM keys leave everything alone, so the dialog keeps its own keys. */
+  get dialogOpen(): boolean {
+    return this.settingsOpen || this.confirmLive || this.wizardOpen || !!this.textEdit || !!this.editing || this.exportOpen || this.bookOpen || this.closeAllAsk > 0 || this.contestAsk;
+  }
+
+  /** Runs the action of an N1MM key. Sending and logging only happen here, after the operator pressed the key. */
+  async hotkey(a: HotkeyAction) {
+    this.error = null;
+    switch (a) {
+      case 'send_call_exchange': return this.sendCallAndExchange();
+      case 'log_confirm': return this.logAndConfirm();
+      case 'speed_up': return this.speedStep(SPEED_STEP);
+      case 'speed_down': return this.speedStep(-SPEED_STEP);
+      case 'spot_up': return this.spotJump(1);
+      case 'spot_down': return this.spotJump(-1);
+      case 'cq_freq': return this.returnToCq();
+      case 'split_toggle': return this.toggleSplitKey();
+    }
+  }
+
+  /** PgUp and PgDn: 2 WPM faster or slower, inside 5 to 60 WPM. Only changes the keyer speed, sends nothing. */
+  async speedStep(delta: number) {
+    if (!this.status.connected) return;
+    const w = stepSpeed(this.status.cw_wpm, delta);
+    if (w !== this.status.cw_wpm) await this.setSpeed(w);
+  }
+
+  /** Insert: his callsign (F5) and your exchange (F2) in one go. Contest mode only, like the keys it is made of. */
+  async sendCallAndExchange() {
+    if (!this.settings?.contest_mode) {
+      this.notice = t('hotkey.insert.contest');
+      return;
+    }
+    const call = this.qso.call.trim().toUpperCase();
+    if (!call) {
+      this.notice = t('hotkey.nocall');
+      return;
+    }
+    if (!this.canSend) return;
+    const f5 = this.contestKeyList.find((k) => k.key === 'F5');
+    const f2 = this.contestKeyList.find((k) => k.key === 'F2');
+    if (!f5 || !f2) return;
+    // The built-in exchanges already start with his call ({CALL}). Then F2 alone is right, else it would be sent twice.
+    const parts = [...(f2.template.includes('{CALL}') ? [] : [f5.template]), f2.template].map((tpl) => expand(tpl, this.vars));
+    const missing = parts.flatMap((p) => p.missing);
+    if (missing.length) {
+      this.error = t('composer.missing', { vars: missing.join(', ') });
+      return;
+    }
+    await this.send(parts.map((p) => p.text).join(' '));
+    if (this.error) return;
+    this.noteSent('F2', f2.template);
+  }
+
+  /**
+   * The period: in contest mode TU (F3) and log, but only when the exchange is complete, as Enter does.
+   * Outside contest mode it logs the QSO and sends nothing.
+   */
+  async logAndConfirm() {
+    const call = this.qso.call.trim().toUpperCase();
+    if (!call) {
+      this.notice = t('hotkey.nocall');
+      return;
+    }
+    if (!this.settings?.contest_mode) {
+      await this.logQso();
+      return;
+    }
+    if (!this.entryComplete) {
+      this.warning = t('hotkey.incomplete', { call });
+      return;
+    }
+    await this.pressContestKey('F3');
+  }
+
+  /** Ctrl+Up and Ctrl+Down: the next spot on this band, tuned in and (as a click) with split when the spot asks for it. */
+  async spotJump(dir: 1 | -1) {
+    if (!this.status.connected || this.status.transmitting) return;
+    const maxAge = Math.max(1, this.settings?.cluster.max_age_minutes ?? 30) * 60;
+    const s = nextSpot(this.clusterSpots, this.status.frequency_hz, dir, { nowSec: Date.now() / 1000, maxAgeSec: maxAge });
+    if (!s) {
+      this.notice = t('hotkey.nospot');
+      return;
+    }
+    await this.spotClick(s);
+    this.selectCall(s.call);
+    this.notice = t('hotkey.spot', { call: s.call, khz: (s.freq_hz / 1000).toFixed(1) });
+  }
+
+  /** Alt+Q: back to the frequency where you last called CQ (split off). */
+  async returnToCq() {
+    const home = this.cqHome;
+    if (!home) {
+      this.notice = t('hotkey.cqfreq.none');
+      return;
+    }
+    if (!this.status.connected || this.status.transmitting) return;
+    if (this.split.on) await this.splitOff();
+    await this.tuneTo(home.hz);
+    this.notice = t('hotkey.cqfreq.back', { khz: (home.hz / 1000).toFixed(1) });
+  }
+
+  /** Alt+F7: split off when it is on, else open the bar to set it (the same as the SPLIT button). */
+  async toggleSplitKey() {
+    if (!this.status.connected) return;
+    if (this.split.on) {
+      await this.splitOff();
+      return;
+    }
+    this.splitEnded = null;
+    this.splitOpen = !this.splitOpen;
   }
 
   /** Enter does the next logical thing (N1MM calls it ESM). */
@@ -2656,6 +2816,12 @@ class AppState {
 
   /** The note of a profile that was just chosen. Shown once, the operator closes it. */
   contestNote = $state<string | null>(null);
+  /**
+   * The reminder in contest mode that a decoder counts as help in some contests (or is not allowed).
+   * Only on screen: never written to the log, never sent to another program or station. Shown again
+   * every time contest mode is switched on.
+   */
+  decoderNote = $state(true);
 
   get contestProfile() {
     return activeProfile(this.settings?.contest);

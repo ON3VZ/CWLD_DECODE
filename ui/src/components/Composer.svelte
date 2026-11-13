@@ -79,6 +79,9 @@
       {app.cqRepeat ? t('cq.repeat.stop') : t('cq.repeat')} (Alt+R)
     </button>
     <button class="btn" type="button" onclick={() => (app.qOpen = !app.qOpen)} title={`${t('qlib.open.hint')} (Ctrl+Q)`} aria-label={t('qlib.open.hint')} aria-pressed={app.qOpen}>Q</button>
+    {#if app.cqHome && Math.abs(app.cqHome.hz - app.status.frequency_hz) >= 100}
+      <button class="btn" type="button" disabled={!app.status.connected} onclick={() => app.returnToCq()} title={t('cq.freq.help')}>{t('cq.freq', { khz: (app.cqHome.hz / 1000).toFixed(1) })} (Alt+Q)</button>
+    {/if}
     <button class="btn danger" type="button" disabled={!busy && app.policy !== 'live'} onclick={() => app.stop()} title={t('composer.stop.help')}>{t('composer.stop')} (Esc)</button>
     <button class="btn danger" type="button" disabled={!canSend} onclick={() => app.stopAndQrx()} title={t('composer.stopqrx.help')}>{t('composer.stopqrx')} (Esc Esc)</button>
     <button class="btn" type="button" disabled={!canSend} onclick={() => app.sendError()} title={t('composer.error.help')}>{t('composer.error')}</button>

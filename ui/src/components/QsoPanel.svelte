@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
+  import PlaceLine from './PlaceLine.svelte';
 
   function typed() {
     app.qso.call = app.qso.call.toUpperCase();
@@ -24,6 +25,7 @@
       <span class="auto">{t('qso.auto')}</span>
     {/if}
   </div>
+  <PlaceLine />
   <label>{t('qso.name')}<input bind:value={app.qso.name} /></label>
   <label>{t('qso.qth')}<input bind:value={app.qso.qth} /></label>
   {#if app.lookupNote && app.lookupNote.call === app.qso.call.trim().toUpperCase()}<small class="muted lookup-note">{t('lookup.from', { text: app.lookupNote.text })}</small>{/if}
