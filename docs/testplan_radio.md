@@ -587,3 +587,12 @@ Zet de contestmodus aan, kies een profiel (bijvoorbeeld UBA DX CW) en kies **Liv
 9. **Geen botsingen.** Controleer dat F1 tot F8, Ctrl+R, Ctrl+W, Ctrl+Q, Alt+R, Esc en Shift plus klik op de bandscoop nog doen wat ze deden.
 10. **Venster open.** Open Instellingen en druk op Page Up en Insert. Verwacht: er verandert niets aan de radio.
 11. Noteer toetsen die op je toetsenbord niet werken of botsen met iets op je pc.
+
+## A75. Helppagina openen vanuit de app (0.20.6)
+
+1. Open Instellingen en kies onderaan **Updates en info**. Verwacht: onder de updategegevens staat een kopje **Help** met de knop **Helppagina openen**.
+2. Klik op de knop (met internet). Verwacht: je standaardbrowser opent `https://on3vz.github.io/CWLD_DECODE/nl/help.html` als de app Nederlands is, anders `.../help.html`. CWLD zelf verandert niets.
+3. Zet de taal op Engels (Weergave en taal) en klik opnieuw. Verwacht: de Engelse helppagina.
+4. Zet het internet uit en klik. Verwacht: de browser meldt zelf dat er geen verbinding is, of CWLD toont de melding dat de pagina niet geopend kon worden. De app blijft werken.
+5. Noteer: opent er niets, of opent er een ander programma dan je standaardbrowser?
+

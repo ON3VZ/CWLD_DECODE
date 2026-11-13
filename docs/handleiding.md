@@ -1,4 +1,4 @@
-# CWLD, korte handleiding (testversie)
+# CWLD, korte handleiding (testversie, bijgewerkt voor 0.20.6)
 
 ## 1. Eerste start in vier stappen
 
@@ -42,6 +42,8 @@ Alleen in de stand **LIVE** zendt CWLD. Gebruik bij het testen laag vermogen en 
 
 CWLD kijkt bij het opstarten of er een nieuwe versie is. Bovenaan verschijnt dan een balk met de knop **Bijwerken**: de app downloadt de nieuwe versie, installeert ze en start zelf opnieuw op. Je kunt ook zelf kijken: Instellingen, **Zoek updates**. Daar zie je ook wat er nieuw is. De controle haalt alleen een bestand op bij GitHub en verstuurt geen persoonsgegevens. Stop eerst met zenden voor je bijwerkt, want de app herstart.
 
+Sinds 0.20.6 staat bij Instellingen, **Updates en info**, ook een knop **Helppagina openen**. Die opent de helppagina van de website in je standaardbrowser, in de taal van de app. Je hebt internet nodig.
+
 ## 9. Bandscoop
 
 Bovenaan staat de bandscoop van de radio: hetzelfde spectrum als op het scherm van de IC-7300 MK II, met een lijn (sterkte) en een waterfall (verloop in de tijd). De rode lijn is je VFO. Beweeg met de muis over de scoop om de frequentie te zien, klik op een signaal en de radio stemt erheen.
@@ -49,8 +51,10 @@ Bovenaan staat de bandscoop van de radio: hetzelfde spectrum als op het scherm v
 - Hoe breed de scoop is, kies je op de radio zelf (de SPAN-knop op het scoopscherm, bv. ±25 kHz). CWLD volgt dat.
 - CWLD zet de scoopgegevens zelf aan als je de radio verbindt. Op de radio moet niets extra ingesteld worden, behalve wat in de eerste start staat (CI-V via USB).
 - Rechts, onder het QSO-blok, staat het blok **Audio**: wat de decoder hoort binnen het filter van de radio. Een klik daar zet de decoder op die toon.
-- Beide kun je verbergen: klik onder de bandscoop op **Bandscoop verbergen**, of in het blok Audio op **Verbergen**. Je kunt ook naar Instellingen, **Beeld** gaan. Een verborgen deel haal je terug met de link bovenaan het scherm.
+- Beide kun je verbergen: klik onder de bandscoop op **Bandscoop verbergen**, of in het blok Audio op **Verbergen**. Je kunt ook naar Instellingen, **Weergave en taal** gaan. Een verborgen deel haal je terug met de link bovenaan het scherm.
 - De QMX heeft geen bandscoop; daar zie je alleen de audio-waterfall.
+- Sinds 0.18.2 is de scoop van boven naar onder opgebouwd uit: een strook voor de spotlabels (zo hoog als nodig), het spectrum, de frequentieschaal en de waterfall. Het spectrum is een gladde lijn met een zachte vulling en een flauwe lijn voor de pieken. Het bereik past zich aan de band aan: de ruisvloer zit onderaan en het sterkste signaal bovenaan, zodat zwakke signalen op een brede span (bv. 200 kHz) niet in een vlakke lijn verdwijnen.
+- Sinds 0.20.2 hebben de labels een lijntje met een klein pijltje naar hun exacte frequentie. Is de plaats van een label bezet, dan schuift het een stukje opzij (hoogstens 64 pixels) of een rij lager in plaats van te verdwijnen. Zie hoofdstuk 41 voor split.
 
 ## 10. Codes en afkortingen
 
@@ -106,7 +110,8 @@ Onder het audio-waterfall (rechts) staan:
 - De piekmeter: tussen 5 en 90 procent is goed. Boven 90 procent wordt de ingang van de geluidskaart overbelast, zet dan het audioniveau van de radio of de versterking lager.
 - De versterking (-20 tot +20 dB) voor decoder en meter. Een opname blijft zoals ze binnenkwam.
 - Zwak, Midden, Sterk: hoe streng de decoder is. Zwak probeert ook vage signalen, Sterk leest alleen duidelijke. Dit zijn standen van de drempelschuif bij Instellingen, Decoder, naar gevoel gekozen en nog niet gemeten.
-- Smal of Breed: Breed heeft dubbele bandbreedte, voor driftende of tjirpende signalen. De twee rode lijnen in het waterfall tonen het filter.
+- Smal, Breed of Steil: Breed heeft dubbele bandbreedte, voor driftende of tjirpende signalen. **Steil** (sinds 0.20.0) heeft de breedte van Smal maar veel steilere flanken: een station 60 Hz verderop is zo'n 40 dB zwakker dan bij Smal. Kies Steil als een sterk station vlak naast het jouwe de decoder stoort. Op heel zwakke signalen zonder buur blijft Smal iets beter, daarom staat Smal standaard. De twee rode lijnen in het waterfall tonen het filter.
+- Letters samenvoegen (Instellingen, Decoder, standaard aan): seint iemand een roepletter of naam met een woordpauze na elke letter, dan toont CWLD D L 4 S A V als DL4SAV en H A N S als HANS. Een K of R vlak na een uitgespelde roepletter blijft los (DL4SAV K). Losse letters die alleen horen te staan (R R, E E, K) blijven zoals ze zijn. Letters wachten tot het volgende woord of tot een pauze van 20 eenheden.
 - Sterkste (F6): eenmalig naar het sterkste getoetste signaal van de laatste seconden. AFC (F7): aan of uit.
 - Bij Instellingen, Decoder: traagste en snelste snelheid (5 tot 60 WPM) en een vaste snelheid voor bakens.
 
@@ -493,3 +498,128 @@ Scrol je in het gespreksvenster omhoog om iets terug te lezen, dan blijft het be
 
 Het maximum aantal open tabbladen stel je in via **Instellingen**, onderdeel met de tabbladen, bij **Maximaal aantal open tabbladen** (standaard 5, 0 is geen limiet). Het oudste rustige gesprek sluit eerst. Het gesprek waarin je zit en gesprekken met gezonden tekst die nog niet gelogd zijn sluiten nooit vanzelf.
 
+## 37. Terugspoelen: de laatste seconden opnieuw lezen (0.20.0)
+
+CWLD bewaart de laatste minuut geluid. Heb je iets gemist, dan lees je het opnieuw, ook op een andere toon.
+
+1. Zoek rechts de kaart **Audio** en klik op **Terugspoelen** (het pijltje klapt open).
+2. Kies hoe ver terug: **10 s**, **20 s**, **30 s** of **60 s**.
+3. Kies hoe CWLD het leest:
+   - **Zelfde toon**: de toon waarop de decoder nu luistert.
+   - **Sterkste**: de sterkste getoetste toon in dat stuk.
+   - Een van de toonhoogtes onder **Gehoord:** (hoogstens vier, de sterkste eerst), bijvoorbeeld 702 Hz.
+4. Onder de knoppen verschijnt de tekst met de toon en de snelheid. Roepletters in het resultaat zijn aan te klikken, net als in het gesprek.
+
+Een aparte decoder doet dit, dus de live decoder loopt ongestoord door. Hij leest het stuk twee keer: de eerste keer alleen om de niveaus te vinden, zodat ook de eerste tekens goed uitkomen.
+
+**Bewaren als WAV.** Klik op **Laatste minuut bewaren (WAV)**. CWLD schrijft de laatste minuut, zoals de decoder hem hoorde (8 kHz, mono, vóór de versterking), naar de opnamemap (standaard Documenten\CWLD). De bestandsnaam bevat datum, tijd en frequentie.
+
+![Terugspoelen](img/nl-listen-again.png)
+
+## 38. Zendteksten bewerken (0.20.1)
+
+Elke chip en elke functietoets is aan te passen, ook de contesttoetsen van de ingebouwde profielen.
+
+1. Klik met rechts op een chip of toets, of klik op het potloodje (✎) achter de chips of de contesttoetsen. Het venster **Teksten van chips en toetsen** opent.
+2. Kies bovenaan de groep: **Chips**, **Pile-up F1 tot F4** of **Contesttoetsen F1 tot F8** (per contestprofiel, voor Run en voor S&P; heeft een profiel twee uitwisselingen, dan heeft F2 een tekst voor elk).
+3. Kies links het item, pas rechts de **Naam op de knop** en de **Tekst die verzonden wordt** aan.
+4. Klik op een variabele onder **Invoegen** ({CALL}, {MYCALL}, {NAME}, {QTH}, {RST}, {NR}, {MYNAME}, {MYQTH} en je eigen contestvariabelen) om ze in de tekst te zetten.
+5. Onder **Nu verzonden als** zie je de tekst met de huidige waarden, variabelen zonder waarde zijn gemarkeerd, en de duur bij je huidige snelheid.
+6. Klik op **Opslaan**. **Ongedaan** zet je laatste wijziging terug.
+
+CWLD waarschuwt bij een onbekende variabele, tekens die de radio niet kan zenden, een onbekend prosign en een losse accolade. **Standaard herstellen** werkt per item en voor een hele groep. Alleen wijzigingen worden bewaard, zodat latere verbeteringen aan de ingebouwde teksten je toch bereiken. Eigen chips maak je met **+ Eigen chip** en je hernoemt, verschuift (pijltjes omhoog en omlaag) of verwijdert ze. Sluit of wissel je met een niet-opgeslagen wijziging, dan vraagt CWLD eerst.
+
+Chips en toetsen die niet kunnen zenden (LUISTEREN) zijn grijs, maar een rechtsklik opent nog steeds hun tekst.
+
+![Teksten van chips en toetsen](img/nl-texts.png)
+
+## 39. CQ herhalen (0.20.1)
+
+De knop **CQ herhalen (Alt+R)** roept CQ, luistert met een aftelling en roept opnieuw.
+
+- Wat er gezonden wordt: de chip CQ. In contestmodus is dat de F1-tekst in Run (in S&P is er geen CQ).
+- Instellingen: onder **CQ herhalen en de paddle** in het tekstenvenster. Pauze 2 tot 60 seconden (standaard 6) en hoogstens 1 tot 30 keer na elkaar (standaard 10).
+- Het start **nooit vanzelf**. Het stopt bij elke toets, bij de paddle, als er in een pauze twee of meer tekens te horen zijn (een antwoord), als je iets anders zendt, aan de VFO draait, van mode wisselt, op Stop drukt, CWLD minimaliseert, bij een SWR-alarm en na de laatste keer. De regel onder het zendvak zegt waarom het stopte.
+- Zenden kan alleen in LIVE. CQ herhalen zendt alleen zolang jij aan het station zit.
+
+## 40. De paddle gaat voor (0.20.1)
+
+Tik je een tekst of klik je een chip terwijl je met de paddle seint, dan wacht die tekst. CWLD merkt de paddle zo: de radio zendt terwijl CWLD niets zond, of de decoder of de radio (QMX) meldt paddletekst. De tekst staat onder **Wacht op de paddle** en gaat weg zodra de paddle 14 puntlengtes (minstens een seconde) stil is. Met Esc wis je de wachtrij. Je kunt dit uitzetten in het tekstenvenster.
+
+## 41. Split (0.20.2)
+
+Met split luistert de radio op de ene frequentie en zendt ze op een andere, zoals een DX-station in een pile-up vraagt (bv. "UP 1").
+
+**Vanuit een spot.** CWLD leest de opmerking bij de spot. Begrepen worden: `UP`, `UP 1`, `UP1`, `UP 1.5`, `UP 1-2`, `UP 1 TO 2`, `DWN 2`, `DN 2`, `DOWN 2`, `QSX 7027.5`, `QSX 7.0275` en `QSX 27.5`. Zo'n spot krijgt een oranje badge op zijn label (bv. `UP 1`). **Eén klik** op het label zet de ontvangstfrequentie, de zendfrequentie en split. `UP` zonder getal telt als 1 kHz en de balk zegt dat. Een opmerking van een mens blijft 20 minuten bewaard terwijl alleen skimmers het station melden.
+
+**Met de hand.**
+1. Klik op **SPLIT** naast de frequentie bovenaan.
+2. Typ in de balk `UP 1`, `DWN 2`, `+1.5`, `-2` of een frequentie zoals `7027.5` en druk op Enter. Of klik op een van de knoppen **UP 1**, **UP 2**, **UP 5**, **DWN 1**.
+3. Of houd **Shift** ingedrukt en klik op de bandscoop: de radio zendt daar.
+
+Terwijl split aan staat zegt een oranje balk: je luistert op ... en zendt op ... Met knoppen verschuif je de zendfrequentie (0,1 en 0,5 kHz), je typt een andere frequentie, en met **Split uit** schakel je terug. De statusbalk toont `SPLIT TX` met de frequentie. De bandscoop toont een gestreepte oranje lijn met TX (en een gearceerd stuk als het station over een bereik luistert, zoals bij UP 1-2).
+
+**Split op de radio zelf** (de knop SPLIT, de andere VFO) zie je ook in CWLD: CWLD leest ongeveer twee keer per seconde de splitstand en de zendfrequentie. De radio meldt dit niet vanzelf, dus uitzetten gebeurt best vanuit CWLD.
+
+**Veiligheid.** Split instellen zendt niets en mag in elke mode. CWLD weigert een zendfrequentie buiten de amateurband van de ontvangstfrequentie en verandert niets terwijl de radio zendt. Verlaat je de band, of klik je een spot van een station dat geen split werkt, dan zet CWLD split uit en zegt waarom. **Split uit** werkt altijd. Esc blijft de noodstop, ook met de cursor in het splitvak.
+
+**Radiocommando's.** Icom: uit de CI-V Reference Guide van de IC-7300 MK II (oktober 2025): `0F` leest en zet split, `25 01` zet de frequentie van de zend-VFO, `26 01` geeft hem de mode en het filter van de ontvangst-VFO. QMX: `FB` en `SP1` of `SP0`.
+
+**Nog niet op de radio getest**: split op de IC-7300 MK II (tests A68, A69, A70) en op de QMX. Meld het als iets niet klopt.
+
+![Split](img/nl-split.png)
+
+## 42. Logboek met zend- en ontvangstfrequentie (0.20.3)
+
+Het logboek bewaart twee frequenties per QSO: **TX kHz** (waar je zond) en **RX kHz** (waar je luisterde). Meestal zijn ze gelijk. Bij een QSO in split verschillen ze: staat het DX-station op 7025,0 en roep jij op 7026,0, dan is TX 7026,0 en RX 7025,0.
+
+- Het logboekvenster toont beide kolommen standaard. Had je eerder eigen kolommen gekozen, vink dan eenmalig **RX kHz** aan onder **Kolommen**. De kolom die vroeger "kHz" heette, heet nu "TX kHz".
+- Het wijzigvenster heeft een veld **RX kHz**. Laat het leeg als je luisterde waar je zond.
+- ADIF-export: `FREQ` is de zendfrequentie, zoals de ADIF-standaard zegt. Een QSO in split krijgt ook `FREQ_RX` (en `BAND_RX` als de banden verschillen). Een gewoon QSO wordt precies zo geschreven als vroeger.
+- Het N1MM-bericht naar andere programma's bevat de echte `rxfreq` en `txfreq`. De CSV-export volgt de kolommen.
+- Bestaande logboekbestanden worden vanzelf bijgewerkt. Oude QSO's blijven zoals ze waren.
+- Band en dupecontrole gaan op de zendfrequentie. Split kan alleen binnen één band.
+
+![Logboek](img/nl-logbook.png)
+
+## 43. Land, richting en afstand (0.20.4)
+
+Bij een roepletter toont CWLD het land, de richting en de afstand, in het QSO-paneel, in de contest-invoerlijn en als tooltip op de roepletters in het gesprek. Bijvoorbeeld `Germany  EU  75°  ~407 km`.
+
+- Het land komt uit een prefixtabel in CWLD (de langste prefix wint: `KH6` is Hawaï en `K` de Verenigde Staten). Portabele roepletters worden begrepen: `ON3VZ/P` is België, `EA8/ON3VZ` en `ON3VZ/EA8` zijn de Canarische Eilanden, `/MM` en `/AM` horen bij geen land.
+- Richting (korte weg) en afstand gaan vanaf je eigen locator: die van de activatie, anders van het stationsprofiel, anders van de instellingen. Zonder locator zie je alleen het land en een hint. Vul je locator in bij Instellingen, Station.
+- Gaf QRZ.com een locator voor het station, dan gaan richting en afstand daarheen. Anders gaan ze naar het midden van het land en staat er een `~` voor de afstand, want dat is maar ruw. De lange weg staat in de tooltip.
+- Een station in je eigen land toont "je eigen land" en geen afstand, tenzij QRZ.com een locator gaf.
+- Alles staat alleen op het scherm. Er wordt niets van naar het logboek, een ander programma of een ander station gestuurd.
+- De tabel is met de hand gemaakt (ongeveer 300 entiteiten) en kan gaten hebben, vooral bij speciale prefixen. Het is een gewoon gegevensbestand (`ui/src/lib/dxcc-data.ts`); `node tools/update_prefixes.mjs cty.dat` bouwt hem opnieuw uit een Country Files-lijst (kijk eerst de licentie na). De versie van de tabel staat in de tooltip.
+
+## 44. Sneltoetsen zoals N1MM Logger+ (0.20.4)
+
+Deze toetsen starten nooit zolang een venster zoals Instellingen of het tekstenvenster openstaat. Niets zendt zonder toetsaanslag, en CWLD zendt nog steeds alleen in LIVE.
+
+| Toets | Wat hij doet |
+|---|---|
+| **Insert** | Zendt zijn roepletters en jouw uitwisseling in één keer (contestmodus). Begint de uitwisselingstekst al met `{CALL}`, zoals bij de ingebouwde, dan gaat alleen de uitwisseling uit, zodat de roepletters niet dubbel gaan. |
+| **.** (punt) | Zendt TU (F3) en logt het QSO, maar alleen als de uitwisseling compleet is, zoals Enter. Buiten contestmodus logt hij alleen. In een tekstvak (zendvak, naam, splitvak) blijft de punt een teken. Werkt met Shift (AZERTY) en met de punt van het numerieke blok. |
+| **PgUp / PgDn** | Snelheid 2 WPM sneller of trager, tussen 5 en 60 WPM. Enkel de snelheid van de keyer verandert. |
+| **Ctrl+pijl omhoog / omlaag** | Stemt af op de volgende spot boven of onder je op de huidige band en zet zijn roepletters in de invoerlijn. Gewerkte stations en spots ouder dan de clusterlimiet worden overgeslagen. Een spot met "UP 1" zet ook split, zoals een klik. |
+| **Alt+Q** | Terug naar de frequentie waar je het laatst CQ riep, met split uit. CWLD onthoudt ze als je CQ zendt (chip, getypt, CQ herhalen, F1 in Run). Een knop "CQ 7025.0 (Alt+Q)" staat naast Stop zodra je op een andere frequentie zit. |
+| **Alt+F7** | Split uit als hij aan staat, anders opent hij de splitbalk (zoals de knop SPLIT). |
+
+Insert, de punt, Alt+Q, Ctrl+pijl en Alt+F7 doen niets als je de toets ingedrukt houdt, zodat een QSO nooit per ongeluk dubbel gezonden of gelogd wordt.
+
+**Botsingen.** Er is geen botsing met de bestaande toetsen: F1 tot F8, F6, F7, Ctrl+F6, Ctrl+F7, Ctrl+R, Ctrl+W, Ctrl+Q, Alt+R, S en Esc. De gewone F-toetsen negeren nu Alt, dus Alt+F7 zet AFC niet om. Shift+klik op de bandscoop is een muisactie en botst niet.
+
+**Nog niet op de radio getest**: tests A72, A73 en A74.
+
+## 45. Melding in contestmodus over de decoder (0.20.4)
+
+In sommige contests telt een decoder als hulp (een aparte klasse Assisted) of is hij helemaal niet toegestaan. Daarom toont CWLD elke keer dat je contestmodus aanzet een herinnering, met een knop om ze te sluiten. Ze staat alleen op het scherm: er gaat niets in het logboek en niets naar een ander station. Lees het reglement van de contest en kies zelf de juiste klasse.
+
+## 46. Kleine verbeteringen (0.18.2 tot 0.19.3)
+
+- **Exporteren (0.18.5).** In het exportvenster loopt de controle nu vanzelf als je op **Exporteren** klikt; vroeger bleef de knop grijs tot je op Controleren drukte. Lukt het niet, dan zegt het venster waarom, in gewone woorden. Een export zonder QSO wordt geweigerd (vroeger kwam er een leeg bestand). Na de export staan het pad en de knop **Map openen** in het venster.
+- **Paddle oefenen (0.18.3).** Lange pauzes tussen tekens deden juiste tekens als fout tellen; dat is hersteld. Tekens worden nu zonder de spaties vergeleken. De spatiëring heeft haar eigen tabel en tips.
+- **Neuraal netwerk (0.18.3).** Een klein netwerk is uitgeprobeerd als extra bron voor de decoder. Op de testbank gaf het geen winst en het staat uit. De code blijft in de repository voor later, met echte opnames.
+- **Notchmelding (0.18.4).** De toonzoeker volgt de rand van een filter of notch niet meer. Zie ook hoofdstuk 31.
+- **Het logboekvenster en CSV** staan in hoofdstuk 32 en 35, bewerken van een QSO in hoofdstuk 34.

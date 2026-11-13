@@ -2176,3 +2176,22 @@ describe('N1MM keys', () => {
     app.closeTextEditor();
   });
 });
+
+describe('help page', () => {
+  it('opens the help page in the language of the app', async () => {
+    const api = await fresh();
+    await app.openHelp();
+    expect(api.openedUrl).toMatch(/help\.html$/);
+    expect(app.helpFailed).toBe(false);
+  });
+
+  it('reports a failure instead of throwing', async () => {
+    const api = await fresh();
+    api.openUrl = async () => {
+      throw new Error('no browser');
+    };
+    await app.openHelp();
+    expect(app.helpFailed).toBe(true);
+    await app.openHelp();
+  });
+});

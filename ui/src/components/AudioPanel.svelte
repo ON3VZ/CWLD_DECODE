@@ -60,7 +60,7 @@
 <section class="card">
   <div class="head">
     <h2>{t('audio.panel.title')}</h2>
-    <button class="link" onclick={() => app.setView('audio_waterfall', false)}>{t('audio.panel.hide')}</button>
+    <button class="link" onclick={() => app.setView('audio_waterfall', false)} title={t('audio.panel.hide.help')}>{t('audio.panel.hide')}</button>
   </div>
   <div class="framewrap">
     <div class="frame"><Waterfall height={110} /></div>

@@ -32,6 +32,10 @@ export async function createTauriApi(): Promise<Api> {
       onProgress(1);
       await (await import('@tauri-apps/plugin-process')).relaunch();
     },
+    async openUrl(url: string) {
+      const { openUrl } = await import('@tauri-apps/plugin-opener');
+      await openUrl(url);
+    },
     getSnapshot: () => invoke<Snapshot>('get_snapshot'),
     setPolicy: (policy: TxPolicy, confirmed: boolean) => invoke<void>('set_policy', { policy, confirmed }),
     sendText: (text: string) => invoke<SendOutcome>('send_text', { text }),

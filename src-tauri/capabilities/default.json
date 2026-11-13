@@ -8,6 +8,12 @@
   "permissions": [
     "core:default",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://on3vz.github.io/CWLD_DECODE/*" }
+      ]
+    }
   ]
 }

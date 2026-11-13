@@ -180,9 +180,9 @@
     <p class="muted intro">{t('texts.intro')}</p>
 
     <div class="tabs" role="tablist">
-      <button role="tab" aria-selected={group === 'chip'} class:on={group === 'chip'} onclick={() => setGroup('chip')}>{t('texts.group.chip')}</button>
-      <button role="tab" aria-selected={group === 'pileup'} class:on={group === 'pileup'} onclick={() => setGroup('pileup')}>{t('texts.group.pileup')}</button>
-      <button role="tab" aria-selected={group === 'contest'} class:on={group === 'contest'} onclick={() => setGroup('contest')}>{t('texts.group.contest')}</button>
+      <button role="tab" aria-selected={group === 'chip'} class:on={group === 'chip'} onclick={() => setGroup('chip')} title={t('texts.tab.help')}>{t('texts.group.chip')}</button>
+      <button role="tab" aria-selected={group === 'pileup'} class:on={group === 'pileup'} onclick={() => setGroup('pileup')} title={t('texts.tab.help')}>{t('texts.group.pileup')}</button>
+      <button role="tab" aria-selected={group === 'contest'} class:on={group === 'contest'} onclick={() => setGroup('contest')} title={t('texts.tab.help')}>{t('texts.group.contest')}</button>
     </div>
 
     {#if group === 'contest'}
@@ -222,8 +222,8 @@
           </button>
         {/each}
         <div class="listact">
-          {#if group === 'chip'}<button class="btn" onclick={addChip}>+ {t('texts.own.add')}</button>{/if}
-          <button class="link" onclick={restoreAll}>{t('texts.restore.all')}</button>
+          {#if group === 'chip'}<button class="btn" onclick={addChip} title={t('texts.own.add.help')}>+ {t('texts.own.add')}</button>{/if}
+          <button class="link" onclick={restoreAll} title={t('texts.restore.all.help')}>{t('texts.restore.all')}</button>
         </div>
       </div>
 
@@ -285,8 +285,8 @@
               <button class="btn" onclick={restore} disabled={!slot.changed && !dirty} title={t('texts.restore.help')}>{t('texts.restore')}</button>
             {/if}
             <span class="grow"></span>
-            <button class="btn" onclick={() => { tpl = slot!.template; name = slot!.label; }} disabled={!dirty}>{t('texts.undo')}</button>
-            <button class="btn primary" onclick={save} disabled={!dirty || !cleanTemplate(tpl)}>{t('texts.save')}</button>
+            <button class="btn" onclick={() => { tpl = slot!.template; name = slot!.label; }} disabled={!dirty} title={t('texts.undo.help')}>{t('texts.undo')}</button>
+            <button class="btn primary" onclick={save} disabled={!dirty || !cleanTemplate(tpl)} title={t('texts.save.help')}>{t('texts.save')}</button>
           </div>
         {:else}
           <p class="muted">{t('texts.pick')}</p>

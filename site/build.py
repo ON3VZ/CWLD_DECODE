@@ -85,6 +85,9 @@ T = {
    ("LOG", "Logbook and ADIF", "Contest entry line with F-keys like N1MM, dupes, rate, and an ADIF export with checks before it leaves."),
    ("/P", "Home and portable", "Station profiles and activations for WWFF, POTA and SOTA, with grid, power and reference in every QSO."),
    ("SIM", "Practice against simulated stations", "Answer a CQ, run a pile-up or play a contest. Nothing is ever transmitted."),
+   ("DX", "Spots and split", "DX cluster spots as labels on the band scope. A spot that says UP 1 sets split with one click, and the logbook keeps both frequencies."),
+   ("REW", "Listen again", "Missed a callsign? Read the last 10 to 60 seconds again, also on another pitch, or save the last minute as a WAV file."),
+   ("QTH", "Country, direction, distance", "Next to every callsign, from a built-in prefix table. Only on your screen, never written to the log."),
   ],
   "modes_k": "Three modes", "modes_h": "You always know whether you can transmit",
   "modes": [("live", "LIVE", "The only mode that transmits. Always shown in red."), ("listen", "LISTEN", "Receive and decode only. Safe for listening and testing."), ("practice", "PRACTICE", "Simulated stations through your headphones. Nothing leaves your computer.")],
@@ -128,6 +131,9 @@ T = {
    ("LOG", "Logboek en ADIF", "Contest-invoerlijn met F-toetsen zoals N1MM, dupes, tempo, en een ADIF-export met controles voor het bestand vertrekt."),
    ("/P", "Thuis en portable", "Stationsprofielen en activaties voor WWFF, POTA en SOTA, met grid, vermogen en referentie in elk QSO."),
    ("SIM", "Oefenen met gesimuleerde stations", "Beantwoord een CQ, draai een pile-up of speel een contest. Er wordt nooit iets uitgezonden."),
+   ("DX", "Spots en split", "DX-clusterspots als labels op de bandscoop. Een spot met UP 1 zet split met één klik en het logboek bewaart beide frequenties."),
+   ("REW", "Terugspoelen", "Een roepletter gemist? Lees de laatste 10 tot 60 seconden opnieuw, ook op een andere toon, of bewaar de laatste minuut als WAV-bestand."),
+   ("QTH", "Land, richting, afstand", "Bij elke roepletter, uit een ingebouwde prefixtabel. Alleen op je scherm, nooit in het logboek geschreven."),
   ],
   "modes_k": "Drie modi", "modes_h": "Je weet altijd of je kunt zenden",
   "modes": [("live", "LIVE", "De enige modus die zendt. Altijd in het rood."), ("listen", "LISTEN", "Alleen ontvangen en decoderen. Veilig om te luisteren en te testen."), ("practice", "PRACTICE", "Gesimuleerde stations in je koptelefoon. Er verlaat niets je computer.")],
@@ -291,6 +297,21 @@ def faq_items(L):
      ("Where is my data?" if en else "Waar staan mijn gegevens?",
       '<p>Everything stays on your computer. Settings and the logbook (<code>logbook.db</code>, with a backup copy at every start) are in <code>%APPDATA%\\io.github.on3vz.cwld</code>. Recordings go to <code>Documents\\CWLD</code>. Press Windows+R, paste the folder name and press Enter to open it.</p>' if en else
       '<p>Alles blijft op je computer. Instellingen en logboek (<code>logbook.db</code>, met een reservekopie bij elke start) staan in <code>%APPDATA%\\io.github.on3vz.cwld</code>. Opnames gaan naar <code>Documenten\\CWLD</code>. Druk op Windows+R, plak de mapnaam en druk op Enter om ze te openen.</p>'),
+     ("I missed a callsign, can I hear it again?" if en else "Ik miste een roepletter, kan ik het opnieuw lezen?",
+      '<p>Yes. Open <b>Listen again</b> in the Audio card and read the last 10 to 60 seconds again, also at another pitch. <b>Save last minute (WAV)</b> keeps it as a file.</p>' if en else
+      '<p>Ja. Open <b>Terugspoelen</b> in de kaart Audio en lees de laatste 10 tot 60 seconden opnieuw, ook op een andere toon. <b>Laatste minuut bewaren (WAV)</b> bewaart het als bestand.</p>'),
+     ("A strong station next to mine disturbs the decoder" if en else "Een sterk station naast het mijne stoort de decoder",
+      '<p>Choose <b>Steep</b> next to Narrow and Wide in the Audio card. It has the narrow width but much steeper edges.</p>' if en else
+      '<p>Kies <b>Steil</b> naast Smal en Breed in de kaart Audio. Het heeft de breedte van Smal maar veel steilere flanken.</p>'),
+     ("Can I change the texts of the F keys and chips?" if en else "Kan ik de teksten van de F-toetsen en chips aanpassen?",
+      '<p>Yes. Right click a chip or key, or click the pencil. It also works for the contest keys of the built-in profiles, and <b>Restore default</b> brings the original back.</p>' if en else
+      '<p>Ja. Klik met rechts op een chip of toets, of klik op het potloodje. Het werkt ook voor de contesttoetsen van de ingebouwde profielen en <b>Standaard herstellen</b> brengt het origineel terug.</p>'),
+     ("The DX station works split, what do I do?" if en else "Het DX-station werkt split, wat doe ik?",
+      '<p>Click the label of its spot on the band scope when it has an amber badge such as UP 1. Otherwise click <b>SPLIT</b> and type <code>UP 1</code>. <b>Split off</b> or Alt+F7 switches it off, Alt+Q goes back to your CQ frequency.</p>' if en else
+      '<p>Klik op het label van zijn spot op de bandscoop als het een oranje badge heeft zoals UP 1. Anders klik je op <b>SPLIT</b> en typ je <code>UP 1</code>. <b>Split uit</b> of Alt+F7 zet het uit, Alt+Q gaat terug naar je CQ-frequentie.</p>'),
+     ("Can I open this page from the app?" if en else "Kan ik deze pagina vanuit de app openen?",
+      '<p>Yes. In Settings, choose <b>Updates and about</b> and click <b>Open the help page</b>. It opens this page in your browser, in the language of the app.</p>' if en else
+      '<p>Ja. Kies in Instellingen <b>Updates en info</b> en klik op <b>Helppagina openen</b>. Dan opent deze pagina in je browser, in de taal van de app.</p>'),
      ("How do I update?" if en else "Hoe update ik?",
       '<p>Download the newest installer from the home page and run it over the old version. Your settings and logbook stay.</p>' if en else
       '<p>Download het nieuwste installatieprogramma van de startpagina en voer het uit over de oude versie. Je instellingen en logboek blijven bewaard.</p>'),
@@ -303,7 +324,7 @@ def faq_items(L):
 def help_body(L):
     en = L == "en"
     t = T[L]
-    toc = [("modes", "Modes" if en else "Modi"), ("keys", "Keys" if en else "Toetsen"), ("faq", "Questions" if en else "Vragen"), ("contest", "Contest" if en else "Contest"), ("portable", "Portable" if en else "Portable"), ("practice", "Practice" if en else "Oefenen")]
+    toc = [("modes", "Modes" if en else "Modi"), ("keys", "Keys" if en else "Toetsen"), ("faq", "Questions" if en else "Vragen"), ("contest", "Contest" if en else "Contest"), ("portable", "Portable" if en else "Portable"), ("practice", "Practice" if en else "Oefenen"), ("again", "Listen again" if en else "Terugspoelen"), ("texts", "Texts and CQ repeat" if en else "Teksten en CQ herhalen"), ("split", "Split"), ("logbook", "Logbook" if en else "Logboek"), ("place", "Country and distance" if en else "Land en afstand")]
     h = ['<div class="cols"><aside class="toc"><b>' + ("On this page" if en else "Op deze pagina") + '</b>' + ''.join(f'<a href="#{i}">{n}</a>' for i, n in toc) + '</aside><article>']
     h.append(f'<h2 id="modes"><span class="letter">M</span>{toc[0][1]}</h2><div class="modes">'
              + ''.join(f'<div class="mode {c}"><h3>{n}</h3><p>{d}</p></div>' for c, n, d in t["modes"]) + '</div>')
@@ -316,6 +337,13 @@ def help_body(L):
         ("Ctrl+R", "Contest: switch between Run and S&amp;P" if en else "Contest: wisselen tussen Run en S&amp;P"),
         ("Ctrl+W", "Contest: clear the entry line" if en else "Contest: de invoerlijn wissen"),
         ("Ctrl+F6, Ctrl+F7", "Contest: decoder Strongest and AFC" if en else "Contest: decoder Strongest en AFC"),
+        ("Alt+R", "Repeat CQ with a pause and a countdown. Stops at any key, the paddle or an answer" if en else "CQ herhalen met pauze en aftelling. Stopt bij elke toets, de paddle of een antwoord"),
+        ("Insert", "Contest: send his callsign and your exchange in one go" if en else "Contest: zijn roepletters en jouw uitwisseling in één keer zenden"),
+        (".", "Contest: send TU and log, only when the exchange is complete. Outside contest mode it only logs" if en else "Contest: TU zenden en loggen, alleen als de uitwisseling compleet is. Buiten contestmodus enkel loggen"),
+        ("PgUp, PgDn", "Speed 2 WPM faster or slower (5 to 60)" if en else "Snelheid 2 WPM sneller of trager (5 tot 60)"),
+        ("Ctrl+Up, Ctrl+Down", "Tune to the next spot above or below on this band" if en else "Afstemmen op de volgende spot boven of onder op deze band"),
+        ("Alt+Q", "Back to the frequency where you last called CQ, split off" if en else "Terug naar de frequentie waar je het laatst CQ riep, split uit"),
+        ("Alt+F7", "Split off, or open the split bar" if en else "Split uit, of de splitbalk openen"),
     ]
     h.append(f'<h2 id="keys"><span class="letter">K</span>{toc[1][1]}</h2><table class="keys"><tr><th>{"Key" if en else "Toets"}</th><th>{"What it does" if en else "Wat het doet"}</th></tr>'
              + ''.join(f'<tr><td><kbd>{k}</kbd></td><td>{v}</td></tr>' for k, v in rows) + '</table>')
@@ -332,6 +360,39 @@ def help_body(L):
 <p>PRACTICE decodes a simulated band and plays it on your computer. Nothing is transmitted, so turn the AF knob of the radio down. Choose an exercise, a speed range and a signal strength, and see your score at the end. Turn decoder help off to copy by ear.</p>''' if en else '''
 <p>PRACTICE decodeert een gesimuleerde band en speelt die af op je computer. Er wordt niets gezonden, dus draai de AF-knop van de radio laag. Kies een oefening, een snelheidsbereik en een signaalsterkte, en bekijk op het einde je score. Zet de hulp van de decoder uit om op het gehoor te kopiëren.</p>''')
         + fig(img(L, "practice", "The practice panel" if en else "Het oefenpaneel"), "The practice panel." if en else "Het oefenpaneel."))
+    h.append(f'<h2 id="again"><span class="letter">R</span>{toc[6][1]}</h2>' + ("""
+<p>CWLD keeps the last minute of audio. Open <b>Listen again</b> in the Audio card, choose how far back (10, 20, 30 or 60 seconds) and click <b>Same pitch</b>, <b>Strongest</b> or one of the pitches under <b>Heard</b>. A separate decoder reads that stretch again, so the live decoder is not disturbed. Callsigns in the result can be clicked.</p>
+<p><b>Save last minute (WAV)</b> writes the last minute (8 kHz, mono) to your recordings folder, with date, time and frequency in the name.</p>
+<p>Two settings help with a strong neighbour and with spelled callsigns: the filter choice <b>Steep</b> (the narrow width with much steeper edges, a station 60 Hz away is about 40 dB weaker than with Narrow) and <b>Join spelled letters</b>, which shows D L 4 S A V as DL4SAV.</p>""" if en else """
+<p>CWLD bewaart de laatste minuut geluid. Open <b>Terugspoelen</b> in de kaart Audio, kies hoe ver terug (10, 20, 30 of 60 seconden) en klik op <b>Zelfde toon</b>, <b>Sterkste</b> of een van de toonhoogtes onder <b>Gehoord</b>. Een aparte decoder leest dat stuk opnieuw, dus de live decoder wordt niet gestoord. Roepletters in het resultaat zijn aan te klikken.</p>
+<p><b>Laatste minuut bewaren (WAV)</b> schrijft de laatste minuut (8 kHz, mono) naar je opnamemap, met datum, tijd en frequentie in de naam.</p>
+<p>Twee instellingen helpen bij een sterke buur en bij uitgespelde roepletters: de filterkeuze <b>Steil</b> (de breedte van Smal met veel steilere flanken, een station 60 Hz verderop is zo'n 40 dB zwakker dan bij Smal) en <b>Letters samenvoegen</b>, dat D L 4 S A V toont als DL4SAV.</p>""")
+        + fig(img(L, "listen-again", "The Listen again panel" if en else "Het paneel Terugspoelen"), "Listen again." if en else "Terugspoelen."))
+    h.append(f'<h2 id="texts"><span class="letter">T</span>{toc[7][1]}</h2>' + ("""
+<p>Right click any chip or function key, or click the pencil, to edit what it sends. This also works for the contest keys F1 to F8 of the built-in profiles. Use the variables <code>{CALL}</code>, <code>{MYCALL}</code>, <code>{NAME}</code>, <code>{QTH}</code>, <code>{RST}</code>, <code>{NR}</code>, <code>{MYNAME}</code> and <code>{MYQTH}</code>. The window shows what will be sent with today's values and how long it takes, and warns about unknown variables, characters the radio cannot send and loose brackets. <b>Restore default</b> works per item and per group.</p>
+<p><b>Repeat CQ (Alt+R)</b> calls CQ, listens with a countdown and calls again (pause 2 to 60 s, at most 1 to 30 calls). It never starts by itself and stops at any key, at the paddle, at an answer, at Stop, at an SWR alert and after the last call.</p>
+<p>Text you type while the paddle keys waits under <b>Waits for the paddle</b> and goes out when the paddle has been quiet for 14 dot lengths. Esc clears it.</p>""" if en else """
+<p>Klik met rechts op een chip of functietoets, of klik op het potloodje, om te bewerken wat hij zendt. Dit werkt ook voor de contesttoetsen F1 tot F8 van de ingebouwde profielen. Gebruik de variabelen <code>{CALL}</code>, <code>{MYCALL}</code>, <code>{NAME}</code>, <code>{QTH}</code>, <code>{RST}</code>, <code>{NR}</code>, <code>{MYNAME}</code> en <code>{MYQTH}</code>. Het venster toont wat er verzonden wordt met de waarden van nu en hoe lang het duurt, en waarschuwt bij onbekende variabelen, tekens die de radio niet kan zenden en losse accolades. <b>Standaard herstellen</b> werkt per item en per groep.</p>
+<p><b>CQ herhalen (Alt+R)</b> roept CQ, luistert met een aftelling en roept opnieuw (pauze 2 tot 60 s, hoogstens 1 tot 30 keer). Het start nooit vanzelf en stopt bij elke toets, bij de paddle, bij een antwoord, bij Stop, bij een SWR-alarm en na de laatste keer.</p>
+<p>Tekst die je typt terwijl de paddle seint, wacht onder <b>Wacht op de paddle</b> en gaat weg zodra de paddle 14 puntlengtes stil is. Esc wist hem.</p>""")
+        + fig(img(L, "texts", "The window with the texts of chips and keys" if en else "Het venster met de teksten van chips en toetsen"), "Texts of chips and keys." if en else "Teksten van chips en toetsen."))
+    h.append(f'<h2 id="split"><span class="letter">S</span>{toc[8][1]}</h2>' + ("""
+<p>With split the radio listens on one frequency and transmits on another, as a DX station in a pile-up asks. A spot whose comment says <code>UP 1</code>, <code>UP 1-2</code>, <code>DWN 2</code> or <code>QSX 7027.5</code> gets an amber badge on its label, and one click sets the receive frequency, the transmit frequency and split. By hand: click <b>SPLIT</b>, type <code>UP 1</code>, <code>-2</code> or a frequency and press Enter, or hold Shift and click on the band scope.</p>
+<p>While split is on, an amber bar shows both frequencies and the button <b>Split off</b>. CWLD refuses a transmit frequency outside the band and changes nothing while the radio transmits. Split set on the radio itself shows up in CWLD too. Not yet tried on the radio: tests A68 to A70.</p>""" if en else """
+<p>Met split luistert de radio op de ene frequentie en zendt ze op een andere, zoals een DX-station in een pile-up vraagt. Een spot met <code>UP 1</code>, <code>UP 1-2</code>, <code>DWN 2</code> of <code>QSX 7027.5</code> in de opmerking krijgt een oranje badge op zijn label en met één klik staan ontvangstfrequentie, zendfrequentie en split goed. Met de hand: klik op <b>SPLIT</b>, typ <code>UP 1</code>, <code>-2</code> of een frequentie en druk op Enter, of houd Shift ingedrukt en klik op de bandscoop.</p>
+<p>Terwijl split aan staat, toont een oranje balk beide frequenties en de knop <b>Split uit</b>. CWLD weigert een zendfrequentie buiten de band en verandert niets terwijl de radio zendt. Split die je op de radio zelf zet, zie je ook in CWLD. Nog niet op de radio geprobeerd: tests A68 tot A70.</p>""")
+        + fig(img(L, "split", "The split bar" if en else "De splitbalk"), "The split bar." if en else "De splitbalk."))
+    h.append(f'<h2 id="logbook"><span class="letter">L</span>{toc[9][1]}</h2>' + ("""
+<p>Click <b>Logbook</b> next to the gear. Search, filter by date, band, contest or activation, sort by a column header and choose the columns with <b>Columns</b>. Click a row to change every field of a QSO. <b>Export these N QSOs (ADIF)</b> writes exactly what the filter shows, <b>CSV</b> writes a semicolon separated file that Excel opens correctly.</p>
+<p>Every QSO has a transmit frequency (TX kHz) and a receive frequency (RX kHz). They differ for a split QSO. ADIF <code>FREQ</code> is the transmit frequency, a split QSO also gets <code>FREQ_RX</code>.</p>""" if en else """
+<p>Klik op <b>Logboek</b> naast het tandwiel. Zoek, filter op datum, band, contest of activatie, sorteer met een kolomkop en kies de kolommen met <b>Kolommen</b>. Klik op een rij om elk veld van een QSO te wijzigen. <b>Deze N QSO's exporteren (ADIF)</b> schrijft precies wat het filter toont, <b>CSV</b> schrijft een bestand met puntkomma's dat Excel goed opent.</p>
+<p>Elk QSO heeft een zendfrequentie (TX kHz) en een ontvangstfrequentie (RX kHz). Bij een QSO in split verschillen ze. ADIF <code>FREQ</code> is de zendfrequentie, een QSO in split krijgt ook <code>FREQ_RX</code>.</p>""")
+        + fig(img(L, "logbook", "The logbook window" if en else "Het logboekvenster"), "The logbook." if en else "Het logboek."))
+    h.append(f'<h2 id="place"><span class="letter">D</span>{toc[10][1]}</h2>' + ("""
+<p>Next to a callsign CWLD shows the country, the direction and the distance, for example <code>Germany EU 75&deg; ~407 km</code>. The country comes from a prefix table that understands portable calls (<code>ON3VZ/P</code>, <code>EA8/ON3VZ</code>). Direction and distance start from your locator (fill it in under Settings, Station). With a locator from QRZ.com they go to the station itself, otherwise to the middle of the country, and the <code>~</code> sign says that it is rough. The table is made by hand and can have gaps for special prefixes. Everything stays on the screen.</p>
+<p>In contest mode a reminder appears that in some contests a decoder counts as assistance or is not allowed. Read the rules of the contest and choose your class yourself.</p>""" if en else """
+<p>Naast een roepletter toont CWLD het land, de richting en de afstand, bijvoorbeeld <code>Germany EU 75&deg; ~407 km</code>. Het land komt uit een prefixtabel die portabele roepletters begrijpt (<code>ON3VZ/P</code>, <code>EA8/ON3VZ</code>). Richting en afstand vertrekken vanaf je locator (vul ze in bij Instellingen, Station). Met een locator van QRZ.com gaan ze naar het station zelf, anders naar het midden van het land, en het teken <code>~</code> zegt dat het ruw is. De tabel is met de hand gemaakt en kan gaten hebben bij speciale prefixen. Alles blijft op het scherm.</p>
+<p>In contestmodus verschijnt een herinnering dat een decoder in sommige contests als hulp telt of niet toegestaan is. Lees het reglement van de contest en kies zelf je klasse.</p>"""))
     h.append('</article></div>')
     return ''.join(h)
 

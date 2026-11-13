@@ -13,6 +13,7 @@ import { enterAction, entryComplete, nextSerial, suggestFrom, type RunMode, type
 import { heardIn } from './qso';
 import { looksLikeCall } from './callsign';
 import { describeCall, type PlaceInfo } from './dxcc';
+import { helpUrl } from './help';
 import { nextSpot, SPEED_STEP, stepSpeed, type HotkeyAction } from './hotkeys';
 
 /** Pause after the last change of the call before QRZ.com is asked. */
@@ -467,6 +468,20 @@ class AppState {
       this.updateState = found ? 'available' : quiet ? 'idle' : 'none';
     } catch {
       this.updateState = quiet ? 'idle' : 'error';
+    }
+  }
+
+  /** True when opening the help page failed (no browser, blocked). Shown next to the button. */
+  helpFailed = $state(false);
+
+  /** Opens the help page of the website, in the language of the app. */
+  async openHelp() {
+    if (!this.api) return;
+    this.helpFailed = false;
+    try {
+      await this.api.openUrl(helpUrl(i18n.lang));
+    } catch {
+      this.helpFailed = true;
     }
   }
 

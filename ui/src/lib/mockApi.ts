@@ -406,6 +406,14 @@ export class MockApi implements Api {
   async checkUpdate() {
     return this.offered;
   }
+  async openUrl(url: string) {
+    this.openedUrl = url;
+    if (typeof window !== 'undefined' && typeof window.open === 'function') {
+      try { window.open(url, '_blank', 'noopener'); } catch { /* jsdom has no window.open */ }
+    }
+  }
+  /** The last address passed to openUrl (for tests and screenshots). */
+  openedUrl = '';
   async installUpdate(onProgress: (f: number) => void) {
     onProgress(0.5);
     onProgress(1);

@@ -1,3 +1,18 @@
+## 0.20.6 (open the help page from the app)
+
+- New: Settings, **Updates and about** has a section **Help** with the button **Open the help page**. It opens the help page of the CWLD website in your default browser, in the language of the app (English at the root, Dutch under `/nl/`). You need an internet connection; without one the browser says so, or CWLD shows a short message.
+- Only the address is opened. CWLD sends nothing about you or your station. The permission is limited to `https://on3vz.github.io/CWLD_DECODE/*`, so the app cannot open other addresses this way.
+- Under the hood: the plugin `tauri-plugin-opener` (Rust and `@tauri-apps/plugin-opener`), a new `openUrl` in the API, `ui/src/lib/help.ts` for the address, and tests. The lock files have the new packages only. Not yet tried in the installed program on Windows (test A75). The link in the practice panel to the morse trainer is not changed.
+- This version also carries 0.20.5 (manual, website, help texts and screenshots), which was not published yet.
+
+## 0.20.5 (manual, help texts and website brought up to date)
+
+- Updated: the manual (`docs/handleiding.md`) now covers everything from 0.18 to 0.20: listen again, the steep filter and spelled letters, editable texts, CQ repeat, the paddle goes first, split, the transmit and receive frequency in the logbook, country, direction and distance, the keys after N1MM Logger+ and the contest reminder (chapters 37 to 46), plus the changes to the band scope and the export dialog.
+- Updated: the website, in English and Dutch. The Help page has new sections (Listen again, Texts and CQ repeat, Split, Logbook, Country and distance), a longer key table and new questions. The home page shows three more features.
+- New: tooltips on the buttons that had none in the split bar (Split on, UP 1, UP 2, UP 5, DWN 1), the logbook window (Columns, Close), the texts window (groups, own chip, restore all, Undo, Save), "All QSOs", "Export" in the log card and "Hide" in the Audio card, in English and Dutch.
+- New screenshots (English and Dutch) of the main screen, the mode switch, practice, the settings (with numbered steps), listen again, the texts window, the split bar and the logbook window. They are made from the app with the simulated radio. The old files `docs/screen-*.png` are not used by the manual; the new ones are in `docs/img` and `site/src/img`.
+- No change to the program itself.
+
 ## 0.20.4 (country, direction and distance, keys after N1MM Logger+)
 
 - New: **country, direction and distance** of the callsign in the QSO panel and in the contest entry line. For example `United States  NA  305°  ~6 450 km`. The country comes from a prefix table inside CWLD (longest prefix wins, so `KH6` is Hawaii and `K` is the United States). Portable calls are understood: `ON3VZ/P` is Belgium, `EA8/ON3VZ` and `ON3VZ/EA8` are the Canary Islands, `/MM` and `/AM` belong to no country.

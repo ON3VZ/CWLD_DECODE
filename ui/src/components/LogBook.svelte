@@ -189,7 +189,7 @@
   <div class="book" role="dialog" aria-modal="true" aria-labelledby="book-title">
     <header>
       <h2 id="book-title">{t('book.title')}{#if testLog} <span class="testtag">{t('contest.test.on')}</span>{/if}</h2>
-      <button class="btn" onclick={close}>{t('book.close')}</button>
+      <button class="btn" onclick={close} title={t('book.close.help')}>{t('book.close')}</button>
     </header>
 
     <div class="filters">
@@ -221,7 +221,7 @@
 
     <div class="tools">
       <span class="muted">{t('book.summary', { n: sum.qsos, calls: sum.calls, bands: sum.bands })}{#if loading} …{/if}</span>
-      <button class="btn" onclick={() => (pickCols = !pickCols)} aria-expanded={pickCols}>{t('book.columns')}</button>
+      <button class="btn" onclick={() => (pickCols = !pickCols)} aria-expanded={pickCols} title={t('book.columns.help')}>{t('book.columns')}</button>
       <button class="btn" disabled={!rows.length} onclick={exportCsv} title={t('book.csv.help')}>{t('book.csv')}</button>
       <button class="btn primary" disabled={!rows.length} onclick={exportShown} title={t('book.export.help')}>{t('book.export', { n: rows.length })}</button>
     </div>

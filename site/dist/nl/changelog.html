@@ -7,7 +7,249 @@
 <a class="skip" href="#main">Naar de inhoud</a>
 <header class="top"><div class="wrap"><a class="logo" href="index.html"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0f1822" stroke="#1f5f45"/><circle cx="8" cy="16" r="2.6" fill="#3dffa8"/><rect x="13" y="13.4" width="11" height="5.2" rx="2.6" fill="#ffb020"/></svg><span>CW<b>LD</b></span></a>
 <button class="menu-btn" aria-expanded="false" aria-label="Menu">☰</button><nav class="main"><a href="index.html">Home</a><a href="install.html">Installeren & verbinden</a><a href="help.html">Help</a><a href="changelog.html" aria-current="page">Wijzigingen</a><a class="ext" href="https://github.com/ON3VZ/CWLD_DECODE">GitHub</a><a class="ext" href="https://on3vz.github.io/">ON3VZ</a><span class="lang"><a href="../changelog.html" hreflang="en">EN</a><a href="changelog.html" hreflang="nl" aria-current="true">NL</a></span></nav></div></header>
-<main id="main"><div class="page-head"><div class="wrap"><div class="eyebrow">CWLD</div><h1>Wijzigingen</h1><p>Wat er in elke versie veranderde.</p></div></div><div class="wrap" style="padding:48px 0 96px"><p class="fine">De lijst met wijzigingen is in het Engels. <a href="https://github.com/ON3VZ/CWLD_DECODE/releases">GitHub Releases</a></p><div class="changelog"><h2>0.12.0 (paddle practice, quiet radio, no text from SSB)</h2>
+<main id="main"><div class="page-head"><div class="wrap"><div class="eyebrow">CWLD</div><h1>Wijzigingen</h1><p>Wat er in elke versie veranderde.</p></div></div><div class="wrap" style="padding:48px 0 96px"><p class="fine">De lijst met wijzigingen is in het Engels. <a href="https://github.com/ON3VZ/CWLD_DECODE/releases">GitHub Releases</a></p><div class="changelog"><h2>0.20.6 (open the help page from the app)</h2>
+<ul>
+<li>New: Settings, <b>Updates and about</b> has a section <b>Help</b> with the button <b>Open the help page</b>. It opens the help page of the CWLD website in your default browser, in the language of the app (English at the root, Dutch under <code>/nl/</code>). You need an internet connection; without one the browser says so, or CWLD shows a short message.</li>
+<li>Only the address is opened. CWLD sends nothing about you or your station. The permission is limited to <code>https://on3vz.github.io/CWLD_DECODE/*</code>, so the app cannot open other addresses this way.</li>
+<li>Under the hood: the plugin <code>tauri-plugin-opener</code> (Rust and <code>@tauri-apps/plugin-opener</code>), a new <code>openUrl</code> in the API, <code>ui/src/lib/help.ts</code> for the address, and tests. The lock files have the new packages only. Not yet tried in the installed program on Windows (test A75). The link in the practice panel to the morse trainer is not changed.</li>
+<li>This version also carries 0.20.5 (manual, website, help texts and screenshots), which was not published yet.</li>
+</ul>
+<h2>0.20.5 (manual, help texts and website brought up to date)</h2>
+<ul>
+<li>Updated: the manual (<code>docs/handleiding.md</code>) now covers everything from 0.18 to 0.20: listen again, the steep filter and spelled letters, editable texts, CQ repeat, the paddle goes first, split, the transmit and receive frequency in the logbook, country, direction and distance, the keys after N1MM Logger+ and the contest reminder (chapters 37 to 46), plus the changes to the band scope and the export dialog.</li>
+<li>Updated: the website, in English and Dutch. The Help page has new sections (Listen again, Texts and CQ repeat, Split, Logbook, Country and distance), a longer key table and new questions. The home page shows three more features.</li>
+<li>New: tooltips on the buttons that had none in the split bar (Split on, UP 1, UP 2, UP 5, DWN 1), the logbook window (Columns, Close), the texts window (groups, own chip, restore all, Undo, Save), "All QSOs", "Export" in the log card and "Hide" in the Audio card, in English and Dutch.</li>
+<li>New screenshots (English and Dutch) of the main screen, the mode switch, practice, the settings (with numbered steps), listen again, the texts window, the split bar and the logbook window. They are made from the app with the simulated radio. The old files <code>docs/screen-*.png</code> are not used by the manual; the new ones are in <code>docs/img</code> and <code>site/src/img</code>.</li>
+<li>No change to the program itself.</li>
+</ul>
+<h2>0.20.4 (country, direction and distance, keys after N1MM Logger+)</h2>
+<ul>
+<li>New: <b>country, direction and distance</b> of the callsign in the QSO panel and in the contest entry line. For example <code>United States  NA  305°  ~6 450 km</code>. The country comes from a prefix table inside CWLD (longest prefix wins, so <code>KH6</code> is Hawaii and <code>K</code> is the United States). Portable calls are understood: <code>ON3VZ/P</code> is Belgium, <code>EA8/ON3VZ</code> and <code>ON3VZ/EA8</code> are the Canary Islands, <code>/MM</code> and <code>/AM</code> belong to no country.</li>
+</ul>
+<p>  - Direction (short path) and distance start from your own locator: the one of the activation, else of the station profile, else of the settings. Without a locator only the country is shown, with a hint.</p>
+<p>  - When QRZ.com gave a locator for the station, the direction and the distance go to that locator. Otherwise they go to the middle of the country and have a <code>~</code> in front of the distance, because that is only rough. The long path is in the tooltip.</p>
+<p>  - A station in your own country shows "your own country" and no distance, because the middle of the country says nothing there (unless QRZ.com gave a locator).</p>
+<p>  - Hold the mouse on a callsign in the conversation to see the same in a tooltip.</p>
+<p>  - Everything is only shown on the screen. Nothing of it is written to the logbook or sent to another program or station.</p>
+<p>  - The prefix table is made by hand (about 300 entities) and can have gaps, mainly for special prefixes. It is a plain data file (<code>ui/src/lib/dxcc-data.ts</code>) and <code>node tools/update_prefixes.mjs cty.dat</code> rebuilds it from a Country Files list (see the top of that tool). The version of the table is in the tooltip.</p>
+<ul>
+<li>New: <b>reminder in contest mode</b> that in some contests a decoder counts as assistance (a separate Assisted class) or is not allowed. It shows every time contest mode is switched on, with a button to close it. It is only on the screen: nothing goes into the log and nothing to another station.</li>
+<li>New: <b>keys after N1MM Logger+</b> (they never start while a window such as Settings or the text editor is open):</li>
+</ul>
+<p>  - <b>Insert</b>: sends his callsign and your exchange in one go (contest mode). When the exchange text already starts with <code>{CALL}</code>, as the built-in ones do, only the exchange is sent, so the callsign does not go out twice.</p>
+<p>  - <b>. (period)</b>: sends TU (F3) and logs the QSO, but only when the exchange is complete, as Enter does. Outside contest mode it only logs. In a text field (the send box, the name, the split box) the period stays a character. Only in the entry line of the contest mode it is the key. Works with Shift (AZERTY) and with the period of the numeric keypad.</p>
+<p>  - <b>PgUp and PgDn</b>: speed 2 WPM faster or slower, between 5 and 60 WPM. Only the speed of the keyer changes.</p>
+<p>  - <b>Ctrl+Up and Ctrl+Down</b>: tune to the next spot above or below on the current band and put its callsign in the entry line. Worked stations and spots older than the cluster limit are skipped. A spot with "UP 1" also sets split, as a click does.</p>
+<p>  - <b>Alt+Q</b>: back to the frequency where you last called CQ, with split off. CWLD remembers it when you send a CQ (chip, typed, CQ repeat, F1 in Run). A button "CQ 7025.0 (Alt+Q)" shows next to Stop as soon as you are on another frequency.</p>
+<p>  - <b>Alt+F7</b>: split off when it is on, else opens the split bar (as the SPLIT button does).</p>
+<p>  - Insert, the period, Alt+Q, Ctrl+arrow and Alt+F7 do nothing when the key is held down, so a QSO is never sent or logged twice by accident. Nothing here sends without a key press, and CWLD still only sends in LIVE mode.</p>
+<p>  - No clash with the existing keys (F1 to F8, F6, F7, Ctrl+F6, Ctrl+F7, Ctrl+R, Ctrl+W, Ctrl+Q, Alt+R, S, Esc). The plain F-keys now ignore the Alt key, so Alt+F7 does not switch AFC. Shift+click on the band scope (transmit frequency of a split) is a mouse action and does not clash.</p>
+<ul>
+<li>Under the hood: <code>hotkeys.ts</code> decides which key means what, with a test that lists the old keys against the new ones. New tests for the prefix table (no prefix belongs to two countries), the lookup, bearing and distance, the keys and the spot jump.</li>
+</ul>
+<h2>0.20.3 (the logbook keeps the transmit and the receive frequency)</h2>
+<ul>
+<li>The logbook now has two frequencies for every QSO: <b>TX kHz</b> (where you transmitted) and <b>RX kHz</b> (where you listened). They are nearly always the same. For a QSO made in split they differ: with the DX station on 7025.0 and you calling on 7026.0, TX is 7026.0 and RX is 7025.0.</li>
+<li>The logbook window shows both columns by default. If you chose your own columns before, tick <b>RX kHz</b> once under "Columns". The column that was called "kHz" is now "TX kHz".</li>
+<li>The edit window has a field "RX kHz". Leave it empty when you listened where you transmitted.</li>
+<li>ADIF export: <code>FREQ</code> is the transmit frequency, as the ADIF standard says. A split QSO also gets <code>FREQ_RX</code> (and <code>BAND_RX</code> when the bands differ). A normal QSO is written exactly as before.</li>
+<li>The N1MM message to other programs carries the real <code>rxfreq</code> and <code>txfreq</code>.</li>
+<li>CSV export follows the columns, so it has both when both are shown.</li>
+<li>Existing logbook files are upgraded by themselves (one new column, <code>freq_rx_hz</code>); old QSOs stay as they were.</li>
+<li>Note for split QSOs: the band and the dupe check go by the transmit frequency. CWLD only allows split inside one band, so that is the same band.</li>
+</ul>
+<h2>0.20.2 (split, clearer labels on the band scope)</h2>
+<ul>
+<li>New: split, from a spot or by hand. With split on the radio listens on one frequency and transmits on another, as a DX station in a pile-up asks.</li>
+</ul>
+<p>  - From a spot: CWLD reads the comment of the spot. Understood are <code>UP</code>, <code>UP 1</code>, <code>UP1</code>, <code>UP 1.5</code>, <code>UP 1-2</code>, <code>UP 1 TO 2</code>, <code>DWN 2</code>, <code>DN 2</code>, <code>DOWN 2</code>, <code>QSX 7027.5</code>, <code>QSX 7.0275</code> and <code>QSX 27.5</code>. Such a spot gets an amber badge on its label (for example <code>UP 1</code>). One click on the label sets the receive frequency, the transmit frequency and split. <code>UP</code> without a number is taken as 1 kHz, and the bar says so.</p>
+<p>  - A remark of a person is kept for 20 minutes while only skimmers report the station. Before, the next skimmer report wiped "UP 1" out.</p>
+<p>  - By hand: click <b>SPLIT</b> next to the frequency. In the bar that opens, type <code>UP 1</code>, <code>DWN 2</code>, <code>+1.5</code>, <code>-2</code> or a frequency such as <code>7027.5</code> and press Enter, or click one of the buttons UP 1, UP 2, UP 5, DWN 1. Or hold Shift and click on the band scope: the radio transmits there.</p>
+<p>  - While split is on an amber bar says "You listen on ... you transmit on ...", with buttons to move the transmit frequency (0.1 and 0.5 kHz), a box to type another one, and the button <b>Split off</b>. The status bar shows <code>SPLIT TX</code> with the frequency, and the band scope shows a dashed amber line marked TX (and a shaded stretch when the station listens over a range such as UP 1-2).</p>
+<p>  - Split set on the radio itself (the SPLIT button, the other VFO) shows in CWLD too: CWLD reads the split state and the transmit frequency about twice a second.</p>
+<p>  - Safety: setting split sends nothing and is allowed in every mode. CWLD refuses a transmit frequency outside the amateur band of the receive frequency, and changes nothing while the radio transmits. When you leave the band, or click a spot of a station that does not work split, CWLD switches split off and says why. "Split off" always works. Esc stays the emergency stop, also with the cursor in the split box.</p>
+<p>  - Icom: the commands come from the IC-7300 MK II CI-V Reference Guide (October 2025): <code>0F</code> reads split, <code>0F 00</code> and <code>0F 01</code> switch it, <code>25 01</code> sets and reads the frequency of the unselected VFO (the transmit VFO), <code>26 01</code> gives it the mode and filter of the receive VFO. Order: transmit VFO first, split last. Not yet tried on the radio (tests A68 and A69).</p>
+<p>  - QMX: <code>FB</code> (VFO B) and <code>SP1</code> or <code>SP0</code>, from the QMX CAT manual. VFO B is not read back, CWLD shows the frequency it set. Not yet tried on a QMX.</p>
+<p>  - The logbook stored only the frequency you listen on in this version. Solved in 0.20.3.</p>
+<ul>
+<li>Better labels on the band scope:</li>
+</ul>
+<p>  - Every label has a leader line with a small arrow tip that points at its exact frequency, and a faint line down into the spectrum.</p>
+<p>  - A label whose place is taken moves a little aside (at most 64 pixels) or a row down instead of disappearing. Labels at the left or right edge stay inside the scope. Only what really does not fit counts as hidden.</p>
+<p>  - Slightly larger and bolder text, more contrast. The color of the leader line follows the logbook (green: not in the log, amber: other band, grey: worked).</p>
+<ul>
+<li>Under the hood: new radio commands <code>SetSplit</code> and <code>SplitOff</code> (class Config: they cannot key the radio), the split state in the radio status, and tests for the Icom and QMX bytes.</li>
+</ul>
+<h2>0.20.1 (editable texts, CQ repeat, the paddle goes first)</h2>
+<ul>
+<li>New: every chip and function key can be edited, also the contest keys of the built-in profiles. Right click a chip or key, or click the pencil after the chips or the contest keys. The window "Texts of chips and keys" has three groups: Chips, Pile-up F1 to F4 and Contest keys F1 to F8 (per contest profile, for Run and for S&amp;P; when a profile has two exchanges, F2 has a text for each).</li>
+</ul>
+<p>  - Change the text and the name on the button. Buttons insert the variables ({CALL}, {MYCALL}, {NAME}, {QTH}, {RST}, {NR}, {MYNAME}, {MYQTH} and the own contest variables).</p>
+<p>  - "Sent now as" shows the text with the current values, marks variables without a value, and gives the time it takes at the current speed.</p>
+<p>  - Warnings for an unknown variable, characters the radio cannot send, an unknown prosign and a loose curly bracket.</p>
+<p>  - "Restore default" per key and for a whole group. Only changes are stored, so later improvements of the built-in texts still reach you.</p>
+<p>  - Own chips: add, rename, move earlier or later, delete.</p>
+<p>  - A change that is not saved is not lost by accident: CWLD asks before switching or closing.</p>
+<ul>
+<li>New: CQ repeat. The button "Repeat CQ" (or Alt+R) calls CQ, listens with a countdown and calls again. It sends the CQ chip, in contest mode the F1 text in Run (in S&amp;P there is no CQ). Pause 2 to 60 seconds (default 6), at most 1 to 30 calls in one go (default 10). It never starts by itself and stops at any key, at the paddle, when two or more characters are heard in a pause (an answer), when you send something else, turn the VFO, change the mode, press Stop, minimize CWLD, at an SWR alert and after the last call. The line under the send box says why it stopped.</li>
+<li>New: typed text waits while the paddle keys. CWLD knows the paddle the same way as before: the radio is on the air while CWLD sent nothing, or the decoder or the radio (QMX) reports paddle text. Text you type or click then shows under "Waits for the paddle" and goes out when the paddle has been quiet for 14 dot lengths (at least one second). Esc clears it. Can be switched off in the texts window.</li>
+<li>Fixed in passing: chips and keys that cannot send (listen mode) were really disabled, so a right click did nothing. They now look disabled but still open their text.</li>
+</ul>
+<h2>0.20.0 (listen again, steep filter, spelled letters)</h2>
+<ul>
+<li>New: "Listen again" in the Audio card. CWLD keeps the last minute of audio. Choose how far back (10, 20, 30 or 60 seconds) and decode that stretch again at the same pitch, at the strongest keyed tone in it, or at one of the pitches it heard (up to four, strongest first). A separate decoder does this, so the live decoder goes on undisturbed. It reads the stretch twice, the first time only to find the levels, so the first characters come out right too. Callsigns in the result can be clicked like in the conversation.</li>
+<li>New: "Save last minute (WAV)" saves the last minute as the decoder heard it (8 kHz, mono, before the gain) in the recordings folder, with date, time and frequency in the name.</li>
+<li>New filter choice "Steep" next to Narrow and Wide: the narrow width with much steeper edges (a 6th order Butterworth filter instead of three soft sections). At 20 WPM a station 60 Hz away is 57 dB down instead of 16. On the test bench a strong station next door costs far fewer errors (see docs/meetresultaten_decoder.md). On very weak signals without a neighbour, Narrow stays a little better, so Narrow remains the default.</li>
+<li>New setting "Join spelled letters" (on by default): when a sender spells a callsign or name with a word gap after every letter, D L 4 S A V shows as DL4SAV and H A N S as HANS. A K or R right after a spelled callsign stays apart (DL4SAV K). Single letters that belong alone (R R, E E, K) are left as they are. Letters are held back until the next word or a pause of 20 units.</li>
+<li>Test bench: new part "Stations next door" (<code>cwld_bench --neighbours</code>), options <code>CWLD_STEEP</code>, <code>CWLD_WIDE</code>, <code>CWLD_NOJOIN</code>, <code>CWLD_SNRS</code> and <code>--grid</code> or <code>--difficult</code> to run only a part. New examples <code>spellbench</code> (spelled words) and <code>gatesteep</code> (noise blips behind both filters). The signal generator can key a word spelled out (<code>~HANS</code> in the text).</li>
+</ul>
+<h2>0.19.3 (calmer windows, fewer tabs)</h2>
+<ul>
+<li>Fixed: the conversation window no longer jumps to the bottom when new text arrives while you have scrolled up to read. It follows new text only when you are at the bottom, and shows the end of a conversation when you open another tab.</li>
+<li>Fixed: the Audio card no longer shifts when something appears. The notch and Twin PBT warning now lies over the audio waterfall, and the level meter keeps its place also when the audio is not running.</li>
+<li>New setting "Most tabs kept open" (default 5, 0 is no limit). When there are more, the oldest quiet conversation closes. The conversation you are in and any with sent text that is not logged never close by themselves, so there can briefly be more than the maximum.</li>
+</ul>
+<h2>0.19.2 (CSV export from the logbook)</h2>
+<ul>
+<li>New: the button "CSV" in the logbook window writes the QSOs as shown (same filter, same sort order) with the columns you chose to a CSV file in the CWLD folder, followed by "Open the folder". Separator is a semicolon, the file is UTF-8 with a byte order mark and CRLF line ends, so Excel with a Belgian or Dutch setup opens it correctly. Date and time are UTC in separate columns, frequency in kHz.</li>
+<li>Fields with a semicolon, quote or line break are quoted. Text that starts with = + or @ gets a leading apostrophe so a spreadsheet does not read it as a formula.</li>
+<li>A CSV export does not mark QSOs as exported: only the ADIF export does.</li>
+</ul>
+<h2>0.19.1 (edit every field of a QSO)</h2>
+<ul>
+<li>The edit window now changes every field of a QSO: date and time (UTC), frequency, mode, both reports and exchanges, name, QTH, the other station's programme and reference, comment, and under "My station" the station call, operator, locator, power, rig, antenna and WWFF, POTA and SOTA references.</li>
+<li>Changing the frequency always asks first: it shows the old and the new frequency and the band change, and needs a second "Yes, change it". The band follows the frequency; outside the amateur bands it stays as it was.</li>
+<li>An edited QSO is exported again, as before.</li>
+</ul>
+<h2>0.19.0 (logbook window, notch and Twin PBT from CWLD)</h2>
+<ul>
+<li>New: the logbook window. Open it with the button "Logbook" next to the settings, or "All QSOs" in the log card.</li>
+</ul>
+<p>  - Every QSO with all its details: date and time (UTC), callsign, band, frequency, mode, both reports, both exchanges, name, QTH, the other station's reference, comment, contest, station, operator, own locator and reference, power, rig, antenna, and whether it was exported. Choose the columns with "Columns"; the choice is remembered on this computer.</p>
+<p>  - Filters: a search box (callsign, name, QTH, comment or reference), dates, band, contest, activation, not exported yet, and the test log. Click a column header to sort.</p>
+<p>  - The line above the table counts QSOs, different callsigns and bands.</p>
+<p>  - "Export these N QSOs (ADIF)" writes exactly the QSOs of the filter to a file, after the same check as the export window, with "Open the folder" afterwards.</p>
+<p>  - A click on a row opens the edit window; changes and deletions show in the table at once.</p>
+<ul>
+<li>New: CWLD reads the manual notch (MN), the automatic notch (AN) and both Twin PBT knobs of the IC-7300 MK II. When one of them is on or turned, or when CWLD hears a hole in the audio, the Audio card says so and offers "Notch off" and "PBT to the middle". CWLD never changes them by itself: a notch set on purpose against a carrier stays until you click. The CI-V commands (16 48, 16 41, 14 07, 14 08) are those of the IC-7300; on the MK II they are not yet confirmed (test A57).</li>
+</ul>
+<h2>0.18.5 (ADIF export: one button, clear reasons)</h2>
+<ul>
+<li>Export dialog: "Export" now runs the check by itself. Before, the button stayed grey until "Check" had been pressed, with the reason only in a tooltip.</li>
+<li>When the export does not work the dialog says why, in plain words, instead of showing a raw error code at the top of the window. An export without any QSO in the selection is refused with that reason; before it wrote an empty file.</li>
+<li>After an export the dialog shows the file path and a button "Open the folder", which opens the CWLD folder in the file manager.</li>
+</ul>
+<h2>0.18.4 (notch warning, tone search no longer follows a filter edge)</h2>
+<ul>
+<li>New warning in the Audio card: "A hole in the audio around ... Hz". It appears when a stretch in the middle of the passband is at least 20 dB quieter than both sides for three seconds, as a notch filter on the radio leaves behind, and it goes away by itself. Reason: all six recordings of 11 November have such a hole between about 450 and 850 Hz (35 to 45 dB down), right where a well tuned CW station sits; the recordings of 10 November do not. CWLD never switches the notch itself.</li>
+<li>Tone search: the edge of the radio's filter or of a notch no longer counts as a signal. The noise next to a pitch is now judged on both sides: on a slope the louder side decides. Before, the decoder wandered down along the edge (395, 385, 372 ... 336 Hz) and jumped to it in the middle of a transmission. In even noise nothing changes.</li>
+<li>Measured on the recordings, decoded the way the app does (new tool <code>cargo run --release -p cwld-audio --example filedec -- file.wav</code>): the seven recordings of 10 November read exactly as before, and the seek benchmark is identical. Of the recordings with the hole: 7004.3 kHz better (<code>R RK6HR PSE DX K</code>, no jump to the edge at the end), 7005.4 kHz the same, 7012.1 kHz (9 s) worse (the station next to the hole is found later), 7012.1 kHz (25 s) different (the decoder now stays on a second, longer signal at 1167 Hz instead of the station at 896 Hz), 7014.8 kHz nothing (before: <code>E?BK</code>). With the hole in the audio the tone search stays unreliable; the fix for that is the notch on the radio.</li>
+</ul>
+<h2>0.18.3 (paddle practice scores letters fairly, neural network tried and not adopted)</h2>
+<ul>
+<li>Fixed: in paddle practice, long pauses between the characters made right characters count as wrong (ON3VZ: <code>AOWRW RAOWR MSOKT SKKRL</code> keyed with one wrong letter scored 20 percent). Every character had become its own word and the spaces were compared too, so everything shifted. Characters are now compared without the spaces; the spacing keeps its own table and tips.</li>
+<li>Experiment, not switched on: a small neural network (6001 weights, trained on the CPU in under a minute on synthetic CW of CWLD's own generator) as an extra source of key-down evidence. Per frame it looked much better than the classic number, but through the whole decoder the test bench shows no gain: mean wrong characters 10.7 percent classic, 10.8 percent with the network added, better in 10 cells and worse in 19 of 71. Used instead of the classic evidence it is clearly worse at high speeds. The decoder's timing search already combines the evidence over time, which is what the network tried to add. The code and the training tools stay in the repository (<code>tools/nn</code>, <code>crates/cwld-decoder/src/neural.rs</code>, switch <code>PipelineConfig::neural</code>, off) for a later attempt with real recordings and their true text.</li>
+</ul>
+<h2>0.18.2 (a modern band scope)</h2>
+<ul>
+<li>The band scope is drawn anew. From top to bottom: a lane for the spot labels (only as high as the rows in use), the spectrum, the frequency scale in its own strip, and the waterfall filling the rest.</li>
+<li>The spectrum is a smooth curve with a soft fill and a faint peak-hold line. Its level range follows the band by itself: the noise floor sits near the bottom and the strongest signal near the top, so weak signals on a wide span (for example 200 kHz) no longer disappear into a flat line.</li>
+<li>The waterfall is stretched smoothly instead of in blocks, uses the same automatic level range, and has a new palette (night blue for noise, through blue and cyan to amber and warm white). When the radio moves the scope window the history shifts along.</li>
+<li>Sharper on high-resolution screens. Heights: small 140, medium 270, large 380 pixels (Settings, Display).</li>
+</ul>
+<h2>0.18.1 (quieter spot labels, cluster spots as hints for the decoder)</h2>
+<ul>
+<li>Band scope: the spot labels are quiet tags now: a small rounded label in a muted tone with the callsign in light grey. Only a small dot carries the color (green: not in your log, amber: worked on another band, grey: worked on this band). A worked station fades instead of standing out in red. The pin line is thinner. Two rows of labels on the medium scope, three on the large one.</li>
+<li>Decoder: the callsigns of cluster spots within 700 Hz of the VFO are given to the decoder as hints. A hint counts like a callsign that was heard a moment ago: it is only used where the decoder doubts its own reading (a dot or dash lost in a fade, a gap in the wrong place). Tuning away replaces the hints, disconnecting the cluster clears them.</li>
+<li>Measured with <code>cargo run --release -p cwld-decoder --example hintbench</code> (60 messages per case, a callsign the decoder never saw; wrong characters in percent, and how often the callsign came out exactly right):</li>
+</ul>
+<p>  - 3 in 100 dots and dashes lost: 7.3 to 4.9 percent, callsign right 60 to 85 percent.</p>
+<p>  - 6 in 100 lost at +6 dB: 17.2 to 14.4 percent, callsign right 39 to 68 percent.</p>
+<p>  - sloppy hand keying: 25.9 to 24.0 percent, callsign right 24 to 40 percent.</p>
+<p>  - weak signal (0 dB): 3.3 to 2.6 percent, callsign right 85 to 91 percent.</p>
+<p>  - clean signal and deep QSB: no difference.</p>
+<p>  - Only wrong hints (among them the real call with one character changed, and with one dot or dash more): the text is identical to no hints in every case. In 480 callsigns a wrong hint came out once.</p>
+<ul>
+<li>Not measured on the air: this needs a real cluster connection next to a real signal (test A53).</li>
+</ul>
+<h2>0.18.0 (DX cluster spots on the band scope)</h2>
+<ul>
+<li>New: spots of a DX cluster appear as labels on the band scope, at the frequency of the station. Green: not in your log. Amber: you worked the station on another band. Red with a line through it: already in your log on this band (in contest mode: a dupe of the active contest run). A click on a label tunes the radio there; the pin line under it runs down to the waterfall. "Hide spots" in the bar under the scope hides them, "Show cluster spots" connects.</li>
+<li>New section "DX cluster" in Settings: connect at start (off by default), choice of cluster (Automatic or one node), skimmer spots on or off, how long a spot stays, an editable list of clusters, "Test the clusters" (connects to every node for a moment, without logging in, and shows which ones answer and how fast), and a small window for the node's own lines with a command box.</li>
+<li>The standard list starts with the Belgian ON0DXK, followed by OE9, S50CLX, S50DXS, HamQTH, GB7DXG, VE7CC and DXSpots. Automatic moves on to the next node when one does not answer or drops the connection.</li>
+<li>CWLD logs in with the first callsign of your station settings, never with a built-in one. It only reads: commands that would post a spot, a message or an announcement (dx, announce, talk, wwv, wx) are blocked, also when typed in the cluster window.</li>
+<li>Only CW spots are shown (the comment says CW, or it says nothing and the frequency is in the CW part of the band). One label per station, band and frequency; a new report of the same station updates it. After you log a QSO the colors are refreshed at once.</li>
+<li>Tested against a local imitation of a cluster node (login, Telnet negotiation, skimmer commands, spots, fail-over to the next node). The first test on the real nodes is test A50 in docs/testplan_radio.md.</li>
+</ul>
+<h2>0.17.0 (a sender who changes his spacing)</h2>
+<ul>
+<li>Decoder: a sender who spells a word slowly and then keys on at his usual pace, or the other way round, is followed at once instead of slowly. Before, characters ran together after he tightened up, and the first slowly spelled word came out as loose letters.</li>
+<li>Measured on new test cases (percent wrong characters): wide then tight 10.5 to 5.1, slow spelling then tight and faster 19.9 to 8.3, normal then slow spelling 6.0 to 3.0, Farnsworth 2.4 to 0.9. The standard grid is identical. The eight real recordings read exactly as before, so this has not been seen to help on the band yet.</li>
+</ul>
+<h2>0.16.1 (fading switch on the main screen)</h2>
+<ul>
+<li>New in the Audio card on the main screen, always in sight: "Fading (QSB)" with two positions, and one line under it that says what the chosen position does and what it costs.</li>
+</ul>
+<p>  - "Read through" (default, the behaviour of 0.16.0): weak dots and dashes in a fade count too. Better with QSB, more wrong characters on very weak signals and very uneven keying.</p>
+<p>  - "Strict" (the behaviour up to 0.15.1): only dots and dashes near full strength count. Steadier on very weak signals, but in QSB characters lose dots and words break up.</p>
+<ul>
+<li>The choice is remembered and works at once, without restarting the audio.</li>
+<li>Measured: a clean signal that swings 10 dB about once a second gives 1 wrong character in 132 with "Read through" and 83 with "Strict" (test <code>fast_fading_is_read_better_with_the_fading_switch_on</code>).</li>
+</ul>
+<h2>0.16.0 (weak dots in fast fading, sending with your Koch characters)</h2>
+<ul>
+<li>Decoder: in fast fading (the level swinging 10 dB within half a second) the dots and dashes in a dip counted as silence, because they stood far below the level the decoder followed. They now count as key-down when they stand clearly above the noise, are no more than 12 dB down, sit on the same pitch (a weaker station next door does not), and hold their level. On the recording of 7026.8 kHz: <code>FAILED</code> and <code>ON TH</code> instead of <code>FAIA ED</code> and <code>N TH</code>. Test bench: deep QSB 34.8 to 31.4 percent, 0 dB at 28 and 36 WPM 9.5 and 12.7 to 6.8 and 9.2. Worse: -3 dB at 36 WPM 66 to 75, straight key case 19.8 to 23.9. Full table in docs/meetresultaten_decoder.md.</li>
+<li>Practice: the Koch card has a "Sending (paddle)" part with "Key groups" and "Key words", next to listening. They start the paddle exercises with your chosen characters.</li>
+<li>Practice: starting a paddle exercise now starts listening to the radio by itself when the audio was not running.</li>
+</ul>
+<h2>0.15.1 (a dot lost in a fade, plain English)</h2>
+<ul>
+<li>Decoder: one dot or dash lost in a short fade is put back when what was read is exactly one element short of a callsign heard a moment ago (IK1QHB read as ITT1QHB) or of a common word, and the silence at that place is as long as the lost element would need. Without such a hole nothing changes: a callsign that only looks like another one is left alone. Your own callsign counts as heard from the start.</li>
+<li>Decoder: about 330 common English words and usual QSO subjects joined the word list, so a relaxed QSO in plain English gets its word gaps right (<code>WENT INTO</code>, <code>GET IT</code>, <code>ONLY FIX</code> where the sender left no clear gap).</li>
+<li>Decoder: fewer wrong splits: a short unknown piece next to a known word (<code>BE RLIN</code>, <code>LAPT OP</code>) is no longer preferred.</li>
+<li>Measured: 3 in 100 elements lost 13.9 to 11.2 percent wrong characters, 6 in 100 at +6 dB 25.7 to 20.1. Standard grid equal or better except three cells within one point. Not solved: fades that take two or more elements in a row. See docs/meetresultaten_decoder.md.</li>
+</ul>
+<h2>0.15.0 (decoder for sloppy keying, paddle practice hears any sidetone pitch)</h2>
+<ul>
+<li>Fixed: paddle practice registered nothing although the sidetone was visible and audible (ON3VZ). The key detector listened at the pitch the decoder happened to be on. With the decoder left on another signal and "Strongest" off, the sidetone was never seen. The detector now finds the tone itself anywhere between 300 and 1200 Hz, whatever the decoder is doing.</li>
+<li>Decoder: word gaps are decided from the sender's own spacing. A name spelled with the letters far apart stays one word, <code>CQ DE</code> keyed as one becomes two words, and a learner with long pauses (Farnsworth) no longer comes out as loose letters. Final text arrives about five characters later for this; the tentative text still shows every character at once.</li>
+<li>Decoder: the sender's weighting (the gap inside a character) and spacing are taken from his first marks at once and followed after that. Heavy weighting was read as rows of E and T before.</li>
+<li>Decoder: a character cut in two by a hesitation (5 as S I, R as E N), or two characters run together (T N as G), are mended when the same dots and dashes spell a common CW word or a callsign heard a moment ago, and only where the timing was doubtful.</li>
+<li>Decoder: when it has to find the pitch first, the start of the transmission is no longer lost, and on a silent band (squelch closed) it no longer stays 100 Hz beside the tone.</li>
+<li>Measured on the test bench (strong signals, percent wrong characters, before and after): letters far apart 43 to 0, Farnsworth 53 to 2, words run together 21 to 2, heavy weighting 57 to 1, at 35 WPM 70 to 1, very uneven gaps 22 to 16. The standard grid is equal or better. Details and what is still wrong in docs/meetresultaten_decoder.md.</li>
+<li>Test bench: 14 "sloppy fist" cases (<code>cwld_bench --fists</code>), a seek test (<code>seekbench</code>), and the generator can set the gaps inside characters, between characters and between words separately.</li>
+</ul>
+<h2>0.14.0 (Koch method: choose your characters, copy by ear)</h2>
+<ul>
+<li>New card "Characters to learn (Koch)" in the practice panel: all 40 characters in Koch order (K M R S U A P T L O W I N J E F 0 Y V G 5 / Q 9 Z H 3 8 B ? 4 2 7 C 1 D 6 X). A slider takes the first N characters, and you can switch single characters on or off. At least two stay. The choice is saved. Default: all characters, so nothing changes until you narrow it down.</li>
+<li>The paddle exercises now use only the chosen characters: groups, words and abbreviations, callsigns and QSO phrases. A word, callsign or phrase is only asked when it is made entirely of chosen characters; with too few of them you get character groups and a short note says so. The newest character and the ones that went wrong before come back more often.</li>
+<li>New listening exercise (copying): CWLD plays groups of 5 characters or words from your characters on this computer, never through the radio. Characters run at their own speed (default 20 WPM) with longer gaps (Farnsworth, default 12 WPM overall), pitch adjustable. You type what you hear (Enter checks, Esc stops, spaces do not matter); wrong characters are marked and counted per character.</li>
+<li>The 90 percent rule: after three listening rounds in a row with the same characters and together at least 90 percent right (at least 30 characters), CWLD proposes the next Koch character. It never adds one by itself.</li>
+<li>Internal: <code>schedule</code>, <code>durationSeconds</code> and <code>playSidetone</code> take an optional overall speed for Farnsworth timing; settings gain <code>practice.koch</code> (old settings files get all characters).</li>
+</ul>
+<h2>0.13.2 (paddle practice recognises the sidetone)</h2>
+<ul>
+<li>Fixed: paddle practice heard the sidetone but showed nothing. A radio sidetone with overtones or slight clipping was taken for speech by the speech check from 0.12.0, which then held the decoder. The speech check is now off while the paddle trainer listens.</li>
+<li>Paddle practice reads your text straight from the key times, with your own speed measured over the whole attempt. The live decoder often misread the first letter while it was still finding your speed.</li>
+<li>The key times come from a new sidetone detector on the signal envelope (floor and peak with hysteresis): exact with a clean sidetone and with band noise up to 25 dB SNR in the tests, and band noise alone never counts as keying. Before, noise gave up to six times too many key-downs and audio heard again after a pitch move was counted twice.</li>
+</ul>
+<h2>0.13.1 (paddle practice works on the IC-7300 MK II, QRZ.com fixes)</h2>
+<ul>
+<li>Practice mode no longer turns the radio's AF volume down. On the IC-7300 MK II the AF volume also sets how loud the sidetone is on the USB audio, so at 0 the paddle trainer heard nothing (found by ON3VZ). CWLD now closes the squelch instead (CI-V 14 03, still to confirm on the MK II) and switches break-in off; both are put back when you leave practice mode.</li>
+<li>The practice panel shows what the radio reports: volume, squelch and break-in, or "not reported". The paddle card warns when the AF volume is 0.</li>
+<li>Handbook section 24 now explains the radio setting that puts the sidetone on the USB audio: MENU, SET, Connectors, USB AF/IF Output, AF Beep/Speech... Output ON.</li>
+<li>Every practice exercise (simulator and paddle) starts in its own "Practice" tab, so practice text never mixes with a real QSO.</li>
+<li>Fixed: a callsign typed in the QSO panel was never looked up on QRZ.com; only clicked or decoded calls were. The grey QRZ.com line now only shows for the call in the panel.</li>
+<li>Fixed: name and QTH that CWLD filled in for the previous station are replaced when the callsign changes. What you typed yourself is never replaced.</li>
+</ul>
+<h2>0.13.0 (QRZ.com lookup)</h2>
+<ul>
+<li>New in Settings, Logging link: QRZ.com lookup. With a QRZ.com account CWLD fetches the first name and the town of the station in the QSO panel and fills the Name and QTH fields. Only empty fields are filled; what you typed is never replaced. A small line under the fields shows what QRZ.com said (name, town and country, locator). Off by default.</li>
+<li>The password is kept encrypted by the operating system (Windows Credential Manager, Secret Service on Linux), never in the settings file, the log or the interface. "Save and test" logs in once and tells you whether the account has the XML subscription. "Remove stored password" deletes it.</li>
+<li>Only the callsign you are working is sent, over HTTPS, after you stopped typing for a moment. Answers are cached for a day (unknown calls for ten minutes). A failed lookup shows one quiet warning; logging and sending go on as before. Calls like ON3VZ/P fall back to the base call.</li>
+<li>Fixed: on a narrow window the paddle practice card no longer overlaps the panels below it.</li>
+</ul>
+<h2>0.12.0 (paddle practice, quiet radio, no text from SSB)</h2>
 <ul>
 <li>Paddle practice: in PRACTICE, key with the paddle on the radio while nothing is transmitted. CWLD reads your sidetone from the USB audio and shows what it heard. Exercises: character groups, your weak characters, words and abbreviations, callsigns and QSO phrases. You get a score, the share of right characters, your speed, and your spacing (gaps inside characters, between characters and between words; with a straight key also the dash length and how even your elements are), with tips. CWLD remembers per character how often it went wrong, and the weak characters come back more often. The last results are shown with UTC time.</li>
 <li>Radio quiet while practising (on by default): entering PRACTICE turns the speaker of the IC-7300 MK II down (AF level 0) and switches break-in off, so you only hear CWLD and the paddle only makes the sidetone. Both are put back when you leave PRACTICE, change radio or close CWLD. A volume you turn up yourself during practice is left alone. To confirm on the MK II: the CI-V commands for AF level and break-in (test A40), and that the sidetone reaches the USB audio (test I10 and A41).</li>

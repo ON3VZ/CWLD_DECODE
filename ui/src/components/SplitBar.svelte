@@ -77,9 +77,9 @@
       {/if}
       <!-- svelte-ignore a11y_autofocus -->
       <input class="mono in" bind:value={text} onkeydown={key} placeholder={t('split.input.placeholder')} aria-label={t('split.input.label')} title={t('split.input.help')} disabled={!canSet} autofocus={!app.splitEnded} />
-      <button class="btn primary" disabled={!canSet || !text.trim()} onclick={() => set(text)}>{t('split.set')}</button>
+      <button class="btn primary" disabled={!canSet || !text.trim()} onclick={() => set(text)} title={t('split.set.help')}>{t('split.set')}</button>
       {#each QUICK as q (q)}
-        <button class="btn sm mono" disabled={!canSet} onclick={() => set(q)}>{q}</button>
+        <button class="btn sm mono" disabled={!canSet} onclick={() => set(q)} title={t('split.quick.help')}>{q}</button>
       {/each}
       <span class="muted hint">{t('split.manual.hint')}</span>
       <span class="grow"></span>

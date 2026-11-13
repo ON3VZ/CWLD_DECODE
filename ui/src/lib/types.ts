@@ -630,6 +630,8 @@ export interface Api {
   checkUpdate(): Promise<UpdateInfo | null>;
   /** Downloads, installs and restarts. Progress is 0 to 1. */
   installUpdate(onProgress: (fraction: number) => void): Promise<void>;
+  /** Opens a web address in the default browser. Only the website of CWLD is allowed (see the Tauri capability). */
+  openUrl(url: string): Promise<void>;
   getSnapshot(): Promise<Snapshot>;
   setPolicy(policy: TxPolicy, confirmed: boolean): Promise<void>;
   sendText(text: string): Promise<SendOutcome>;

@@ -569,6 +569,13 @@
             {#if app.updateInfo.notes}<pre class="notes">{app.updateInfo.notes}</pre>{/if}
           {/if}
           <small class="muted">{t('update.privacy')}</small>
+          <h3>{t('help.title')}</h3>
+          <p class="muted">{t('help.intro')}</p>
+          <div class="row">
+            <button class="btn" type="button" onclick={() => app.openHelp()} title={t('help.open.help')}>{t('help.open')}</button>
+            {#if app.helpFailed}<span class="err" role="alert">{t('help.failed')}</span>{/if}
+          </div>
+          <small class="muted">{t('help.privacy')}</small>
           <h3>{t('wiz.again')}</h3>
           <p class="muted">{t('wiz.again.help')}</p>
           <div class="row"><button class="btn" type="button" onclick={() => { app.settingsOpen = false; app.wizardOpen = true; }}>{t('wiz.again')}</button></div>
