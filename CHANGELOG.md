@@ -1,3 +1,14 @@
+## 0.20.3 (the logbook keeps the transmit and the receive frequency)
+
+- The logbook now has two frequencies for every QSO: **TX kHz** (where you transmitted) and **RX kHz** (where you listened). They are nearly always the same. For a QSO made in split they differ: with the DX station on 7025.0 and you calling on 7026.0, TX is 7026.0 and RX is 7025.0.
+- The logbook window shows both columns by default. If you chose your own columns before, tick **RX kHz** once under "Columns". The column that was called "kHz" is now "TX kHz".
+- The edit window has a field "RX kHz". Leave it empty when you listened where you transmitted.
+- ADIF export: `FREQ` is the transmit frequency, as the ADIF standard says. A split QSO also gets `FREQ_RX` (and `BAND_RX` when the bands differ). A normal QSO is written exactly as before.
+- The N1MM message to other programs carries the real `rxfreq` and `txfreq`.
+- CSV export follows the columns, so it has both when both are shown.
+- Existing logbook files are upgraded by themselves (one new column, `freq_rx_hz`); old QSOs stay as they were.
+- Note for split QSOs: the band and the dupe check go by the transmit frequency. CWLD only allows split inside one band, so that is the same band.
+
 ## 0.20.2 (split, clearer labels on the band scope)
 
 - New: split, from a spot or by hand. With split on the radio listens on one frequency and transmits on another, as a DX station in a pile-up asks.
@@ -9,7 +20,7 @@
   - Safety: setting split sends nothing and is allowed in every mode. CWLD refuses a transmit frequency outside the amateur band of the receive frequency, and changes nothing while the radio transmits. When you leave the band, or click a spot of a station that does not work split, CWLD switches split off and says why. "Split off" always works. Esc stays the emergency stop, also with the cursor in the split box.
   - Icom: the commands come from the IC-7300 MK II CI-V Reference Guide (October 2025): `0F` reads split, `0F 00` and `0F 01` switch it, `25 01` sets and reads the frequency of the unselected VFO (the transmit VFO), `26 01` gives it the mode and filter of the receive VFO. Order: transmit VFO first, split last. Not yet tried on the radio (tests A68 and A69).
   - QMX: `FB` (VFO B) and `SP1` or `SP0`, from the QMX CAT manual. VFO B is not read back, CWLD shows the frequency it set. Not yet tried on a QMX.
-  - Known limit: the logbook stores the frequency you listen on (where the DX station transmits), as before. Your own transmit frequency is not stored yet.
+  - The logbook stored only the frequency you listen on in this version. Solved in 0.20.3.
 - Better labels on the band scope:
   - Every label has a leader line with a small arrow tip that points at its exact frequency, and a faint line down into the spectrum.
   - A label whose place is taken moves a little aside (at most 64 pixels) or a row down instead of disappearing. Labels at the left or right edge stay inside the scope. Only what really does not fit counts as hidden.

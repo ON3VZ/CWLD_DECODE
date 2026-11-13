@@ -46,7 +46,15 @@ impl AppCore {
             q.ts = now_ts();
         }
         if q.freq_hz == 0 {
-            q.freq_hz = self.rig.lock().unwrap().status().frequency_hz;
+            // The logbook keeps the transmit frequency, and with split on also where we listened.
+            let st = self.rig.lock().unwrap().status();
+            match st.split.tx_hz.filter(|_| st.split.on) {
+                Some(tx) if tx != st.frequency_hz => {
+                    q.freq_hz = tx;
+                    q.freq_rx_hz = st.frequency_hz;
+                }
+                _ => q.freq_hz = st.frequency_hz,
+            }
         }
         let lb = self.logbook.lock().unwrap();
         // The station the QSO is made from, copied now so a later change of profile cannot alter it.
@@ -339,6 +347,20 @@ mod tests {
         assert!(r.text.contains("<MY_WWFF_REF:9>ONFF-0599") && r.text.contains("<STATION_CALLSIGN:7>ON3VZ/P"));
         assert!(c.log_list(&LogFilter { not_exported: true, ..Default::default() }).unwrap().is_empty());
         let _ = (q, std::fs::remove_file(&r.path));
+    }
+
+    #[test]
+    fn a_qso_made_in_split_is_logged_with_both_frequencies() {
+        let c = core();
+        c.set_frequency(7_025_000).unwrap();
+        c.split_set(7_026_000, None).unwrap();
+        let q = c.log_add(Qso { call: "3B8XX".into(), rst_sent: "599".into(), rst_rcvd: "599".into(), my_call: "ON3VZ".into(), ..Default::default() }).unwrap();
+        assert_eq!((q.freq_hz, q.freq_rx_hz, q.band.as_str()), (7_026_000, 7_025_000, "40m"));
+        assert!(crate::link::n1mm_message("contactinfo", &q, "").contains("<rxfreq>702500</rxfreq><txfreq>702600</txfreq>"));
+        // Without split there is one frequency, as always.
+        c.split_off().unwrap();
+        let q = c.log_add(Qso { call: "PA3ABC".into(), rst_sent: "599".into(), rst_rcvd: "599".into(), my_call: "ON3VZ".into(), ..Default::default() }).unwrap();
+        assert_eq!((q.freq_hz, q.freq_rx_hz), (7_025_000, 0));
     }
 
     #[test]

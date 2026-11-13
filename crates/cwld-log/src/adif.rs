@@ -83,6 +83,14 @@ pub fn adif_record(q: &Qso, o: &AdifOptions) -> String {
     if q.freq_hz > 0 {
         field(&mut l, "FREQ", &format!("{:.6}", q.freq_hz as f64 / 1e6));
     }
+    // Split: where this station listened. Only written when it differs from FREQ.
+    if q.freq_rx_hz > 0 && q.freq_rx_hz != q.freq_hz {
+        field(&mut l, "FREQ_RX", &format!("{:.6}", q.freq_rx_hz as f64 / 1e6));
+        let rx_band = crate::band_of(q.freq_rx_hz);
+        if !rx_band.is_empty() && rx_band != q.band {
+            field(&mut l, "BAND_RX", rx_band);
+        }
+    }
     field(&mut l, "MODE", if q.mode.is_empty() { "CW" } else { &q.mode });
     field(&mut l, "RST_SENT", &q.rst_sent);
     field(&mut l, "RST_RCVD", &q.rst_rcvd);
@@ -149,6 +157,19 @@ mod tests {
 
     fn sample() -> Qso {
         Qso { id: 1, ts: 1_794_146_709, call: "PA3ABC".into(), band: "40m".into(), freq_hz: 7_030_000, mode: "CW".into(), rst_sent: "599".into(), rst_rcvd: "579".into(), nr_sent: 42, nr_rcvd: "007".into(), extra_sent: "WLD".into(), extra_rcvd: "ANR".into(), my_call: "ON3VZ".into(), contest: "uba-dx-cw".into(), ..Default::default() }
+    }
+
+    #[test]
+    fn a_split_qso_writes_freq_rx_and_a_normal_one_does_not() {
+        let o = AdifOptions { contest_id: String::new(), program_version: "0.20.3".into(), now_ts: 1_794_146_709 };
+        assert!(!adif_text(&[sample()], &o).contains("FREQ_RX"));
+        let split = Qso { freq_hz: 7_026_000, freq_rx_hz: 7_025_000, ..sample() };
+        let s = adif_text(&[split], &o);
+        assert!(s.contains("<FREQ:8>7.026000"), "{s}");
+        assert!(s.contains("<FREQ_RX:8>7.025000"), "{s}");
+        assert!(!s.contains("BAND_RX"), "same band: {s}");
+        // The same frequency twice is not split.
+        assert!(!adif_text(&[Qso { freq_rx_hz: 7_030_000, ..sample() }], &o).contains("FREQ_RX"));
     }
 
     #[test]

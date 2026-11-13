@@ -540,3 +540,12 @@ Veiligheid: laag vermogen of een dummyload voor de stappen waarin je zendt. Spli
 6. Klik daarna op een label zonder merkje. Verwacht: de radio stemt daarheen af, split gaat uit en de balk zegt "het station waarop je klikte werkt niet split".
 7. Noteer spots waarvan de opmerking fout gelezen werd (een merkje waar geen split bedoeld was, of geen merkje bij een duidelijke split), met de letterlijke opmerking van de spot.
 
+## A71. Logboek met zend- en ontvangstfrequentie (0.20.3)
+
+1. Start CWLD met je bestaande logboek. Klik **Logboek**. Verwacht: alle oude QSO's staan er nog. Klik **Kolommen** en vink **RX kHz** aan als die kolom er niet staat. Verwacht: bij oude QSO's staat in TX kHz en RX kHz hetzelfde getal.
+2. Zet de radio op 7025,0 kHz, klik **SPLIT** en daarna **UP 1**. Vul in het QSO-paneel een roepletter in (bijvoorbeeld `TEST1A`, met de testlog aan als je in contest mode zit) en log het QSO. Verwacht: in het logboek staat TX kHz 7026.0 en RX kHz 7025.0.
+3. Klik **Split uit** en log nog een QSO. Verwacht: TX kHz en RX kHz zijn gelijk.
+4. Klik in het logboek op het split-QSO. Verwacht: in het bewerkvenster staat bij RX kHz `7025`. Maak het vak leeg en bewaar. Verwacht: RX kHz is nu gelijk aan TX kHz.
+5. Exporteer naar ADIF (knop **Deze N QSO's exporteren (ADIF)**) en open het bestand met Kladblok (rechtsklik op het bestand, **Openen met**, **Kladblok**). Verwacht: bij het split-QSO staat `<FREQ:8>7.026000` en `<FREQ_RX:8>7.025000`; bij een gewoon QSO staat geen FREQ_RX.
+6. Staat de koppeling met Log4OM aan: log een split-QSO en kijk in Log4OM welke frequentie het toont. Noteer of Log4OM de zendfrequentie, de ontvangstfrequentie of beide overneemt.
+

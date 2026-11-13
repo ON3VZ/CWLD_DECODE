@@ -1936,4 +1936,19 @@ describe('split', () => {
     // The kept remark of a person wins over the comment of the skimmer report.
     expect(app.spotSplit({ ...edge, freq_hz: 7_010_000, comment: 'CW 20 dB 25 WPM CQ', note: 'QSX 7012.5' })?.txHz).toBe(7_012_500);
   });
+
+  it('a QSO made in split is logged with the transmit and the receive frequency', async () => {
+    const api = await fresh();
+    await app.splitFromText('UP 1');
+    api.flush();
+    app.selectCall('3B8XX');
+    expect(await app.logQso()).toBe(true);
+    expect(app.lastLogged).toMatchObject({ call: '3B8XX', freq_hz: RX + 1000, freq_rx_hz: RX, band: '40m' });
+    // Without split: one frequency, the receive frequency is left empty.
+    await app.splitOff();
+    api.flush();
+    app.selectCall('PA3ABC');
+    expect(await app.logQso()).toBe(true);
+    expect(app.lastLogged).toMatchObject({ call: 'PA3ABC', freq_hz: RX, freq_rx_hz: 0 });
+  });
 });

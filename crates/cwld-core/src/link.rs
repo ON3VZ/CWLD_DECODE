@@ -61,7 +61,8 @@ pub fn n1mm_message(kind: &str, q: &Qso, contest_id: &str) -> String {
     tag(&mut o, "mycall", if q.station_call.is_empty() { &q.my_call } else { &q.station_call });
     // N1MM counts frequency in units of 10 Hz.
     tag(&mut o, "band", &format!("{:.3}", q.freq_hz as f64 / 1e6));
-    tag(&mut o, "rxfreq", &(q.freq_hz / 10).to_string());
+    let rx = if q.freq_rx_hz > 0 { q.freq_rx_hz } else { q.freq_hz };
+    tag(&mut o, "rxfreq", &(rx / 10).to_string());
     tag(&mut o, "txfreq", &(q.freq_hz / 10).to_string());
     tag(&mut o, "operator", &q.operator);
     tag(&mut o, "mode", if q.mode.is_empty() { "CW" } else { &q.mode });

@@ -531,7 +531,10 @@ export interface LogQso {
   ts: number;
   call: string;
   band: string;
+  /** The frequency we transmitted on (ADIF FREQ). */
   freq_hz: number;
+  /** The frequency we listened on when it was another one (split). 0 or absent: the same as `freq_hz`. */
+  freq_rx_hz?: number;
   mode: string;
   rst_sent: string;
   rst_rcvd: string;
@@ -617,7 +620,7 @@ export interface ExportResult {
 }
 
 export function emptyLogQso(): LogQso {
-  return { id: 0, ts: 0, call: '', band: '', freq_hz: 0, mode: 'CW', rst_sent: '', rst_rcvd: '', nr_sent: 0, nr_rcvd: '', extra_sent: '', extra_rcvd: '', name: '', qth: '', comment: '', contest: '', session: 0, my_call: '', test: false, deleted: false, station_call: '', operator: '', my_grid: '', tx_pwr: '', my_rig: '', my_antenna: '', activation_id: 0, my_wwff: '', my_pota: '', my_sota: '', their_prog: '', their_ref: '', exported_to: '' };
+  return { id: 0, ts: 0, call: '', band: '', freq_hz: 0, freq_rx_hz: 0, mode: 'CW', rst_sent: '', rst_rcvd: '', nr_sent: 0, nr_rcvd: '', extra_sent: '', extra_rcvd: '', name: '', qth: '', comment: '', contest: '', session: 0, my_call: '', test: false, deleted: false, station_call: '', operator: '', my_grid: '', tx_pwr: '', my_rig: '', my_antenna: '', activation_id: 0, my_wwff: '', my_pota: '', my_sota: '', their_prog: '', their_ref: '', exported_to: '' };
 }
 
 export interface Api {

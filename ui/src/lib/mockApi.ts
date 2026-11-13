@@ -104,7 +104,11 @@ export class MockApi implements Api {
   private nowSec = () => Math.floor(Date.now() / 1000);
 
   async logAdd(q: LogQso): Promise<LogQso> {
-    const freq = q.freq_hz || this.status.frequency_hz;
+    // Like the core: the transmit frequency, and with split on also where we listened.
+    const sp = this.status.split;
+    const inSplit = !q.freq_hz && sp.on && sp.tx_hz !== null && sp.tx_hz !== this.status.frequency_hz;
+    const freq = q.freq_hz || (inSplit ? sp.tx_hz! : this.status.frequency_hz);
+    const freqRx = inSplit ? this.status.frequency_hz : q.freq_rx_hz && q.freq_rx_hz !== freq ? q.freq_rx_hz : 0;
     // The station the QSO is made from, as the Rust core fills it in.
     const st = this.settings;
     const base = st.station.calls[0] ?? q.my_call;
@@ -125,7 +129,7 @@ export class MockApi implements Api {
       my_antenna: fill(q.my_antenna, prof?.antenna ?? ''),
       comment: fill(q.comment, prof?.comment ?? ''),
     };
-    const stored: LogQso = { ...q, id: this.nextQsoId++, call: q.call.trim().toUpperCase(), ts: q.ts || Math.floor(Date.now() / 1000), freq_hz: freq, band: q.band || bandOf(freq), mode: q.mode || 'CW', deleted: false };
+    const stored: LogQso = { ...q, id: this.nextQsoId++, call: q.call.trim().toUpperCase(), ts: q.ts || Math.floor(Date.now() / 1000), freq_hz: freq, freq_rx_hz: freqRx, band: q.band || bandOf(freq), mode: q.mode || 'CW', deleted: false };
     this.qsos.push(stored);
     return { ...stored };
   }

@@ -2537,9 +2537,13 @@ class AppState {
     const contest = this.settings.contest_mode;
     const useNr = contest && this.serialUsed;
     const nrSent = useNr ? (this.testMode ? this.testNr : this.settings.contest_nr) : 0;
+    // The logbook keeps the frequency we transmit on, and with split on also where we listen.
+    const rx = this.status.frequency_hz;
+    const sp = this.split;
+    const tx = sp.on && sp.tx_hz !== null ? sp.tx_hz : rx;
     const q: LogQso = {
       ...emptyLogQso(),
-      call, band: this.band, freq_hz: this.status.frequency_hz, mode: 'CW',
+      call, band: this.band, freq_hz: tx, freq_rx_hz: tx !== rx ? rx : 0, mode: 'CW',
       rst_sent: this.qso.rst, rst_rcvd: this.entry.rst || this.settings.default_rst,
       nr_sent: nrSent, nr_rcvd: this.entry.nr.trim(),
       extra_sent: contest ? this.extraSent() : '', extra_rcvd: this.entry.extra.trim().toUpperCase(),

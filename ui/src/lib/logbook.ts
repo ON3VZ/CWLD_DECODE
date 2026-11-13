@@ -14,6 +14,16 @@ const date = (ts: number) => new Date(ts * 1000).toISOString().slice(0, 10);
 const time = (ts: number) => new Date(ts * 1000).toISOString().slice(11, 16);
 const join = (...v: string[]) => v.filter((x) => x && x.trim()).join(' ');
 
+/** Where we listened during a QSO: its own frequency in split, else the transmit frequency. */
+export function rxHz(q: LogQso): number {
+  return q.freq_rx_hz || q.freq_hz;
+}
+
+/** True for a QSO made in split: we listened somewhere else than we transmitted. */
+export function isSplit(q: LogQso): boolean {
+  return !!q.freq_rx_hz && q.freq_rx_hz !== q.freq_hz;
+}
+
 /** Every column the logbook can show, in this order. */
 export const COLUMNS: Column[] = [
   { key: 'date', value: (q) => date(q.ts), sort: 'ts', mono: true },
@@ -21,6 +31,7 @@ export const COLUMNS: Column[] = [
   { key: 'call', value: (q) => q.call, sort: 'call', mono: true },
   { key: 'band', value: (q) => q.band, sort: 'band' },
   { key: 'freq', value: (q) => (q.freq_hz ? (q.freq_hz / 1000).toFixed(1) : ''), sort: 'freq_hz', num: true, mono: true },
+  { key: 'freq_rx', value: (q) => (rxHz(q) ? (rxHz(q) / 1000).toFixed(1) : ''), num: true, mono: true },
   { key: 'mode', value: (q) => q.mode, sort: 'mode' },
   { key: 'rst_sent', value: (q) => q.rst_sent, mono: true },
   { key: 'rst_rcvd', value: (q) => q.rst_rcvd, mono: true },
@@ -41,7 +52,7 @@ export const COLUMNS: Column[] = [
   { key: 'exported', value: (q) => (q.exported_to.includes('adif') ? 'ADIF' : '') },
 ];
 
-export const DEFAULT_COLUMNS = ['date', 'time', 'call', 'band', 'freq', 'mode', 'rst_sent', 'rst_rcvd', 'exch_rcvd', 'name', 'qth', 'their_ref', 'contest', 'station', 'exported'];
+export const DEFAULT_COLUMNS = ['date', 'time', 'call', 'band', 'freq', 'freq_rx', 'mode', 'rst_sent', 'rst_rcvd', 'exch_rcvd', 'name', 'qth', 'their_ref', 'contest', 'station', 'exported'];
 
 const STORE = 'cwld.logbook.columns';
 

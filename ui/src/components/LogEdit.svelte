@@ -13,11 +13,14 @@
   let day = $state(orig.ts ? iso(orig.ts).slice(0, 10) : '');
   let time = $state(orig.ts ? iso(orig.ts).slice(11, 19) : '');
   let khz = $state(orig.freq_hz ? String(orig.freq_hz / 1000) : '');
+  // Empty means: listened where we transmitted. Only a split QSO has its own receive frequency.
+  let rxKhz = $state(orig.freq_rx_hz && orig.freq_rx_hz !== orig.freq_hz ? String(orig.freq_rx_hz / 1000) : '');
   let confirming = $state(false);
   let problem = $state('');
 
   const newHz = $derived(parseKhz(khz));
   const newBand = $derived(Number.isNaN(newHz) ? '' : bandOf(newHz));
+  const newRxHz = $derived(parseKhz(rxKhz));
 
   function check(): LogQso | null {
     const ts = parseUtc(day, time);
@@ -25,7 +28,7 @@
       problem = t('log.edit.bad_time');
       return null;
     }
-    if (Number.isNaN(newHz)) {
+    if (Number.isNaN(newHz) || Number.isNaN(newRxHz)) {
       problem = t('log.edit.bad_freq');
       return null;
     }
@@ -40,6 +43,7 @@
       nr_sent: Math.max(0, Math.round(Number(nr) || 0)),
       ts,
       freq_hz: newHz,
+      freq_rx_hz: newRxHz === newHz ? 0 : newRxHz,
       band: newBand || q.band,
     } as LogQso;
   }
@@ -79,6 +83,7 @@
         <label>{t('book.col.date')}<input class="mono" bind:value={day} placeholder="2026-11-12" /></label>
         <label>{t('book.col.time')} (UTC)<input class="mono" bind:value={time} placeholder="14:05:00" /></label>
         <label>{t('book.col.freq')}<input class="mono" bind:value={khz} inputmode="decimal" /></label>
+        <label title={t('log.edit.rx.help')}>{t('book.col.freq_rx')}<input class="mono" bind:value={rxKhz} inputmode="decimal" placeholder={t('log.edit.rx.same')} title={t('log.edit.rx.help')} /></label>
         <label>{t('book.col.band')}<input class="mono" value={newBand || q.band} disabled /></label>
         <label>{t('log.rst_sent')}<input class="mono" bind:value={q.rst_sent} /></label>
         <label>{t('contest.rcvd.rst')}<input class="mono" bind:value={q.rst_rcvd} /></label>

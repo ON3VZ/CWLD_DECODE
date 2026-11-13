@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { csvField, csvText, COLUMNS, DEFAULT_COLUMNS, bandOf, parseKhz, parseUtc, sortRows, summary } from './logbook';
+import { csvField, csvText, COLUMNS, DEFAULT_COLUMNS, bandOf, isSplit, parseKhz, parseUtc, rxHz, sortRows, summary } from './logbook';
 import type { LogQso } from './types';
 
 function q(id: number, call: string, ts: number, band: string, freq_hz = 7_030_000): LogQso {
@@ -73,5 +73,29 @@ describe('csv', () => {
     const a = { ...q(1, 'PA3ABC', Date.UTC(2026, 10, 12, 14, 5) / 1000, '20m', 14_025_000), name: 'Jan; Piet' };
     const text = csvText([a], ['name', 'call', 'freq', 'nope'], (k) => k.toUpperCase());
     expect(text).toBe('\uFEFFCALL;FREQ;NAME\r\nPA3ABC;14025.0;"Jan; Piet"\r\n');
+  });
+});
+
+describe('transmit and receive frequency', () => {
+  const col = (k: string) => COLUMNS.find((c) => c.key === k)!;
+
+  it('are the same for a normal QSO', () => {
+    const x = q(1, 'PA3ABC', 1000, '40m', 7_030_000);
+    expect(isSplit(x)).toBe(false);
+    expect(rxHz(x)).toBe(7_030_000);
+    expect(col('freq').value(x)).toBe('7030.0');
+    expect(col('freq_rx').value(x)).toBe('7030.0');
+  });
+
+  it('differ for a QSO in split', () => {
+    const x = { ...q(2, '3B8XX', 1000, '40m', 7_026_000), freq_rx_hz: 7_025_000 };
+    expect(isSplit(x)).toBe(true);
+    expect(col('freq').value(x)).toBe('7026.0');
+    expect(col('freq_rx').value(x)).toBe('7025.0');
+  });
+
+  it('both columns show by default', () => {
+    expect(DEFAULT_COLUMNS).toContain('freq');
+    expect(DEFAULT_COLUMNS).toContain('freq_rx');
   });
 });

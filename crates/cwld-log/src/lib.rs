@@ -44,7 +44,11 @@ pub struct Qso {
     pub ts: i64,
     pub call: String,
     pub band: String,
+    /// The frequency this station transmitted on (ADIF `FREQ`).
     pub freq_hz: u64,
+    /// The frequency this station listened on when it was another one (split, ADIF `FREQ_RX`).
+    /// 0: the same as `freq_hz`.
+    pub freq_rx_hz: u64,
     pub mode: String,
     pub rst_sent: String,
     pub rst_rcvd: String,
@@ -142,7 +146,7 @@ pub struct Logbook {
     conn: Connection,
 }
 
-const COLS: &str = "id, ts, call, band, freq_hz, mode, rst_sent, rst_rcvd, nr_sent, nr_rcvd, extra_sent, extra_rcvd, name, qth, comment, contest, session, my_call, test, deleted, station_call, operator, my_grid, tx_pwr, my_rig, my_antenna, activation_id, my_wwff, my_pota, my_sota, their_prog, their_ref, exported_to";
+const COLS: &str = "id, ts, call, band, freq_hz, mode, rst_sent, rst_rcvd, nr_sent, nr_rcvd, extra_sent, extra_rcvd, name, qth, comment, contest, session, my_call, test, deleted, station_call, operator, my_grid, tx_pwr, my_rig, my_antenna, activation_id, my_wwff, my_pota, my_sota, their_prog, their_ref, exported_to, freq_rx_hz";
 
 fn row(r: &rusqlite::Row) -> rusqlite::Result<Qso> {
     Ok(Qso {
@@ -179,6 +183,7 @@ fn row(r: &rusqlite::Row) -> rusqlite::Result<Qso> {
         their_prog: r.get(30)?,
         their_ref: r.get(31)?,
         exported_to: r.get(32)?,
+        freq_rx_hz: r.get::<_, i64>(33)? as u64,
     })
 }
 
@@ -269,6 +274,7 @@ impl Logbook {
             ("their_prog", "TEXT NOT NULL DEFAULT ''"),
             ("their_ref", "TEXT NOT NULL DEFAULT ''"),
             ("exported_to", "TEXT NOT NULL DEFAULT ''"),
+            ("freq_rx_hz", "INTEGER NOT NULL DEFAULT 0"),
         ] {
             if !have.iter().any(|h| h == name) {
                 self.conn.execute(&format!("ALTER TABLE qso ADD COLUMN {name} {kind}"), [])?;
@@ -287,13 +293,16 @@ impl Logbook {
         if q.mode.is_empty() {
             q.mode = "CW".into();
         }
+        if q.freq_rx_hz == q.freq_hz {
+            q.freq_rx_hz = 0;
+        }
         self.conn.execute(
             "INSERT INTO qso (ts, call, band, freq_hz, mode, rst_sent, rst_rcvd, nr_sent, nr_rcvd, extra_sent, extra_rcvd, name, qth, comment, contest, session, my_call, test, deleted,
-                              station_call, operator, my_grid, tx_pwr, my_rig, my_antenna, activation_id, my_wwff, my_pota, my_sota, their_prog, their_ref, exported_to)
+                              station_call, operator, my_grid, tx_pwr, my_rig, my_antenna, activation_id, my_wwff, my_pota, my_sota, their_prog, their_ref, exported_to, freq_rx_hz)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,0,
-                     ?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31)",
+                     ?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32)",
             params![q.ts, q.call, q.band, q.freq_hz as i64, q.mode, q.rst_sent, q.rst_rcvd, q.nr_sent as i64, q.nr_rcvd, q.extra_sent, q.extra_rcvd, q.name, q.qth, q.comment, q.contest, q.session as i64, q.my_call, q.test as i64,
-                    q.station_call, q.operator, q.my_grid, q.tx_pwr, q.my_rig, q.my_antenna, q.activation_id, q.my_wwff, q.my_pota, q.my_sota, q.their_prog, q.their_ref, q.exported_to],
+                    q.station_call, q.operator, q.my_grid, q.tx_pwr, q.my_rig, q.my_antenna, q.activation_id, q.my_wwff, q.my_pota, q.my_sota, q.their_prog, q.their_ref, q.exported_to, q.freq_rx_hz as i64],
         )?;
         q.id = self.conn.last_insert_rowid();
         q.deleted = false;
@@ -311,9 +320,9 @@ impl Logbook {
         let mode = if q.mode.trim().is_empty() { "CW".to_string() } else { q.mode.trim().to_uppercase() };
         self.conn.execute(
             "UPDATE qso SET ts=?2, call=?3, band=?4, freq_hz=?5, mode=?6, rst_sent=?7, rst_rcvd=?8, nr_sent=?9, nr_rcvd=?10, extra_sent=?11, extra_rcvd=?12, name=?13, qth=?14, comment=?15, their_prog=?16, their_ref=?17,
-                station_call=?18, operator=?19, my_grid=?20, tx_pwr=?21, my_rig=?22, my_antenna=?23, my_wwff=?24, my_pota=?25, my_sota=?26, exported_to='' WHERE id=?1",
+                station_call=?18, operator=?19, my_grid=?20, tx_pwr=?21, my_rig=?22, my_antenna=?23, my_wwff=?24, my_pota=?25, my_sota=?26, freq_rx_hz=?27, exported_to='' WHERE id=?1",
             params![q.id, q.ts, call, band, q.freq_hz as i64, mode, q.rst_sent, q.rst_rcvd, q.nr_sent as i64, q.nr_rcvd, q.extra_sent, q.extra_rcvd, q.name, q.qth, q.comment, q.their_prog, q.their_ref,
-                    q.station_call, q.operator, q.my_grid, q.tx_pwr, q.my_rig, q.my_antenna, q.my_wwff, q.my_pota, q.my_sota],
+                    q.station_call, q.operator, q.my_grid, q.tx_pwr, q.my_rig, q.my_antenna, q.my_wwff, q.my_pota, q.my_sota, if q.freq_rx_hz == q.freq_hz { 0 } else { q.freq_rx_hz as i64 }],
         )?;
         Ok(())
     }
@@ -631,6 +640,25 @@ mod tests {
     }
 
     #[test]
+    fn a_split_qso_keeps_both_frequencies() {
+        let lb = Logbook::open_memory().unwrap();
+        let a = lb.add(&Qso { ts: 1, call: "3B8XX".into(), freq_hz: 7_026_000, freq_rx_hz: 7_025_000, ..Default::default() }).unwrap();
+        let r = lb.list(&LogFilter::default()).unwrap();
+        assert_eq!((r[0].freq_hz, r[0].freq_rx_hz, r[0].band.as_str()), (7_026_000, 7_025_000, "40m"));
+        // The same frequency twice is simply not split.
+        let b = lb.add(&Qso { ts: 2, call: "PA3ABC".into(), freq_hz: 7_030_000, freq_rx_hz: 7_030_000, ..Default::default() }).unwrap();
+        assert_eq!(b.freq_rx_hz, 0);
+        // Editing changes it, and making both equal clears it.
+        let mut e = a.clone();
+        e.freq_rx_hz = 7_024_500;
+        lb.update(&e).unwrap();
+        assert_eq!(lb.list(&LogFilter::default()).unwrap().iter().find(|q| q.id == a.id).unwrap().freq_rx_hz, 7_024_500);
+        e.freq_rx_hz = e.freq_hz;
+        lb.update(&e).unwrap();
+        assert_eq!(lb.list(&LogFilter::default()).unwrap().iter().find(|q| q.id == a.id).unwrap().freq_rx_hz, 0);
+    }
+
+    #[test]
     fn an_older_file_without_the_new_columns_is_upgraded() {
         let dir = std::env::temp_dir().join(format!("cwld-log-old-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -645,6 +673,7 @@ mod tests {
         let r = lb.list(&LogFilter::default()).unwrap();
         assert_eq!(r[0].call, "OLD1AA");
         assert_eq!(r[0].activation_id, 0);
+        assert_eq!(r[0].freq_rx_hz, 0);
         lb.add(&q("NEW1BB", 6, "20m")).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
