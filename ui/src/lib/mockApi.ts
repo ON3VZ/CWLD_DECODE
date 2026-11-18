@@ -1,4 +1,4 @@
-import type { Activation, ActivationStats, Api, AudioStatus, ReplayResult, CheckIssue, ClusterProbe, ClusterSpot, ClusterStatus, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, CoreFailure, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, SwrAlert, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TentativeChar, Tuning, TxPolicy } from './types';
+import type { Activation, ActivationStats, Api, AudioStatus, ReplayResult, CheckIssue, ClusterProbe, ClusterSpot, ClusterStatus, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, CoreFailure, InputDevice, LinkReport, SwisslogStatus, LookupInfo, LookupStatus, PortInfo, SwrAlert, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TentativeChar, Tuning, TxPolicy } from './types';
 import { durationSeconds, playSidetone } from './morse';
 import { adifText, bandOf } from './adif';
 import { DEFAULT_CLUSTER_NODES } from './cluster';
@@ -60,7 +60,7 @@ export function defaultSettings(): Settings {
       show_labels: true,
       max_age_minutes: 30,
     },
-    link: { adif_enabled: false, adif_host: '127.0.0.1', adif_port: 2333, n1mm_enabled: false, n1mm_targets: '127.0.0.1:12060' },
+    link: { adif_enabled: false, adif_host: '127.0.0.1', adif_port: 2333, n1mm_enabled: false, n1mm_targets: '127.0.0.1:12060', swisslog_enabled: false, swisslog_host: '127.0.0.1', swisslog_port: 2237, swisslog_id: 'CWLD', swisslog_live: true, swisslog_message: 'qso_logged' },
     practice: { exercise: 'they_cq', wpm_min: 18, wpm_max: 26, strength: 'medium', noise: true, qsb: false, pileup: 3, minutes: 10, decoder_help: true, volume: 0.5, quiet_radio: true, paddle: { exercise: 'chars', stats: [], sessions: [] }, koch: { chars: 'KMRSUAPTLOWINJEF0YVG5/Q9ZH38B?427C1D6X', char_wpm: 20, eff_wpm: 12, tone_hz: 650, listen: 'groups', stats: [], sessions: [] } },
     contest: { active: '', sent_index: 0, session: 1, profiles: [], vars: [{ name: 'SEC', value: 'WLD' }, { name: 'ZONE', value: '14' }, { name: 'ITU', value: '27' }, { name: 'PWR', value: '20' }] },
     send_texts: { texts: {}, labels: {}, own_chips: [], chip_order: [], cq_pause_s: 6, cq_max: 10, paddle_wait: true },
@@ -204,7 +204,18 @@ export class MockApi implements Api {
     if (!last) fail('link_no_qso');
     this.linkResends++;
     const l = this.settings.link;
-    return { sent: (l.adif_enabled ? 1 : 0) + (l.n1mm_enabled ? l.n1mm_targets.split(/\s+/).filter(Boolean).length : 0), errors: [] };
+    const swiss = !l.adif_enabled && l.swisslog_enabled ? 1 : 0;
+    return { sent: (l.adif_enabled ? 1 : 0) + swiss + (l.n1mm_enabled ? l.n1mm_targets.split(/\s+/).filter(Boolean).length : 0), errors: [] };
+  }
+  /** What linkContext received, for tests. */
+  linkContexts: { call: string; report: string; grid: string }[] = [];
+  async linkContext(call: string, report: string, grid: string): Promise<void> {
+    this.linkContexts.push({ call, report, grid });
+  }
+  async swisslogStatus(): Promise<SwisslogStatus> {
+    const l = this.settings.link;
+    const on = l.swisslog_enabled && !l.adif_enabled;
+    return { active: on, target: `${l.swisslog_host}:${l.swisslog_port}`, sent: 0, received: 0, last_received_type: null, last_error: null };
   }
   async logCheck(f: LogFilter): Promise<CheckIssue[]> {
     return checkExport(await this.logList({ ...f, limit: 0 }), this.acts, this.nowSec());

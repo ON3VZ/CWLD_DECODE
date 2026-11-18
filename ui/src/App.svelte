@@ -29,6 +29,11 @@
   import Wizard from './components/Wizard.svelte';
   import TextEditor from './components/TextEditor.svelte';
 
+  // Swisslog follows the callsign of the live QSO (only when chosen with live status).
+  $effect(() => {
+    app.pushLinkContext();
+  });
+
   onMount(() => {
     createApi().then((api) => app.init(api));
     // CQ repeat only runs while the operator is at the station: minimizing CWLD stops it.

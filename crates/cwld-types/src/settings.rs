@@ -412,10 +412,57 @@ pub struct LinkSettings {
     pub n1mm_enabled: bool,
     /// Destinations as `host:port`, separated by spaces. N1MM's own default port is 12060.
     pub n1mm_targets: String,
+    /// Swisslog for Windows, over the UDP message format of WSJT-X. CWLD takes the place WSJT-X
+    /// would have: a heartbeat, a status with the callsign of the QSO, and "QSO Logged".
+    /// Only one log program is chosen at a time: Log4OM (`adif_enabled`) wins when both are set.
+    pub swisslog_enabled: bool,
+    pub swisslog_host: String,
+    pub swisslog_port: u16,
+    /// The client id Swisslog sees (the "Id" field of every message).
+    pub swisslog_id: String,
+    /// Send the status (callsign, frequency, mode) while the QSO runs, so Swisslog follows it.
+    pub swisslog_live: bool,
+    /// Which message logs a QSO: `QsoLogged` (type 5, default) or `LoggedAdif` (type 12).
+    pub swisslog_message: SwisslogMessage,
+}
+
+/// The WSJT-X message that hands a QSO to Swisslog. Never both, or the QSO could arrive twice.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SwisslogMessage {
+    #[default]
+    QsoLogged,
+    LoggedAdif,
+}
+
+impl LinkSettings {
+    /// The log program that gets the QSOs. Log4OM wins over Swisslog, so a hand-edited file with
+    /// both switched on never sends a QSO to two log programs.
+    pub fn logger(&self) -> Logger {
+        if self.adif_enabled {
+            Logger::Log4om
+        } else if self.swisslog_enabled {
+            Logger::Swisslog
+        } else {
+            Logger::None
+        }
+    }
+}
+
+/// The choice "Log program" in the settings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Logger {
+    None,
+    Log4om,
+    Swisslog,
 }
 
 pub const LINK_ADIF_PORT_DEFAULT: u16 = 2333;
 pub const LINK_N1MM_TARGET_DEFAULT: &str = "127.0.0.1:12060";
+/// Swisslog listens on the default port of WSJT-X for its Main instance.
+pub const LINK_SWISSLOG_PORT_DEFAULT: u16 = 2237;
+pub const LINK_SWISSLOG_ID_DEFAULT: &str = "CWLD";
 
 impl Default for LinkSettings {
     fn default() -> Self {
@@ -425,6 +472,12 @@ impl Default for LinkSettings {
             adif_port: LINK_ADIF_PORT_DEFAULT,
             n1mm_enabled: false,
             n1mm_targets: LINK_N1MM_TARGET_DEFAULT.into(),
+            swisslog_enabled: false,
+            swisslog_host: "127.0.0.1".into(),
+            swisslog_port: LINK_SWISSLOG_PORT_DEFAULT,
+            swisslog_id: LINK_SWISSLOG_ID_DEFAULT.into(),
+            swisslog_live: true,
+            swisslog_message: SwisslogMessage::QsoLogged,
         }
     }
 }
@@ -768,6 +821,25 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn an_old_settings_file_keeps_log4om_and_gets_swisslog_off() {
+        let s: Settings = serde_json::from_str(r#"{"schema_version":1,"link":{"adif_enabled":true,"adif_host":"127.0.0.1","adif_port":2333,"n1mm_enabled":false,"n1mm_targets":"127.0.0.1:12060"}}"#).unwrap();
+        assert!(s.link.adif_enabled);
+        assert_eq!(s.link.adif_port, 2333);
+        assert!(!s.link.swisslog_enabled);
+        assert_eq!(s.link.swisslog_port, 2237);
+        assert_eq!(s.link.swisslog_id, "CWLD");
+        assert!(s.link.swisslog_live);
+        assert_eq!(s.link.logger(), Logger::Log4om);
+        let none: Settings = serde_json::from_str(r#"{"schema_version":1}"#).unwrap();
+        assert_eq!(none.link.logger(), Logger::None);
+        let mut sw = LinkSettings::default();
+        sw.swisslog_enabled = true;
+        assert_eq!(sw.logger(), Logger::Swisslog);
+        sw.adif_enabled = true;
+        assert_eq!(sw.logger(), Logger::Log4om);
     }
 
     #[test]

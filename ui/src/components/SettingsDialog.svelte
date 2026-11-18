@@ -1,10 +1,10 @@
 <script lang="ts">
   import ContestProfiles from './ContestProfiles.svelte';
   import { tick } from 'svelte';
-  import { app, PRESETS } from '../lib/app.svelte';
+  import { app, PRESETS, chooseLogger, loggerOf } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
   import { DEFAULT_CLUSTER_NODES } from '../lib/cluster';
-  import type { ClusterSettings, Settings } from '../lib/types';
+  import type { ClusterSettings, Logger, Settings } from '../lib/types';
 
   const original = $state.snapshot(app.settings) as Settings;
   let draft = $state<Settings>(structuredClone(original));
@@ -25,6 +25,13 @@
   function preset(name: 'weak' | 'medium' | 'strong') {
     draft.audio.squelch = PRESETS[name];
     app.setPreset(name);
+  }
+  /** The log program in the draft: one at a time (Log4OM wins when both are set, as in the core). */
+  const draftLogger = $derived(loggerOf(draft.link));
+  const LOGGERS: Logger[] = ['none', 'log4om', 'swisslog'];
+  function pickLogger(w: Logger) {
+    draft.link = chooseLogger(draft.link, w);
+    app.linkResult = null;
   }
   const presetNow = $derived((Object.keys(PRESETS) as Array<keyof typeof PRESETS>).find((k) => Math.abs(PRESETS[k] - (draft.audio.squelch ?? 3.5)) < 0.05) ?? null);
 
@@ -440,20 +447,72 @@
         {#if section === 'log'}
           <h3>{t('link.title')}</h3>
           <p class="muted">{t('link.intro')}</p>
-          <h3>{t('link.adif.title')}</h3>
-          <label class="check"><input type="checkbox" bind:checked={draft.link.adif_enabled} /> {t('link.adif.on')}</label>
-          <small class="muted">{t('link.adif.help')}</small>
-          <div class="row">
-            <label>{t('link.host')} <input type="text" bind:value={draft.link.adif_host} disabled={!draft.link.adif_enabled} /></label>
-            <label>{t('link.port')} <input type="number" min="1" max="65535" bind:value={draft.link.adif_port} disabled={!draft.link.adif_enabled} /></label>
+          <h3 id="logger-title">{t('link.logger.title')}</h3>
+          <div class="row" role="radiogroup" aria-labelledby="logger-title">
+            {#each LOGGERS as w (w)}
+              <label class="check"><input type="radio" name="logger" value={w} checked={draftLogger === w} onchange={() => pickLogger(w)} /> {t(`link.logger.${w}`)}</label>
+            {/each}
           </div>
+          <small class="muted">{t(`link.logger.${draftLogger}.help`)}</small>
+          {#if draftLogger === 'log4om'}
+            <h3>{t('link.adif.title')}</h3>
+            <small class="muted">{t('link.adif.help')}</small>
+            <div class="row">
+              <label>{t('link.host')} <input type="text" bind:value={draft.link.adif_host} /></label>
+              <label>{t('link.port')} <input type="number" min="1" max="65535" bind:value={draft.link.adif_port} /></label>
+            </div>
+          {:else if draftLogger === 'swisslog'}
+            <h3>{t('link.swisslog.title')}</h3>
+            <small class="muted">{t('link.swisslog.help')}</small>
+            <ol class="muted steps">
+              <li>{t('link.swisslog.step1')}</li>
+              <li>{t('link.swisslog.step2')}</li>
+              <li>{t('link.swisslog.step3')}</li>
+              <li>{t('link.swisslog.step4')}</li>
+            </ol>
+            <div class="row">
+              <label>{t('link.host')} <input type="text" bind:value={draft.link.swisslog_host} /></label>
+              <label>{t('link.port')} <input type="number" min="1" max="65535" bind:value={draft.link.swisslog_port} /></label>
+            </div>
+            <small class="muted">{t('link.swisslog.port.help')}</small>
+            <label class="check"><input type="checkbox" bind:checked={draft.link.swisslog_live} /> {t('link.swisslog.live')}</label>
+            <small class="muted">{t('link.swisslog.live.help')}</small>
+            <details>
+              <summary>{t('link.swisslog.advanced')}</summary>
+              <label>{t('link.swisslog.id')} <input type="text" maxlength="32" bind:value={draft.link.swisslog_id} /></label>
+              <label>{t('link.swisslog.message')}
+                <select bind:value={draft.link.swisslog_message}>
+                  <option value="qso_logged">{t('link.swisslog.message.qso_logged')}</option>
+                  <option value="logged_adif">{t('link.swisslog.message.logged_adif')}</option>
+                </select>
+              </label>
+              <small class="muted">{t('link.swisslog.advanced.help')}</small>
+            </details>
+            <div class="row">
+              <button class="btn" type="button" onclick={() => app.swisslogRefresh()}>{t('link.swisslog.check')}</button>
+            </div>
+            {#if app.swisslogState}
+              <p role="status">
+                {#if app.swisslogState.last_error}
+                  {t('link.swisslog.state.err', { target: app.swisslogState.target, error: app.swisslogState.last_error })}
+                {:else if app.swisslogState.active}
+                  {t('link.swisslog.state.ok', { target: app.swisslogState.target, sent: app.swisslogState.sent, received: app.swisslogState.received })}
+                {:else}
+                  {t('link.swisslog.state.off')}
+                {/if}
+              </p>
+            {/if}
+          {/if}
           <h3>{t('link.n1mm.title')}</h3>
           <label class="check"><input type="checkbox" bind:checked={draft.link.n1mm_enabled} /> {t('link.n1mm.on')}</label>
           <small class="muted">{t('link.n1mm.help')}</small>
           <label>{t('link.n1mm.targets')} <input type="text" bind:value={draft.link.n1mm_targets} disabled={!draft.link.n1mm_enabled} /></label>
           <small class="muted">{t('link.warning')}</small>
+          {#if draftLogger === 'swisslog' && draft.link.n1mm_enabled}
+            <p class="warn" role="alert">{t('link.swisslog.n1mm_warning')}</p>
+          {/if}
           <div class="row">
-            <button class="btn" type="button" disabled={!draft.link.adif_enabled && !draft.link.n1mm_enabled} onclick={() => app.linkResend(draft)}>{t('link.resend')}</button>
+            <button class="btn" type="button" disabled={draftLogger === 'none' && !draft.link.n1mm_enabled} onclick={() => app.linkResend(draft)}>{t('link.resend')}</button>
           </div>
           <small class="muted">{t('link.resend.help')}</small>
           {#if app.linkResult}
@@ -595,6 +654,7 @@
 </div>
 
 <style>
+  ol.steps { margin: 4px 0 6px 20px; padding: 0; }
   .scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; z-index: 10; }
   .dlg { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; width: min(820px, 96vw); height: min(720px, 92vh); display: flex; flex-direction: column; gap: 10px; }
   .body { flex: 1; min-height: 0; display: grid; grid-template-columns: 180px 1fr; gap: 16px; }

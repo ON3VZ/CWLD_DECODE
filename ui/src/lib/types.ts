@@ -260,6 +260,28 @@ export interface LinkSettings {
   n1mm_enabled: boolean;
   /** `host:port` entries separated by spaces. */
   n1mm_targets: string;
+  /** Swisslog over the WSJT-X UDP format. Log4OM (`adif_enabled`) wins when both are set. */
+  swisslog_enabled: boolean;
+  swisslog_host: string;
+  swisslog_port: number;
+  /** The client id Swisslog sees. */
+  swisslog_id: string;
+  /** Send the callsign, frequency and mode while the QSO runs. */
+  swisslog_live: boolean;
+  swisslog_message: 'qso_logged' | 'logged_adif';
+}
+
+/** The log program that gets the QSOs. Only one at a time. */
+export type Logger = 'none' | 'log4om' | 'swisslog';
+
+/** What the settings window shows about the Swisslog link. */
+export interface SwisslogStatus {
+  active: boolean;
+  target: string;
+  sent: number;
+  received: number;
+  last_received_type: number | null;
+  last_error: string | null;
 }
 
 export interface LookupSettings {
@@ -690,6 +712,9 @@ export interface Api {
   openExportFolder(): Promise<string>;
   /** Sends the newest real QSO again to the enabled UDP links (a connection test). */
   linkResendLast(): Promise<LinkReport>;
+  /** Callsign, report and locator of the running QSO, for the live status to Swisslog. */
+  linkContext(call: string, report: string, grid: string): Promise<void>;
+  swisslogStatus(): Promise<SwisslogStatus>;
   lookupStatus(): Promise<LookupStatus>;
   lookupSetPassword(password: string): Promise<void>;
   lookupClearPassword(): Promise<void>;

@@ -354,6 +354,17 @@ async fn lookup_call(core: Core<'_>, call: String) -> Result<Option<cwld_lookup:
         .map_err(Failure::from)
 }
 
+/// The callsign, report and locator of the running QSO, for the live status to Swisslog.
+#[tauri::command]
+fn link_context(core: Core, call: String, report: String, grid: String) {
+    core.link_context(&call, &report, &grid);
+}
+
+#[tauri::command]
+fn swisslog_status(core: Core) -> cwld_core::SwisslogStatus {
+    core.swisslog_status()
+}
+
 #[tauri::command]
 fn link_resend_last(core: Core) -> Result<cwld_core::LinkReport, Failure> {
     Ok(core.link_resend_last()?)
@@ -440,6 +451,7 @@ fn start_ticker(app: AppHandle, core: Arc<AppCore>) {
             events.extend(core.cluster_tick());
             if round % 5 == 0 {
                 events.extend(core.tick());
+                core.link_tick();
             }
             if !events.is_empty() {
                 let _ = app.emit("core-events", events);
@@ -517,6 +529,8 @@ pub fn run() {
             open_export_folder,
             export_text_file,
             link_resend_last,
+            link_context,
+            swisslog_status,
             lookup_status,
             lookup_set_password,
             lookup_clear_password,

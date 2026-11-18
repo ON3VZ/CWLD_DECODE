@@ -1,6 +1,8 @@
 # CWLD: ontwerp en architectuur (stap 2b)
 
-Datum: 4 november 2026. Versie 7. Bouwt voort op `bevindingen.md`, `bevindingen_qmx.md` en `CWLD_ontwerprichtingen.html`.
+Datum: 17 november 2026. Versie 8. Bouwt voort op `bevindingen.md`, `bevindingen_qmx.md` en `CWLD_ontwerprichtingen.html`.
+
+**Wijzigingen in versie 8 (0.21.0, keuze logprogramma):** (34) Instelling **Logprogramma** met de keuze Geen, Log4OM of Swisslog, hoogstens één tegelijk. (35) Swisslog als aparte module `cwld-core/src/swisslog.rs` met het UDP-berichtenformaat van WSJT-X, zie 3.12 en `bevindingen_swisslog.md`. (36) De Log4OM-koppeling (3.8, in de code `link.rs`) is ongewijzigd: dezelfde velden `link.adif_*`, hetzelfde ADIF-record. (37) Bij Geen blijft loggen werken, want het eigen logboek (3.11) logt altijd.
 
 **Wijzigingen in versie 7 (fase 3, audio en decoder gebouwd):** (26) Nieuwe crates `cwld-dsp` (generator, front-end met noise blanker, automatische notch, fadingvolger), `cwld-decoder` (semi-Markov Viterbi, snelheidszoeker, woordmodel, meetbank) en `cwld-audio` (geluidskaart via cpal, lock-free ringbuffer, resampler naar 8 kHz, waterfall met eigen FFT, WAV-opname, audiothread). (27) De geluidskaart-callback kopieert alleen samples in de ringbuffer. Alles andere gebeurt in een eigen thread; de interface krijgt elke 100 ms de gebeurtenissen. (28) Gedecodeerde tekst tijdens het zenden: wat de app zelf typte wordt weggelaten (staat al in het gesprek), de rest is de paddle. Een QMX meldt zijn paddletekst zelf via `TB`, daar wordt de audiokopie weggelaten. (29) Een klik op de waterfall zet de toonhoogte van de decoder en bewaart ze. (30) Opnameknop: WAV-bestand van de ingang op de rate van de geluidskaart, in Documenten\CWLD, met datum, tijd en frequentie in de naam, hoogstens een uur. (31) Een WAV-bestand kan op echte snelheid gedecodeerd worden, als vergelijking met CwGet. (32) Zekerheidsmeter krijgt echte waarden. (33) Meetresultaten in `meetresultaten_decoder.md`.
 
@@ -24,6 +26,7 @@ Alles met **[VERIFIEER]** is uit geheugen of afleiding en moet vóór het bouwen
 | Uiterlijk | **Richting A (Gesprek) als basis.** Uit richting C komt de **signalenlijst als uitklapbaar zijpaneel**. Richting B (grote frequentie, ondertitels) komt terug als **"Groot scherm"-weergave** voor contests, later. |
 | Webframework | **Svelte 5** (runes) met TypeScript, gebundeld met Vite |
 | Open beslissing 1 (Log4OM) | **Loggen via de ADIF MESSAGE-service van Log4OM** (geen FT8-formaat). Live velden via JT-status of eigen CAT van Log4OM zijn opties. Zie 3.8. |
+| Logprogramma | **Keuze Geen, Log4OM of Swisslog**, hoogstens één tegelijk. Log4OM blijft zoals in 3.8. Zie 3.12. |
 | Open beslissing 2 (paddle) | Eerst testen of de USB-audio het eigen zendsignaal bevat. Zo niet: alleen een TX-indicator |
 | Open beslissing 3 (signatuur) | Eerste testreleases ongetekend, daarna SignPath Foundation aanvragen |
 | Open beslissing 4 | Svelte, zie boven |
@@ -539,6 +542,30 @@ Een venster toont wat er geëxporteerd wordt en blokkeert op fouten:
 - Elk QSO onthoudt waarheen het al verstuurd is (`exported_to`: bestand, Log4OM). Zo wordt een QSO **niet dubbel** verstuurd. Log4OM controleert wel op dubbele QSO's, maar de log vult zich met meldingen.
 - **Importeren** van een ADIF-bestand (bv. een export uit Log4OM) voor de dubbele-QSO-controle. Pas na de MVP.
 - **Niet in de MVP**: rechtstreeks uploaden naar QRZ, LoTW, Club Log of de WWFF-coördinator. Dat blijft het werk van Log4OM.
+
+### 3.12 Keuze logprogramma: Geen, Log4OM of Swisslog (nieuw in versie 8, gebouwd in 0.21.0)
+
+**Doel.** De gebruiker kiest naar welk logprogramma CWLD zijn QSO's doorstuurt. Kristof gebruikt Log4OM; Swisslog is er voor andere gebruikers. De Log4OM-koppeling blijft precies zoals ze was.
+
+**Instellingen (zoals in de code).** Er komt geen apart veld voor de keuze. De keuze volgt uit twee schakelaars in `link`:
+- `adif_enabled` (bestaand) betekent Log4OM. `swisslog_enabled` (nieuw) betekent Swisslog. Beide uit is Geen.
+- Staan ze toch allebei aan (een met de hand aangepast bestand), dan wint Log4OM: `LinkSettings::logger()` in Rust en `loggerOf` in de interface geven dan Log4OM, en Swisslog krijgt niets.
+- Nieuwe velden: `swisslog_host` (127.0.0.1), `swisslog_port` (2237), `swisslog_id` (`CWLD`), `swisslog_live` (aan), `swisslog_message` (`qso_logged` of `logged_adif`).
+- Een oud instellingenbestand zonder deze velden krijgt de standaardwaarden; `adif_enabled` en de Log4OM-velden blijven staan. Er is dus geen migratie nodig.
+- De N1MM-uitzending blijft een aparte schakelaar. Met Swisslog gekozen en N1MM aan toont de interface een waarschuwing over dubbele QSO's.
+
+**Interface.** Instellingen, Logkoppeling: keuzerondjes Geen, Log4OM, Swisslog. Onder de keuze alleen de velden van het gekozen programma. Bij Swisslog: de vier stappen in Swisslog, adres en poort, "Swisslog laten meevolgen", onder Geavanceerd de Id en het berichttype, en de knop Koppeling controleren (verstuurd, terug ontvangen, laatste fout).
+
+**Swisslog in de kern (`swisslog.rs`).**
+- Berichten (big-endian, magic `0xadbccbda`, schema 3, type, Id): Heartbeat (0) bij de start en elke 15 s, Status (1) bij elke wijziging en bij elke heartbeat, QSO Logged (5) of Logged ADIF (12) bij loggen, Close (6) bij uitzetten, wijzigen van de instellingen of afsluiten.
+- Status: frequentie en modus uit de radio, roepletters en rapport van het lopende QSO uit de interface (`link_context`, 400 ms na de laatste wijziging), alleen roepletters van minstens 3 tekens. In OEFENEN stuurt de interface lege roepletters. Na loggen worden de roepletters leeggemaakt.
+- `link_tick` loopt elke 500 ms mee in de bestaande ticker van de Tauri-schil. Eén UDP-socket, niet-blokkerend, zodat Swisslog alle berichten van dezelfde afzender krijgt.
+- Wat terugkomt wordt gelezen, geteld en genegeerd. Geen enkel bericht van buiten kan zenden (hoofdstuk 12).
+- Loggen naar Swisslog gebeurt in `AppCore::link_send`, na en los van `send_qso` (Log4OM en N1MM), alleen voor `contactinfo`, nooit voor test-QSO's.
+
+**Tests.** Byte-voor-byte uitlezen van elk bericht, Juliaanse dag en UTC-tijd, een nep-Swisslog die heartbeat, status, QSO en Close ontvangt, terugkomende Reply en Halt Tx die genegeerd worden, Log4OM wint als beide aan staan, en het ADIF-record naar Log4OM is byte voor byte gelijk met of zonder de Swisslog-velden. Handmatig: testplan A76 (Kristof, Log4OM) en A77 (een Swisslog-gebruiker).
+
+**Open (zie `bevindingen_swisslog.md`):** aanvaardt Swisslog modus CW en Id `CWLD`, logt het met type 5 of is type 12 nodig, neemt het de frequentie live over, en werkt de N1MM-weg als reserve.
 
 ## 4. Testen
 

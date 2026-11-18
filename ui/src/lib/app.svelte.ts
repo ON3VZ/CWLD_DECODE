@@ -1,4 +1,4 @@
-import type { RadioControls } from './types';
+import type { RadioControls, LinkSettings, Logger, SwisslogStatus } from './types';
 import type { Activation, ActivationStats, Api, ClusterProbe, ClusterSettings, ClusterSpot, ClusterStatus, DupeInfo, LogQso, AudioStatus, ReplayResult, Tuning, CoreEvent, CoreFailure, DecoderStats, InputDevice, PortInfo, RadioSettings, RadioStatus, Settings, Snapshot, SwrAlert, TentativeChar, TxPolicy, UpdateInfo, ScopeSweep } from './types';
 import { i18n, t } from './i18n.svelte';
 import { activeProfile, activeSent, copyProfile as copyContestProfileData, cutNumber, isBuiltin, mergeImport, newProfileId, ownVars, parseImport, usesSerial, allProfiles, plain } from './contest';
@@ -18,6 +18,18 @@ import { nextSpot, SPEED_STEP, stepSpeed, type HotkeyAction } from './hotkeys';
 
 /** Pause after the last change of the call before QRZ.com is asked. */
 export const LOOKUP_DELAY_MS = 700;
+/** Pause after the last change of the QSO panel before Swisslog gets the new callsign. */
+export const LINK_CONTEXT_DELAY_MS = 400;
+
+/** Chooses the log program: one at a time, so a QSO never reaches two log programs. */
+export function chooseLogger(link: LinkSettings, which: Logger): LinkSettings {
+  return { ...link, adif_enabled: which === 'log4om', swisslog_enabled: which === 'swisslog' };
+}
+
+/** The log program a link setting means. Log4OM wins when both are set, as in the core. */
+export function loggerOf(link: LinkSettings): Logger {
+  return link.adif_enabled ? 'log4om' : link.swisslog_enabled ? 'swisslog' : 'none';
+}
 import { PracticeSim, type Score, type SimTx } from './sim';
 import type { PracticeSettings } from './types';
 import { durationSeconds, playSidetone } from './morse';
@@ -1122,6 +1134,57 @@ class AppState {
       this.notice = t('settings.saved');
     } catch (e) {
       this.fail(e);
+    }
+  }
+
+  /** The log program chosen in the settings. Log4OM wins when both are set (as in the core). */
+  get logger(): Logger {
+    const l = this.settings?.link;
+    return l ? loggerOf(l) : 'none';
+  }
+
+  /**
+   * Callsign, report and locator of the live QSO as Swisslog should follow them, or null when
+   * Swisslog is not the log program or its live status is off.
+   */
+  linkContextNow(): { call: string; report: string; grid: string } | null {
+    const l = this.settings?.link;
+    if (!l || this.logger !== 'swisslog' || !l.swisslog_live) return null;
+    // Practice stations are made up: Swisslog must not follow them into its entry window.
+    if (this.policy === 'practice') return { call: '', report: '', grid: '' };
+    const q = this.cur.qso;
+    const call = q.call.trim().toUpperCase();
+    const grid = this.lookupGrid && this.lookupGrid.call === call ? this.lookupGrid.grid : '';
+    return { call, report: (q.rst ?? '').trim().toUpperCase(), grid };
+  }
+
+  private linkCtxTimer: ReturnType<typeof setTimeout> | null = null;
+  private linkCtxSent = '';
+
+  /** Tells the core about a changed QSO, at most once per pause in typing. Called by an effect in App. */
+  pushLinkContext() {
+    const c = this.linkContextNow();
+    if (!c) {
+      this.linkCtxSent = '';
+      return;
+    }
+    const key = `${c.call}|${c.report}|${c.grid}`;
+    if (key === this.linkCtxSent) return;
+    if (this.linkCtxTimer) clearTimeout(this.linkCtxTimer);
+    this.linkCtxTimer = setTimeout(() => {
+      this.linkCtxTimer = null;
+      this.linkCtxSent = key;
+      this.api.linkContext(c.call, c.report, c.grid).catch(() => {});
+    }, LINK_CONTEXT_DELAY_MS);
+  }
+
+  /** Swisslog link state for the settings window. */
+  swisslogState = $state<SwisslogStatus | null>(null);
+  async swisslogRefresh() {
+    try {
+      this.swisslogState = await this.api.swisslogStatus();
+    } catch {
+      this.swisslogState = null;
     }
   }
 

@@ -9,6 +9,7 @@
 
 use crate::{AppCore, CoreError};
 use cwld_log::{adif_date_time, adif_record, AdifOptions, Qso};
+use cwld_radio::Rig;
 use cwld_types::settings::LinkSettings;
 use serde::Serialize;
 use std::net::{ToSocketAddrs, UdpSocket};
@@ -125,7 +126,48 @@ impl AppCore {
     fn link_send(&self, q: &Qso, kind: &str) -> LinkReport {
         let link = self.settings.lock().unwrap().link.clone();
         let contest_id = self.settings.lock().unwrap().contest.profiles.iter().find(|p| p.id == q.contest).map(|p| p.name.clone()).unwrap_or_default();
-        send_qso(&link, q, &contest_id, env!("CARGO_PKG_VERSION"), kind)
+        let mut report = send_qso(&link, q, &contest_id, env!("CARGO_PKG_VERSION"), kind);
+        // Swisslog is a separate path: the Log4OM path above is not changed by it.
+        if link.logger() == cwld_types::Logger::Swisslog && kind == "contactinfo" && !q.test && !q.call.trim().is_empty() {
+            let mut sl = self.swisslog.lock().unwrap();
+            match sl.log(&link, q, env!("CARGO_PKG_VERSION")) {
+                Ok(()) => report.sent += 1,
+                Err(e) => report.errors.push(format!("Swisslog {}:{}: {e}", link.swisslog_host.trim(), link.swisslog_port)),
+            }
+        }
+        report
+    }
+
+    /// The callsign, report and locator of the running QSO, from the interface. Swisslog gets
+    /// them in its next status (only from 3 characters on, see [`crate::swisslog`]).
+    pub fn link_context(&self, call: &str, report: &str, grid: &str) {
+        let mut sl = self.swisslog.lock().unwrap();
+        sl.dx_call = crate::swisslog::dx_call_for_status(call);
+        sl.report = report.trim().to_uppercase();
+        sl.dx_grid = grid.trim().to_uppercase();
+    }
+
+    /// Called about twice a second by the shell: heartbeat and status for Swisslog when chosen.
+    pub fn link_tick(&self) {
+        let (link, de_call, de_grid) = {
+            let s = self.settings.lock().unwrap();
+            let base = s.station.calls.first().cloned().unwrap_or_default();
+            let profile = s.profiles.iter().find(|p| p.id == s.profile).cloned().unwrap_or_default();
+            let grid = if profile.grid.trim().is_empty() { s.station.locator.clone() } else { profile.grid.clone() };
+            (s.link.clone(), profile.on_air(&base), grid)
+        };
+        let radio = self.rig.lock().unwrap().status();
+        self.swisslog.lock().unwrap().tick(&link, &radio, &de_call, &de_grid, env!("CARGO_PKG_VERSION"), std::time::Instant::now());
+    }
+
+    /// For the settings window: is the Swisslog link working, and what came back.
+    pub fn swisslog_status(&self) -> crate::swisslog::SwisslogStatus {
+        self.swisslog.lock().unwrap().status.clone()
+    }
+
+    /// Says goodbye to Swisslog when CWLD ends.
+    pub fn link_stop(&self) {
+        self.swisslog.lock().unwrap().stop();
     }
 
     /// Sends the newest real QSO again, as a test of the connection. Never makes up a QSO.
@@ -218,5 +260,68 @@ mod tests {
         l.adif_enabled = true;
         l.adif_port = rx.local_addr().unwrap().port();
         assert_eq!(send_qso(&l, &qso(), "", "1", "contactdelete").sent, 0);
+    }
+
+    #[test]
+    fn swisslog_and_log4om_never_both_get_a_qso() {
+        let log4om = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let swiss = UdpSocket::bind("127.0.0.1:0").unwrap();
+        for s in [&log4om, &swiss] {
+            s.set_read_timeout(Some(std::time::Duration::from_millis(300))).unwrap();
+        }
+        let core = AppCore::new(None);
+        {
+            let mut st = core.settings.lock().unwrap();
+            st.link.adif_enabled = true;
+            st.link.adif_port = log4om.local_addr().unwrap().port();
+            st.link.swisslog_enabled = true;
+            st.link.swisslog_port = swiss.local_addr().unwrap().port();
+        }
+        // Both switched on (a hand-edited file): Log4OM wins, Swisslog gets nothing.
+        let r = core.link_send(&qso(), "contactinfo");
+        assert_eq!((r.sent, r.errors.len()), (1, 0));
+        let mut buf = [0u8; 4096];
+        let n = log4om.recv(&mut buf).unwrap();
+        assert!(String::from_utf8_lossy(&buf[..n]).contains("<CALL:6>DL1ABC"));
+        assert!(swiss.recv(&mut buf).is_err());
+
+        // Swisslog chosen: a heartbeat and the QSO go to Swisslog, nothing to the Log4OM port.
+        core.settings.lock().unwrap().link.adif_enabled = false;
+        let r = core.link_send(&qso(), "contactinfo");
+        assert_eq!((r.sent, r.errors.len()), (1, 0));
+        let mut kinds = Vec::new();
+        while let Ok(n) = swiss.recv(&mut buf) {
+            kinds.push(u32::from_be_bytes(buf[8..12].try_into().unwrap()));
+            assert!(n >= 12);
+        }
+        assert_eq!(kinds, vec![crate::swisslog::TYPE_HEARTBEAT, crate::swisslog::TYPE_QSO_LOGGED]);
+        assert!(log4om.recv(&mut buf).is_err());
+
+        // A test QSO never goes.
+        let mut t = qso();
+        t.test = true;
+        assert_eq!(core.link_send(&t, "contactinfo").sent, 0);
+        assert!(swiss.recv(&mut buf).is_err());
+    }
+
+    #[test]
+    fn the_log4om_record_is_the_same_with_or_without_the_swisslog_fields() {
+        let mut plain = LinkSettings::default();
+        plain.adif_enabled = true;
+        let mut with = plain.clone();
+        with.swisslog_enabled = true;
+        with.swisslog_port = 9;
+        let rx = UdpSocket::bind("127.0.0.1:0").unwrap();
+        rx.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+        let port = rx.local_addr().unwrap().port();
+        plain.adif_port = port;
+        with.adif_port = port;
+        let mut buf = [0u8; 4096];
+        send_qso(&plain, &qso(), "", "1", "contactinfo");
+        let n = rx.recv(&mut buf).unwrap();
+        let a = buf[..n].to_vec();
+        send_qso(&with, &qso(), "", "1", "contactinfo");
+        let n = rx.recv(&mut buf).unwrap();
+        assert_eq!(a, buf[..n].to_vec());
     }
 }

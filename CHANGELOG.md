@@ -1,3 +1,19 @@
+## 0.21.0 (choose the log program: Log4OM, Swisslog or none)
+
+- New: Settings, **Logging link** starts with **Log program**: three choices, **None**, **Log4OM** and **Swisslog**. Only one is on at a time, so a QSO never reaches two log programs.
+- Log4OM is not changed. An existing setting with Log4OM on shows Log4OM chosen, with the same address and port, and the same ADIF record goes out. The checkbox "Send each logged QSO to Log4OM" is now the choice Log4OM.
+- New: **Swisslog for Windows**. CWLD talks to Swisslog the way WSJT-X does, over the WSJT-X UDP message format (default 127.0.0.1:2237, the Main instance of Swisslog):
+  - a heartbeat at start and every 15 seconds, so the UDP button of Swisslog turns green;
+  - a status with frequency, mode and the callsign of the QSO in the panel (from 3 characters on), so Swisslog fills its entry window while you work the station. This can be switched off;
+  - "QSO Logged" when you log the QSO (or "Logged ADIF", under Advanced, never both), then an empty status so Swisslog clears its entry window;
+  - "Close" when the link is switched off or CWLD ends.
+  - Everything that comes back from Swisslog is read, counted and ignored. No message from another program can make CWLD transmit.
+  - Test QSOs and practice QSOs are never sent. In practice mode Swisslog gets no callsigns of the simulated stations.
+  - The settings have the steps for Swisslog, a button **Check the link** (messages sent and received), and a warning when the N1MM broadcast is on as well.
+  - Written from the Swisslog help (version 5.118) and the published description of the WSJT-X messages. Not yet tried with a real Swisslog (test A77).
+- Under the hood: `crates/cwld-core/src/swisslog.rs` (encoder, link state, tests with a fake Swisslog), new settings `link.swisslog_*` (the Log4OM fields are unchanged), Tauri commands `link_context` and `swisslog_status`, and tests that the Log4OM record is byte for byte the same with or without the Swisslog fields.
+- Manual: chapter 23 (the choice) and new chapter 47 (Swisslog). Tests A76 and A77.
+
 ## 0.20.6 (open the help page from the app)
 
 - New: Settings, **Updates and about** has a section **Help** with the button **Open the help page**. It opens the help page of the CWLD website in your default browser, in the language of the app (English at the root, Dutch under `/nl/`). You need an internet connection; without one the browser says so, or CWLD shows a short message.

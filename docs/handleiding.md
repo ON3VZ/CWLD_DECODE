@@ -1,4 +1,4 @@
-# CWLD, korte handleiding (testversie, bijgewerkt voor 0.20.6)
+# CWLD, korte handleiding (testversie, bijgewerkt voor 0.21.0)
 
 ## 1. Eerste start in vier stappen
 
@@ -219,6 +219,8 @@ Bij de eerste start opent een venster met vier stappen. Je kunt het altijd overs
 
 CWLD kan elk QSO dat je logt via UDP doorgeven aan een logboekprogramma. Alles staat standaard uit. Test-QSO's worden nooit verstuurd. Een mislukte verzending houdt het loggen in CWLD niet tegen.
 
+Sinds 0.21.0 kies je bovenaan bij Instellingen, Logkoppeling het **Logprogramma**: **Geen**, **Log4OM** of **Swisslog**. Er staat altijd maar één aan, zodat een QSO nooit in twee logprogramma's terechtkomt. Wie Log4OM al gebruikte, ziet Log4OM gekozen staan met dezelfde instellingen als voorheen; aan de koppeling met Log4OM is niets veranderd. Swisslog staat in hoofdstuk 47.
+
 ### Log4OM instellen (ADIF)
 
 Eerst in Log4OM, dan in CWLD. De Log4OM-stappen zijn gebaseerd op een beschrijving van een ander programma (VarAC) en op de Log4OM-handleiding; de menunamen kunnen in jouw versie licht verschillen.
@@ -229,7 +231,7 @@ Eerst in Log4OM, dan in CWLD. De Log4OM-stappen zijn gebaseerd op een beschrijvi
 4. Kies bij Service Type de waarde **ADIF_MESSAGE**.
 5. Klik op de plusknop (+) om de verbinding toe te voegen en zet een vinkje bij de verbinding (de V).
 6. Klik op Save and Apply.
-7. Ga in CWLD naar Instellingen, Logkoppeling, zet "Elk gelogd QSO naar Log4OM sturen" aan, laat het adres op 127.0.0.1 en de poort op 2333 staan, en klik Opslaan.
+7. Ga in CWLD naar Instellingen, Logkoppeling, kies bij **Logprogramma** het rondje **Log4OM**, laat het adres op 127.0.0.1 en de poort op 2333 staan, en klik Opslaan. (Tot en met 0.20.6 was dit een vinkje "Elk gelogd QSO naar Log4OM sturen".)
 8. Log een echt QSO in CWLD. Het moet in Log4OM verschijnen. Of klik op Laatste QSO opnieuw sturen: Log4OM meldt dan dat het al bestaat, dat is normaal.
 
 Let op:
@@ -623,3 +625,41 @@ In sommige contests telt een decoder als hulp (een aparte klasse Assisted) of is
 - **Neuraal netwerk (0.18.3).** Een klein netwerk is uitgeprobeerd als extra bron voor de decoder. Op de testbank gaf het geen winst en het staat uit. De code blijft in de repository voor later, met echte opnames.
 - **Notchmelding (0.18.4).** De toonzoeker volgt de rand van een filter of notch niet meer. Zie ook hoofdstuk 31.
 - **Het logboekvenster en CSV** staan in hoofdstuk 32 en 35, bewerken van een QSO in hoofdstuk 34.
+
+## 47. Logkoppeling met Swisslog (0.21.0)
+
+CWLD kan QSO's doorgeven aan **Swisslog for Windows**. CWLD praat daarvoor met Swisslog op dezelfde manier als WSJT-X: met het UDP-berichtenformaat van WSJT-X. Swisslog kent dat al, dus er is geen extra programma nodig. Geschreven voor de laatste versie van Swisslog (5.118, juli 2026), volgens de help van Swisslog. Nog niet getest met een echte Swisslog (test A77).
+
+Wat er gebeurt:
+
+- Swisslog **volgt je QSO**: de roepletters uit het QSO-paneel van CWLD verschijnen in het invoervenster van Swisslog (vanaf 3 tekens), samen met de frequentie en de modus. Daar worden ze nog niet bewaard.
+- Als je het QSO in CWLD **logt**, bewaart Swisslog het met roepletters, datum en tijd (UTC), frequentie, modus, beide rapporten, naam, vermogen en opmerking. Swisslog vult naam en locator aan uit zijn eigen callbooks als die leeg zijn.
+- Daarna maakt CWLD de roepletters in Swisslog weer leeg voor het volgende station.
+- Test-QSO's en QSO's uit OEFENEN gaan nooit naar Swisslog. In OEFENEN krijgt Swisslog ook geen roepletters van de gesimuleerde stations.
+- Wat Swisslog terugstuurt, leest CWLD en negeert het. Geen enkel bericht van Swisslog kan CWLD laten zenden.
+
+### Swisslog instellen (eenmalig)
+
+1. Klik in Swisslog op het menu **Options**, dan **Digital Modes-Interface**, en vink **WSJT-X** aan.
+2. Klik opnieuw op **Options**, **Digital Modes-Interface** en kies **WSJT-X / JTDX / MSHV / JS8Call UDP Settings**.
+3. Vink bij de **Main instance** het vakje **Active** aan, zet **IP Address** op 127.0.0.1 en **Port** op 2237, en klik OK.
+
+### CWLD instellen
+
+4. Klik in CWLD op het tandwiel (Instellingen) en kies links **Logkoppeling**.
+5. Kies bij **Logprogramma** het rondje **Swisslog**. Laat het adres op 127.0.0.1 en de poort op 2237 staan, laat "Swisslog laten meevolgen" aangevinkt, en klik Opslaan.
+6. Kijk in Swisslog naar de knop **UDP**. Binnen enkele seconden wordt hij groen: de koppeling werkt. Is hij rood, dan staat de koppeling in Swisslog uit: klik er één keer op.
+7. Typ in het QSO-paneel van CWLD een roepletterreeks. Ze verschijnt in Swisslog. Log het QSO: het staat in Swisslog.
+8. Wil je zien of CWLD berichten verstuurt: klik in de instellingen op **Koppeling controleren**. Je ziet hoeveel berichten vertrokken en hoeveel er van Swisslog terugkwamen.
+
+Let op:
+
+- **Zelf typen in Swisslog.** Zolang de koppeling aan staat, negeert Swisslog wat je in zijn eigen invoervenster typt (zo werkt het ook met WSJT-X). Klik op de knop UDP in Swisslog om de koppeling even uit te zetten, of vink in CWLD "Swisslog laten meevolgen" uit. Dan logt Swisslog nog altijd de QSO's van CWLD.
+- **WSJT-X of JTDX ook gekoppeld?** Twee programma's kunnen geen UDP-poort delen. Laat WSJT-X dan op 2237 en geef CWLD een vrije poort, bijvoorbeeld 2238: in CWLD bij Poort, en in Swisslog in een vrije instantie (Active aanvinken, 127.0.0.1, 2238). Swisslog volgt de roepletters alleen live voor zijn Main instance; een andere instantie logt alleen.
+- **Swisslog op een andere pc?** Vul in CWLD bij Adres het IP-adres van die pc in (open op die pc een opdrachtprompt en typ ipconfig), en zet in Swisslog bij de instantie het IP-adres van de pc waar CWLD draait.
+- **Firewall of antivirus.** Werkt het niet, kijk dan of de firewall UDP voor Swisslog en CWLD toelaat. De maker van Swisslog raadt aan de map van Swisslog uit te sluiten in de antivirus.
+- **N1MM-uitzending.** Staat die in CWLD ook aan en luistert Swisslog ook naar N1MM-berichten, dan kan een QSO twee keer binnenkomen. CWLD waarschuwt daarvoor in de instellingen.
+- **Komt het QSO niet in Swisslog?** Open in de instellingen **Geavanceerd**. Kies eerst bij "Bericht dat het QSO logt" de waarde **Logged ADIF** en probeer opnieuw met **Laatste QSO opnieuw sturen**. Lukt het nog niet, zet de naam (Id) op `WSJT-X`. Meld wat werkte.
+- **Swisslog en de radio.** Swisslog kan zelf de radio bedienen. Doe dat niet op dezelfde COM-poort als CWLD. Bij de IC-7300 MK II kan Swisslog Serial Port B gebruiken (radio: MENU, SET, Connectors, USB (B) Function op CI-V), zoals bij Log4OM. Zet in Swisslog dan "Time between two TX-QRG queries" op 0 als CI-V Transceive aan staat.
+
+Bronnen: [Swisslog Help, Digital Modes Interfaces](https://www.swisslogforwindows.com/english/Help/Features/HamScope%20Support.htm), [Swisslog Help, Transceiver Control](https://www.swisslogforwindows.com/english/Help/Features/Transceiver-Control.htm), [Swisslog release notes](https://swisslogforwindows.com/releasenotes.html), beschrijving van de WSJT-X-berichten (`NetworkMessage.hpp` in de broncode van WSJT-X).

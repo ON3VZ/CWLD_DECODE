@@ -596,3 +596,35 @@ Zet de contestmodus aan, kies een profiel (bijvoorbeeld UBA DX CW) en kies **Liv
 4. Zet het internet uit en klik. Verwacht: de browser meldt zelf dat er geen verbinding is, of CWLD toont de melding dat de pagina niet geopend kon worden. De app blijft werken.
 5. Noteer: opent er niets, of opent er een ander programma dan je standaardbrowser?
 
+## A76. Logprogramma kiezen (0.21.0)
+
+Geen radio nodig. Doe dit met je gewone Log4OM-opstelling.
+
+1. Klik op het tandwiel, kies links **Logkoppeling**. Verwacht: bovenaan **Logprogramma** met drie rondjes: Geen, Log4OM en Swisslog. Bij jou staat Log4OM gekozen, met adres 127.0.0.1 en poort 2333 zoals voorheen.
+2. Log een echt QSO. Verwacht: precies zoals A39, stap 2. Niets veranderd.
+3. Kies **Geen** en klik Opslaan. Verwacht: de Log4OM-velden verdwijnen uit beeld. Log een QSO. Verwacht: het staat in het CWLD-logboek (klik bovenaan op Logboek), niet in Log4OM.
+4. Kies terug **Log4OM** en klik Opslaan. Verwacht: poort 2333 staat er nog. Log een QSO: het komt weer in Log4OM.
+5. Kies **Swisslog** (zonder dat Swisslog draait), klik Opslaan en dan **Koppeling controleren**. Verwacht: "Verzendt naar 127.0.0.1:2237" met een aantal verstuurde berichten, of een duidelijke fout. Log een QSO. Verwacht: niets in Log4OM, het QSO staat wel in het CWLD-logboek, CWLD loopt niet vast.
+6. Zet de N1MM-uitzending aan terwijl Swisslog gekozen is. Verwacht: een oranje waarschuwing over dubbele QSO's. Zet ze weer uit.
+7. Zet tot slot terug op **Log4OM** en klik Opslaan.
+
+## A77. Swisslog-koppeling (0.21.0, voor een Swisslog-gebruiker)
+
+Kristof heeft zelf geen Swisslog. Deze test is voor iemand die het wel heeft, op Windows, met de laatste Swisslog. Zet CWLD op LUISTEREN, behalve bij stap 8.
+
+**Voorbereiding in Swisslog:** sluit WSJT-X, JTDX en JTAlert zolang je test. Klik in Swisslog op **Options**, **Digital Modes-Interface** en vink **WSJT-X** aan. Klik opnieuw op **Options**, **Digital Modes-Interface**, **WSJT-X / JTDX / MSHV / JS8Call UDP Settings**. Vink bij de Main instance **Active** aan, zet 127.0.0.1 en poort 2237, klik OK.
+
+**Voorbereiding in CWLD:** tandwiel, Logkoppeling, Logprogramma **Swisslog**, adres 127.0.0.1, poort 2237, "Swisslog laten meevolgen" aan, Opslaan.
+
+1. Noteer de versie van Swisslog (menu Help, About).
+2. Kijk naar de knop **UDP** in Swisslog. Verwacht: binnen 15 seconden groen.
+3. Typ in het QSO-paneel van CWLD `DL1ABC`. Verwacht: binnen een seconde staat DL1ABC in het invoervenster van Swisslog. Meld welke modus Swisslog toont (CW of iets anders) en of de frequentie meekomt.
+4. Typ `DL` alleen. Verwacht: Swisslog krijgt niets (pas vanaf 3 tekens).
+5. Log een QSO in CWLD. Verwacht: het staat één keer in Swisslog. Meld welke velden aankomen en welke ontbreken of fout staan (datum en tijd UTC, band, frequentie, RST beide kanten, naam, vermogen, opmerking, eigen roepletters). Verwacht ook: het invoervenster van Swisslog is daarna leeg.
+6. Kwam er niets binnen: open in CWLD **Geavanceerd**, kies **Logged ADIF**, klik Opslaan en **Laatste QSO opnieuw sturen**. Lukt het nog niet, zet de Id op `WSJT-X` en probeer opnieuw. Meld welke combinatie werkte.
+7. Probeer in Swisslog zelf een roepletterreeks te typen terwijl de koppeling aan staat. Meld wat er gebeurt. Volgens de help van Swisslog negeert het je invoer zolang de link aan staat.
+8. Zet CWLD in LIVE (dummy load, laag vermogen). Dubbelklik in Swisslog in de WSJT-X-bandkaart en gebruik andere knoppen die iets naar WSJT-X terugsturen. Klik in CWLD op **Koppeling controleren**. Verwacht: misschien zijn er berichten teruggekomen (het getal), maar **de radio zendt nooit** door een bericht van Swisslog.
+9. Log een testQSO (contest-testmodus) en een QSO in OEFENEN. Verwacht: niets in Swisslog. Kijk ook dat Swisslog in OEFENEN geen roepletters van de gesimuleerde stations toont.
+10. Sluit CWLD. Verwacht: de knop UDP in Swisslog wordt na een tijdje grijs of rood (CWLD zegt bij het afsluiten gedag met een Close-bericht).
+11. Optioneel: start WSJT-X weer op 2237 en geef CWLD poort 2238 en een vrije instantie in Swisslog. Meld of beide samen werken.
+

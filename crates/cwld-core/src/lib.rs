@@ -4,12 +4,14 @@
 pub mod audio;
 mod cluster;
 mod link;
+pub mod swisslog;
 mod lookup;
 mod log;
 pub mod practice;
 
 pub use cwld_log::{LogFilter, Qso};
 pub use link::{LinkReport, n1mm_message, parse_targets};
+pub use swisslog::SwisslogStatus;
 pub use lookup::{LookupStatus, LookupTest};
 pub use log::{ActivationStats, DupeInfo, ExportResult};
 pub use cwld_log::{Activation, CheckIssue, Severity};
@@ -164,6 +166,8 @@ pub struct AppCore {
     tx_track: Mutex<audio::TxTrack>,
     recordings_dir: Mutex<Option<PathBuf>>,
     link: Mutex<LinkState>,
+    /// The UDP link to Swisslog (WSJT-X message format), when chosen as log program.
+    swisslog: Mutex<swisslog::SwisslogState>,
     logbook: Mutex<cwld_log::Logbook>,
     /// Callsign lookup (QRZ.com), with its own session and cache.
     lookup: cwld_lookup::Lookup,
@@ -241,6 +245,7 @@ impl AppCore {
             controls_reported: Mutex::new(None),
             recordings_dir: Mutex::new(None),
             link: Mutex::new(LinkState::default()),
+            swisslog: Mutex::new(swisslog::SwisslogState::default()),
             logbook: Mutex::new(logbook),
             lookup: cwld_lookup::Lookup::new(env!("CARGO_PKG_VERSION")),
             cluster: Mutex::new(cluster::ClusterState::default()),
@@ -300,6 +305,7 @@ impl AppCore {
     /// Lets go of everything before the program ends or an update is installed: stops sending,
     /// switches the scope off, closes the radio port, stops recording and the sound card.
     pub fn prepare_exit(&self) {
+        self.link_stop();
         self.stop_recording();
         self.stop_audio();
         self.disconnect();

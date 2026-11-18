@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { app, SETTLE_MS } from './app.svelte';
+import { app, SETTLE_MS, chooseLogger, loggerOf, LINK_CONTEXT_DELAY_MS } from './app.svelte';
 import { MockApi, defaultSettings } from './mockApi';
 
 async function fresh(calls: string[] = ['ON3VZ'], extra: Record<string, string> = {}) {
@@ -1303,6 +1303,68 @@ describe('logging link', () => {
     const api = new MockApi();
     expect(defaultSettings().link.adif_enabled).toBe(false);
     await expect(api.linkResendLast()).rejects.toBeTruthy();
+  });
+
+  it('the log program is one of three, and Log4OM keeps its own settings', () => {
+    const d = defaultSettings().link;
+    expect(loggerOf(d)).toBe('none');
+    expect(d.swisslog_port).toBe(2237);
+    const log4om = { ...d, adif_port: 2444 };
+    const a = chooseLogger(log4om, 'log4om');
+    expect(loggerOf(a)).toBe('log4om');
+    const b = chooseLogger(a, 'swisslog');
+    expect([b.adif_enabled, b.swisslog_enabled]).toEqual([false, true]);
+    // Going back gives the same Log4OM settings as before.
+    const c = chooseLogger(b, 'log4om');
+    expect(c).toEqual({ ...a });
+    expect(c.adif_port).toBe(2444);
+    expect(loggerOf(chooseLogger(c, 'none'))).toBe('none');
+    // A hand-edited file with both on counts as Log4OM, as in the core.
+    expect(loggerOf({ ...d, adif_enabled: true, swisslog_enabled: true })).toBe('log4om');
+  });
+});
+
+describe('swisslog live status', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  async function withSwisslog(live = true, adif = false) {
+    const link = { ...defaultSettings().link, swisslog_enabled: true, swisslog_live: live, adif_enabled: adif };
+    const api = new MockApi({ station: { calls: ['ON3VZ'], name: 'KRISTOF', qth: 'HOBOKEN', locator: 'JO20EE' }, link });
+    await app.init(api);
+    return api;
+  }
+
+  it('sends the callsign of the live QSO once after a pause', async () => {
+    const api = await withSwisslog();
+    app.selectCall('ON4ZZ');
+    app.pushLinkContext();
+    app.pushLinkContext();
+    await vi.advanceTimersByTimeAsync(LINK_CONTEXT_DELAY_MS + 50);
+    expect(api.linkContexts.map((c) => c.call)).toEqual(['ON4ZZ']);
+    // Nothing changed: nothing more is sent.
+    app.pushLinkContext();
+    await vi.advanceTimersByTimeAsync(LINK_CONTEXT_DELAY_MS + 50);
+    expect(api.linkContexts.length).toBe(1);
+  });
+
+  it('sends an empty callsign in practice mode', async () => {
+    const api = await withSwisslog();
+    await app.requestPolicy('practice');
+    app.selectCall('ON4ZZ');
+    app.pushLinkContext();
+    await vi.advanceTimersByTimeAsync(LINK_CONTEXT_DELAY_MS + 50);
+    expect(api.linkContexts[api.linkContexts.length - 1]?.call ?? '').toBe('');
+  });
+
+  it('sends nothing with Log4OM chosen or with the live status off', async () => {
+    for (const [live, adif] of [[false, false], [true, true]] as const) {
+      const api = await withSwisslog(live, adif);
+      app.selectCall('ON4ZZ');
+      app.pushLinkContext();
+      await vi.advanceTimersByTimeAsync(LINK_CONTEXT_DELAY_MS + 50);
+      expect(api.linkContexts).toEqual([]);
+    }
   });
 });
 

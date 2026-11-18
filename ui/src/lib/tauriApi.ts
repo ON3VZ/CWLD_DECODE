@@ -1,4 +1,4 @@
-import type { Activation, ActivationStats, Api, AudioStatus, ReplayResult, CheckIssue, ClusterProbe, ClusterSpot, ClusterStatus, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, InputDevice, LinkReport, LookupInfo, LookupStatus, PortInfo, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
+import type { Activation, ActivationStats, Api, AudioStatus, ReplayResult, CheckIssue, ClusterProbe, ClusterSpot, ClusterStatus, DupeInfo, ExportResult, LogFilter, LogQso, CoreEvent, InputDevice, LinkReport, SwisslogStatus, LookupInfo, LookupStatus, PortInfo, PracticeSignal, RadioSettings, SendOutcome, Settings, Snapshot, TxPolicy } from './types';
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -79,6 +79,8 @@ export async function createTauriApi(): Promise<Api> {
     exportTextFile: (name: string, text: string) => invoke<string>('export_text_file', { name, text }),
     openExportFolder: () => invoke<string>('open_export_folder'),
     linkResendLast: () => invoke<LinkReport>('link_resend_last'),
+    linkContext: (call: string, report: string, grid: string) => invoke<void>('link_context', { call, report, grid }),
+    swisslogStatus: () => invoke<SwisslogStatus>('swisslog_status'),
     lookupStatus: () => invoke<LookupStatus>('lookup_status'),
     lookupSetPassword: (password) => invoke<void>('lookup_set_password', { password }),
     lookupClearPassword: () => invoke<void>('lookup_clear_password'),
