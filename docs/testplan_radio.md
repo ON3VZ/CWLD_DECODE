@@ -628,3 +628,42 @@ Kristof heeft zelf geen Swisslog. Deze test is voor iemand die het wel heeft, op
 10. Sluit CWLD. Verwacht: de knop UDP in Swisslog wordt na een tijdje grijs of rood (CWLD zegt bij het afsluiten gedag met een Close-bericht).
 11. Optioneel: start WSJT-X weer op 2237 en geef CWLD poort 2238 en een vrije instantie in Swisslog. Meld of beide samen werken.
 
+## A78. Venster onthouden (0.21.1)
+
+1. Installeer 0.21.1 en start CWLD. Verwacht: het venster opent volledig scherm (dit is de eerste start met deze versie).
+2. Maak het venster kleiner: klik rechtsboven op het middelste knopje (Vorig formaat), sleep het venster naar een andere plaats en maak het met de rand groter of kleiner. Sluit CWLD.
+3. Start CWLD. Verwacht: zelfde grootte en plaats als bij het sluiten.
+4. Maximaliseer het venster (dubbelklik op de titelbalk), sluit en start opnieuw. Verwacht: volledig scherm.
+5. Met een tweede scherm (ON4BAM, ultrawide): zet CWLD op het tweede scherm, sluit, koppel het scherm los en start CWLD. Verwacht: het venster verschijnt op het hoofdscherm, niet onzichtbaar ernaast.
+
+## A79. Meters onder de waterval blijven (0.21.1, IC-7300 MK II)
+
+1. Zet op de radio onder de waterval de meters zoals je ze gewoon gebruikt (ALC, SWR en zo verder).
+2. Start CWLD en wacht tot het verbonden is en de bandscoop in CWLD verschijnt. Verwacht: de meters op de radio blijven staan, en de bandscoop in CWLD werkt zoals voorheen.
+3. Zet op de radio de scoop uit (druk op de toets M.SCOPE tot de scoop verdwijnt). Sluit CWLD en start het opnieuw. Verwacht: CWLD zet de scoop van de radio aan, zoals voorheen.
+4. Meld wat je zag bij stap 2, ook als de meters toch verdwijnen.
+
+## A80. Swisslog houdt de roepletters vast (0.21.1, voor ON4BAM)
+
+Logprogramma Swisslog, "Swisslog laten meevolgen" aan, radio op LUISTEREN, op een drukke frequentie of een pile-up.
+
+1. Wacht tot de decoder een roepletterreeks in het QSO-paneel zet. Verwacht: die verschijnt in Swisslog.
+2. Laat de decoder andere stations lezen (CWLD opent nieuwe tabbladen). Verwacht: in Swisslog blijven de eerste roepletters staan.
+3. Pas in Swisslog de frequentie of een ander veld aan en bewaar het QSO in Swisslog. Verwacht: niets wordt overschreven terwijl je bezig bent.
+4. Klik in CWLD op de roepletters van een ander station in het gesprek. Verwacht: die komen nu in Swisslog.
+5. Log het QSO in CWLD, of klik op Nieuw QSO. Verwacht: Swisslog is leeg, en de volgende gedecodeerde roepletters komen er weer in.
+6. Meld ook: verschijnen frequentie en modus in Swisslog als Swisslog na CWLD gestart wordt? Na een halve minuut? Na aan de VFO draaien?
+
+## A81. Naar wie gaat de tekst (0.21.1)
+
+Doe dit eerst in OEFENEN (er wordt niets uitgezonden), daarna eventueel in LIVE op een dummy load.
+
+1. Klik op Nieuw QSO. Verwacht: boven de chips "Zendt naar" met grijs "niemand". Klik op een chip met `{CALL}` (bijvoorbeeld Antwoord). Verwacht: niets gezonden, melding dat CALL ontbreekt.
+2. Laat de decoder een station lezen (of start in OEFENEN de oefening "QSO: een station roept CQ"). Verwacht: de roepletters verschijnen geel met stippellijn in de badge, de badge knippert kort, en op de chip staat bijvoorbeeld `Antwoord DL1ABC`.
+3. Klik meteen (binnen 3 seconden) op die chip. Verwacht: er wordt niets gezonden, bovenaan "De roepletters zijn net veranderd in DL1ABC. Druk nog eens om te zenden." Klik nog eens: nu wordt de tekst gezonden.
+4. Klik op de badge. Verwacht: blauw met slotje. Laat de decoder een ander station lezen: de badge blijft staan. Klik op een chip: zendt meteen.
+5. Klik opnieuw op de badge. Verwacht: geel, de decoder volgt weer.
+6. Klik op het tandwiel, kies links **Zenden**, vink de tweede druk uit en klik Opslaan. Herhaal stap 3. Verwacht: de chip zendt bij de eerste druk.
+7. Contestmodus: klik Contest. Verwacht: de badge staat boven de invoerlijn en volgt de roepletters in het vak Call.
+8. Meld: is de badge groot genoeg, storen de kleuren of het knipperen, en is 3 seconden een goede tijd?
+

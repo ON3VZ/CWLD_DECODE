@@ -16,7 +16,7 @@ import { defaultChips, pileupChips } from './demo';
 import { contestKeys, type ContestKey, type RunMode } from './contestlog';
 import { activeProfile, ownVars, RESERVED_VARS } from './contest';
 
-export const EMPTY_TEXTS: SendTexts = { texts: {}, labels: {}, own_chips: [], chip_order: [], cq_pause_s: 6, cq_max: 10, paddle_wait: true };
+export const EMPTY_TEXTS: SendTexts = { texts: {}, labels: {}, own_chips: [], chip_order: [], cq_pause_s: 6, cq_max: 10, paddle_wait: true, call_guard: true };
 
 export const CQ_PAUSE_MIN = 2;
 export const CQ_PAUSE_MAX = 60;
@@ -36,6 +36,7 @@ export function textsOf(s: { send_texts?: Partial<SendTexts> } | null | undefine
     cq_pause_s: clamp(t.cq_pause_s ?? EMPTY_TEXTS.cq_pause_s, CQ_PAUSE_MIN, CQ_PAUSE_MAX),
     cq_max: clamp(t.cq_max ?? EMPTY_TEXTS.cq_max, 1, CQ_MAX_LIMIT),
     paddle_wait: t.paddle_wait ?? true,
+    call_guard: t.call_guard ?? true,
   };
 }
 

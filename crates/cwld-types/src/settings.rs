@@ -316,6 +316,9 @@ pub struct SendTexts {
     pub cq_max: u32,
     /// Hold typed text while the paddle on the radio keys, and send it when the paddle is quiet.
     pub paddle_wait: bool,
+    /// A chip with `{CALL}` pressed within 3 s after the decoder changed the callsign is not sent
+    /// at once: the operator presses again to confirm. A locked callsign never needs this.
+    pub call_guard: bool,
 }
 
 pub const CQ_PAUSE_DEFAULT: u32 = 6;
@@ -326,7 +329,7 @@ pub const CQ_MAX_LIMIT: u32 = 30;
 
 impl Default for SendTexts {
     fn default() -> Self {
-        SendTexts { texts: BTreeMap::new(), labels: BTreeMap::new(), own_chips: Vec::new(), chip_order: Vec::new(), cq_pause_s: CQ_PAUSE_DEFAULT, cq_max: CQ_MAX_DEFAULT, paddle_wait: true }
+        SendTexts { texts: BTreeMap::new(), labels: BTreeMap::new(), own_chips: Vec::new(), chip_order: Vec::new(), cq_pause_s: CQ_PAUSE_DEFAULT, cq_max: CQ_MAX_DEFAULT, paddle_wait: true, call_guard: true }
     }
 }
 

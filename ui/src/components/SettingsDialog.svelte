@@ -370,6 +370,8 @@
             <small class="muted">{t('settings.default_rst.help')}</small>
           </label>
           <small class="muted">{t('settings.send.speed')}</small>
+          <label class="check"><input type="checkbox" bind:checked={draft.send_texts.call_guard} /> {t('settings.callguard')}</label>
+          <small class="muted">{t('settings.callguard.help')}</small>
         {/if}
 
         {#if section === 'view'}

@@ -1348,6 +1348,36 @@ describe('swisslog live status', () => {
     expect(api.linkContexts.length).toBe(1);
   });
 
+  it('a decoded callsign never replaces the one Swisslog holds, a choice of the operator does', async () => {
+    const api = await withSwisslog();
+    const sent = () => api.linkContexts.map((c) => c.call);
+    const settle = () => vi.advanceTimersByTimeAsync(LINK_CONTEXT_DELAY_MS + 50);
+    app.ingest('rx', 'CQ CQ DE DL1ABC DL1ABC K');
+    app.pushLinkContext();
+    await settle();
+    expect(sent()).toEqual(['DL1ABC']);
+    // A pile-up: another station is decoded and becomes the live QSO. Swisslog keeps DL1ABC.
+    app.ingest('rx', 'CQ DE F5XYZ F5XYZ K');
+    expect(app.cur.qso.call).toBe('F5XYZ');
+    app.pushLinkContext();
+    await settle();
+    expect(sent()).toEqual(['DL1ABC']);
+    // The operator picks a station: that one goes.
+    app.selectCall('3X4U');
+    app.pushLinkContext();
+    await settle();
+    expect(sent()).toEqual(['DL1ABC', '3X4U']);
+    // Clearing the entry frees Swisslog; the next decoded station goes again.
+    app.clearEntry();
+    app.pushLinkContext();
+    await settle();
+    expect(sent()[sent().length - 1]).toBe('');
+    app.ingest('rx', 'CQ DE PA3ABC PA3ABC K');
+    app.pushLinkContext();
+    await settle();
+    expect(sent()[sent().length - 1]).toBe('PA3ABC');
+  });
+
   it('sends an empty callsign in practice mode', async () => {
     const api = await withSwisslog();
     await app.requestPolicy('practice');
@@ -2255,5 +2285,72 @@ describe('help page', () => {
     await app.openHelp();
     expect(app.helpFailed).toBe(true);
     await app.openHelp();
+  });
+});
+
+describe('the station {CALL} sends to', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  async function live() {
+    const api = new MockApi({ station: { calls: ['ON3VZ'], name: 'KRISTOF', qth: 'HOBOKEN', locator: 'JO20EE' } });
+    await app.init(api);
+    await app.requestPolicy('live');
+    await app.confirmLiveSwitch();
+    app.newConversation();
+    app.clearEntry();
+    return api;
+  }
+
+  it('shows where the callsign comes from', async () => {
+    await live();
+    expect(app.callTarget).toEqual({ call: '', locked: false });
+    app.ingest('rx', 'CQ CQ DE DL1ABC DL1ABC K');
+    expect(app.callTarget).toEqual({ call: 'DL1ABC', locked: false });
+    expect(app.callFlash).toBe(true);
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(app.callFlash).toBe(false);
+    app.toggleLiveLock();
+    expect(app.callTarget).toEqual({ call: 'DL1ABC', locked: true });
+    app.toggleLiveLock();
+    expect(app.callTarget.locked).toBe(false);
+  });
+
+  it('a chip with {CALL} right after the decoder changed the callsign waits for a second press', async () => {
+    const api = await live();
+    app.ingest('rx', 'CQ CQ DE DL1ABC DL1ABC K');
+    await app.sendChip('{CALL} DE {MYCALL} K');
+    expect(api.transmitCommands).toBe(0);
+    expect(app.notice).toContain('DL1ABC');
+    await app.sendChip('{CALL} DE {MYCALL} K');
+    expect(api.transmitCommands).toBe(1);
+  });
+
+  it('a new callsign between the two presses starts over', async () => {
+    const api = await live();
+    app.ingest('rx', 'CQ CQ DE DL1ABC DL1ABC K');
+    await app.sendChip('{CALL} DE {MYCALL} K');
+    app.ingest('rx', 'CQ DE F5XYZ F5XYZ K');
+    await app.sendChip('{CALL} DE {MYCALL} K');
+    expect(api.transmitCommands).toBe(0);
+    expect(app.notice).toContain('F5XYZ');
+  });
+
+  it('no wait after 3 seconds, for a locked callsign, for texts without {CALL}, or when switched off', async () => {
+    const api = await live();
+    app.ingest('rx', 'CQ CQ DE DL1ABC DL1ABC K');
+    await app.sendChip('CQ CQ DE {MYCALL} K');
+    expect(api.transmitCommands).toBe(1);
+    await vi.advanceTimersByTimeAsync(3100);
+    await app.sendChip('{CALL} DE {MYCALL} K');
+    expect(api.transmitCommands).toBe(2);
+    app.ingest('rx', 'CQ DE F5XYZ F5XYZ K');
+    app.selectCall('F5XYZ');
+    await app.sendChip('{CALL} DE {MYCALL} K');
+    expect(api.transmitCommands).toBe(3);
+    await app.setCallGuard(false);
+    app.ingest('rx', 'CQ DE PA3ABC PA3ABC K');
+    await app.sendChip('{CALL} DE {MYCALL} K');
+    expect(api.transmitCommands).toBe(4);
   });
 });

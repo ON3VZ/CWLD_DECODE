@@ -56,7 +56,14 @@ pub struct IcomRig<T: Transport> {
     scope_latest: Option<ScopeSweep>,
     audio: crate::AudioControls,
     split_hold_until: u64,
+    /// Set while CWLD waits for the answer to "is the scope on?" (`27 10`), with the time asked.
+    /// Switching the scope on (`27 10 01`) resets the screen of the radio (meters under the
+    /// waterfall disappear), so CWLD only does that when the scope is really off.
+    scope_asked_at: Option<u64>,
 }
+
+/// How long CWLD waits for the answer to "is the scope on?" before it switches it on anyway.
+const SCOPE_ASK_MS: u64 = 1500;
 
 impl<T: Transport> IcomRig<T> {
     pub fn new(t: T, clock: Box<dyn Clock>, radio_address: u8, pipeline: bool) -> Self {
@@ -91,6 +98,7 @@ impl<T: Transport> IcomRig<T> {
             scope_latest: None,
             audio: crate::AudioControls::default(),
             split_hold_until: 0,
+            scope_asked_at: None,
         }
     }
 
@@ -280,6 +288,13 @@ impl<T: Transport> IcomRig<T> {
                     self.tx_deadline = None;
                 }
             }
+            civ_scope::SCOPE if b.len() >= 3 && b[1] == civ_scope::SCOPE_ONOFF => {
+                // The answer to "is the scope on?". Only switch it on when it is off, so the
+                // screen of the radio stays as the operator set it.
+                if self.scope_asked_at.take().is_some() && b[2] == 0x00 {
+                    let _ = self.send_set(&civ_scope::scope_on(true));
+                }
+            }
             civ_scope::SCOPE if b.len() >= 2 && b[1] == civ_scope::SCOPE_DATA => {
                 if let Some(s) = self.scope.push(b) {
                     self.scope_latest = Some(s);
@@ -400,7 +415,12 @@ impl<T: Transport> Rig for IcomRig<T> {
             RadioCommand::Raw(bytes) => self.t.write_all(bytes).map_err(|e| self.io_failed(e)),
             RadioCommand::SetScope(on) => {
                 if *on {
-                    self.send_set(&civ_scope::scope_on(true))?;
+                    // Ask first: `27 10 01` resets the screen of the radio even when the scope
+                    // is already on. The answer is handled in `handle`, a missing answer in `poll`.
+                    self.send(&civ_scope::scope_query())?;
+                    self.scope_asked_at = Some(self.clock.now_ms());
+                } else {
+                    self.scope_asked_at = None;
                 }
                 self.send_set(&civ_scope::scope_output(*on))
             }
@@ -493,6 +513,13 @@ impl<T: Transport> Rig for IcomRig<T> {
             if now > deadline && !self.tx_seen_since_send {
                 self.tx_deadline = None;
                 self.events.push(RigEvent::Warning("radio_not_transmitting".into()));
+            }
+        }
+        if let Some(asked) = self.scope_asked_at {
+            if now.saturating_sub(asked) > SCOPE_ASK_MS {
+                // No answer (older firmware, or the radio was busy): switch it on as before.
+                self.scope_asked_at = None;
+                let _ = self.send_set(&civ_scope::scope_on(true));
             }
         }
         let _ = self.execute(&RadioCommand::ReadStatus);

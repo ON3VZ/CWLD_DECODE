@@ -14,12 +14,18 @@ use cwld_types::ScopeSweep;
 
 pub const SCOPE: u8 = 0x27;
 pub const SCOPE_DATA: u8 = 0x00;
+/// Sub-command "scope on or off" (`27 10`), to read or to set.
+pub const SCOPE_ONOFF: u8 = 0x10;
 /// Highest level the radio sends.
 pub const MAX_LEVEL: u8 = 160;
 
 /// Body of "scope on" (`27 10 01`) and "send the scope data to the PC" (`27 11 01`).
 pub fn scope_on(on: bool) -> [u8; 3] {
     [SCOPE, 0x10, u8::from(on)]
+}
+/// Body of "is the scope on?" (`27 10` without data). The radio answers `27 10 00` or `27 10 01`.
+pub fn scope_query() -> [u8; 2] {
+    [SCOPE, SCOPE_ONOFF]
 }
 pub fn scope_output(on: bool) -> [u8; 3] {
     [SCOPE, 0x11, u8::from(on)]

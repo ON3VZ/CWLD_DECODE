@@ -3,6 +3,7 @@
   import { t } from '../lib/i18n.svelte';
   import { slotLabel } from '../lib/texts';
   import ContestEntry from './ContestEntry.svelte';
+  import CallBadge from './CallBadge.svelte';
   import { expand } from '../lib/template';
 
   const canSend = $derived(app.canSend);
@@ -20,6 +21,8 @@
     return `${expand(template, app.vars).text}\n${t('texts.rightclick')}`;
   }
   const cqSlot = $derived(app.cqRepeatSlot);
+  /** The callsign shown on chips that send {CALL}, so the button says who it goes to. */
+  const callOn = $derived(app.callTarget.call);
   function submit(e: Event) {
     e.preventDefault();
     app.send(app.draft);
@@ -27,12 +30,13 @@
 </script>
 
 <div class="composer">
+  <CallBadge />
   {#if !app.settings?.contest_mode}
   <div class="chips" role="group" aria-label="Chips">
     {#each app.chipList as c (c.id)}
       {@const missing = chipMissing(c.template)}
       <button class="btn chip" class:own={c.own} aria-disabled={!canSend} title={tip(c.template)} onclick={() => canSend && app.sendChip(c.template)} oncontextmenu={(e) => editText(e, c.id)}>
-        {slotLabel(c, t)}{#if missing.length}<span class="dotwarn" title={t('composer.missing', { vars: missing.join(', ') })}></span>{/if}
+        {slotLabel(c, t)}{#if callOn && c.template.includes('{CALL}')}&nbsp;<span class="mono callon">{callOn}</span>{/if}{#if missing.length}<span class="dotwarn" title={t('composer.missing', { vars: missing.join(', ') })}></span>{/if}
       </button>
     {/each}
     <button class="btn chip edit" onclick={() => app.openTextEditor(null)} title={t('texts.open.help')} aria-label={t('texts.open.help')}>✎</button>
@@ -48,7 +52,7 @@
     {#each app.settings?.contest_mode ? [] : app.pileupList as c (c.id)}
       {@const missing = chipMissing(c.template)}
       <button class="btn chip" aria-disabled={!canSend} title={tip(c.template)} onclick={() => canSend && app.sendChip(c.template)} oncontextmenu={(e) => editText(e, c.id)}>
-        <kbd>{c.fkey}</kbd> {slotLabel(c, t)}{#if missing.length}<span class="dotwarn" title={t('composer.missing', { vars: missing.join(', ') })}></span>{/if}
+        <kbd>{c.fkey}</kbd> {slotLabel(c, t)}{#if callOn && c.template.includes('{CALL}')}&nbsp;<span class="mono callon">{callOn}</span>{/if}{#if missing.length}<span class="dotwarn" title={t('composer.missing', { vars: missing.join(', ') })}></span>{/if}
       </button>
     {/each}
     <button class="btn chip contest" class:on={app.settings?.contest_mode} aria-pressed={app.settings?.contest_mode ?? false} title={t('contest.chip.help')} onclick={() => app.requestContest(!app.settings?.contest_mode)}>
@@ -153,6 +157,7 @@
 </div>
 
 <style>
+  .callon { color: var(--call); font-weight: 600; }
   .composer { display: flex; flex-direction: column; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { border-radius: 999px; position: relative; }

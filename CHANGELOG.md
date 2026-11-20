@@ -1,3 +1,15 @@
+## 0.21.1 (window size remembered, Swisslog keeps the callsign, meters on the radio stay, clear target station)
+
+Feedback from ON4BAM, who tested 0.21.0 with Swisslog.
+
+- **Window.** CWLD remembers the size, place and maximized state of its window when it closes and opens the same way next time. Only the very first start opens maximized. A place on a screen that is gone is not used. (Tauri plugin window-state, MIT or Apache-2.0.)
+- **Swisslog keeps the callsign.** Once a callsign is in the entry window of Swisslog, a callsign the decoder fills in by itself no longer replaces it, so a pile-up cannot overwrite what you are editing in Swisslog. Only your own choice changes it (typing, clicking a callsign, locking), and logging, New QSO or clearing the entry frees it. This works like the DX call of WSJT-X. Log4OM is not affected.
+- **Meters on the radio stay.** When it connects, CWLD switched the scope of the IC-7300 MK II on with `27 10 01`, and that reset the screen of the radio: meters chosen under the waterfall disappeared. CWLD now asks first (`27 10`) and only switches the scope on when it is really off. Without an answer within 1.5 s it switches it on as before. The data to the PC (`27 11 01`) is unchanged.
+- **Sends to.** Above the chips a large badge shows the callsign that every text with `{CALL}` goes to: blue with a lock when you locked it (typed, clicked), yellow and dashed when the decoder filled it in and it can still change, grey when there is none. A click locks it or hands it back to the decoder. The badge lights up for 2 seconds when the decoder changes the callsign.
+- **Callsign on the chips.** Chips and pile-up keys that send `{CALL}` show the callsign on the button, for example `Answer DL1ABC`.
+- **Second press after a change.** A text with `{CALL}` pressed within 3 seconds after the decoder changed the callsign is not sent at once: a notice names the new callsign, and a second press within 5 seconds sends. A locked callsign never needs this. On by default, Settings, Sending. Applies to chips, pile-up keys, contest keys, Enter and Insert.
+- Tests: three for the scope question, one for the Swisslog callsign in a pile-up, four for the badge and the second press. Manual tests A78 to A81.
+
 ## 0.21.0 (choose the log program: Log4OM, Swisslog or none)
 
 - New: Settings, **Logging link** starts with **Log program**: three choices, **None**, **Log4OM** and **Swisslog**. Only one is on at a time, so a QSO never reaches two log programs.

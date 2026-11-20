@@ -1,4 +1,4 @@
-# CWLD, korte handleiding (testversie, bijgewerkt voor 0.21.0)
+# CWLD, korte handleiding (testversie, bijgewerkt voor 0.21.1)
 
 ## 1. Eerste start in vier stappen
 
@@ -654,6 +654,7 @@ Wat er gebeurt:
 
 Let op:
 
+- **Roepletters blijven staan (0.21.1).** Staan er eenmaal roepletters in Swisslog, dan vervangt CWLD ze niet meer door roepletters die de decoder vanzelf invult. Zo kan een pile-up niet overschrijven wat je in Swisslog aan het aanpassen bent. Alleen je eigen keuze verandert ze: roepletters typen in het QSO-paneel, op roepletters in het gesprek klikken of ze vastzetten. Na het loggen, met **Nieuw QSO** of met het leegmaken van de invoer is Swisslog weer vrij voor het volgende station.
 - **Zelf typen in Swisslog.** Zolang de koppeling aan staat, negeert Swisslog wat je in zijn eigen invoervenster typt (zo werkt het ook met WSJT-X). Klik op de knop UDP in Swisslog om de koppeling even uit te zetten, of vink in CWLD "Swisslog laten meevolgen" uit. Dan logt Swisslog nog altijd de QSO's van CWLD.
 - **WSJT-X of JTDX ook gekoppeld?** Twee programma's kunnen geen UDP-poort delen. Laat WSJT-X dan op 2237 en geef CWLD een vrije poort, bijvoorbeeld 2238: in CWLD bij Poort, en in Swisslog in een vrije instantie (Active aanvinken, 127.0.0.1, 2238). Swisslog volgt de roepletters alleen live voor zijn Main instance; een andere instantie logt alleen.
 - **Swisslog op een andere pc?** Vul in CWLD bij Adres het IP-adres van die pc in (open op die pc een opdrachtprompt en typ ipconfig), en zet in Swisslog bij de instantie het IP-adres van de pc waar CWLD draait.
@@ -663,3 +664,22 @@ Let op:
 - **Swisslog en de radio.** Swisslog kan zelf de radio bedienen. Doe dat niet op dezelfde COM-poort als CWLD. Bij de IC-7300 MK II kan Swisslog Serial Port B gebruiken (radio: MENU, SET, Connectors, USB (B) Function op CI-V), zoals bij Log4OM. Zet in Swisslog dan "Time between two TX-QRG queries" op 0 als CI-V Transceive aan staat.
 
 Bronnen: [Swisslog Help, Digital Modes Interfaces](https://www.swisslogforwindows.com/english/Help/Features/HamScope%20Support.htm), [Swisslog Help, Transceiver Control](https://www.swisslogforwindows.com/english/Help/Features/Transceiver-Control.htm), [Swisslog release notes](https://swisslogforwindows.com/releasenotes.html), beschrijving van de WSJT-X-berichten (`NetworkMessage.hpp` in de broncode van WSJT-X).
+
+## 48. Vensterformaat en de meters op de radio (0.21.1)
+
+- **Venster.** CWLD onthoudt bij het afsluiten hoe groot het venster was, waar het stond en of het gemaximaliseerd was, en opent de volgende keer net zo. Alleen de allereerste keer opent het volledig scherm. Stond het venster op een scherm dat er niet meer is, dan zet Windows het op het hoofdscherm. Wil je weer van voren af beginnen: sluit CWLD, druk op Windows-toets plus R, typ `%APPDATA%\io.github.on3vz.cwld` en druk Enter, en verwijder het bestand `.window-state.json`.
+- **Meters onder de waterval (IC-7300 MK II).** Tot en met 0.21.0 zette CWLD bij het verbinden de scoop van de radio aan, ook als hij al aan stond. Daardoor zette de radio zijn scherm terug op de standaardweergave en verdwenen de meters (ALC, SWR en andere) die je onder de waterval had gezet. Nu vraagt CWLD eerst of de scoop aan staat en zet hem alleen aan als hij uit staat. Je instelling op de radio blijft dus staan.
+
+## 49. Naar wie gaat de tekst? (0.21.1)
+
+Elke chip en toets met `{CALL}` zendt de roepletters uit het QSO-paneel. Om vergissingen te vermijden, toont CWLD die nu duidelijk.
+
+- **Badge "Zendt naar"** boven de chips (en boven de invoerlijn in contestmodus):
+  - **Blauw met slotje:** door jou vastgezet (getypt in het QSO-paneel, aangeklikt in het gesprek of vastgezet). De decoder verandert ze niet.
+  - **Geel met stippellijn:** door de decoder ingevuld. Ze kunnen nog veranderen als de decoder een ander station hoort.
+  - **Grijs, "niemand":** geen roepletters. Teksten met `{CALL}` worden dan niet gezonden.
+- **Klik op de badge** om de roepletters vast te zetten, of om ze weer aan de decoder te geven.
+- **Oplichten:** verandert de decoder de roepletters, dan knippert de badge 2 seconden.
+- **Op de chips** staan de roepletters erbij, bijvoorbeeld `Antwoord DL1ABC`.
+- **Tweede druk:** druk je binnen 3 seconden nadat de decoder nieuwe roepletters invulde op een tekst met `{CALL}`, dan zendt CWLD nog niet. Bovenaan staat "De roepletters zijn net veranderd in ...". Druk binnen 5 seconden nog eens om te zenden. Vastgezette roepletters hebben dit nooit nodig. Uitzetten: klik op het tandwiel, kies links **Zenden** en vink "Een tweede druk vragen ..." uit, klik Opslaan.
+

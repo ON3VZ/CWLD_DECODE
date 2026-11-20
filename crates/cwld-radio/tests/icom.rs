@@ -383,7 +383,8 @@ fn the_band_scope_is_switched_on_while_only_listening() {
     let mut g = GuardedRig::new(r, PolicyHandle::new(TxPolicy::ListenOnly));
     g.execute(&RadioCommand::SetScope(true)).unwrap();
     let bodies: Vec<Vec<u8>> = written_frames(&h).into_iter().map(|f| f.body).collect();
-    assert_eq!(bodies, vec![vec![0x27, 0x10, 0x01], vec![0x27, 0x11, 0x01]]);
+    // First the question "is the scope on?", then the data to the PC. The screen is not touched yet.
+    assert_eq!(bodies, vec![vec![0x27, 0x10], vec![0x27, 0x11, 0x01]]);
     g.execute(&RadioCommand::SetScope(false)).unwrap();
     let bodies: Vec<Vec<u8>> = written_frames(&h).into_iter().map(|f| f.body).collect();
     assert_eq!(bodies, vec![vec![0x27, 0x11, 0x00]]);
@@ -481,4 +482,48 @@ fn the_transmit_frequency_shown_while_sending_in_split_is_not_a_retune() {
     // A real move of the receive frequency still comes through.
     h.feed(&from_radio(&[0x00, 0x00, 0x52, 0x02, 0x07, 0x00]));
     assert!(r.poll().contains(&RigEvent::Frequency(7_025_200)));
+}
+
+fn scope_bodies(h: &MockHandle) -> Vec<Vec<u8>> {
+    written_frames(h).into_iter().map(|f| f.body).filter(|b| b.first() == Some(&0x27)).collect()
+}
+
+#[test]
+fn a_scope_that_is_already_on_is_not_switched_on_again() {
+    // `27 10 01` resets the screen of the radio (meters under the waterfall disappear).
+    let (mut r, h, c) = rig(false);
+    r.execute(&RadioCommand::SetScope(true)).unwrap();
+    let _ = written_frames(&h);
+    h.feed(&from_radio(&[0x27, 0x10, 0x01]));
+    r.poll();
+    c.advance(5_000);
+    r.poll();
+    assert!(scope_bodies(&h).is_empty(), "nothing more for the scope: {:?}", scope_bodies(&h));
+}
+
+#[test]
+fn a_scope_that_is_off_is_switched_on() {
+    let (mut r, h, _c) = rig(false);
+    r.execute(&RadioCommand::SetScope(true)).unwrap();
+    let _ = written_frames(&h);
+    h.feed(&from_radio(&[0x27, 0x10, 0x00]));
+    r.poll();
+    assert_eq!(scope_bodies(&h), vec![vec![0x27, 0x10, 0x01]]);
+}
+
+#[test]
+fn without_an_answer_the_scope_is_switched_on_as_before() {
+    let (mut r, h, c) = rig(false);
+    r.execute(&RadioCommand::SetScope(true)).unwrap();
+    let _ = written_frames(&h);
+    c.advance(1_000);
+    r.poll();
+    assert!(scope_bodies(&h).is_empty());
+    c.advance(1_000);
+    r.poll();
+    assert_eq!(scope_bodies(&h), vec![vec![0x27, 0x10, 0x01]]);
+    // Once only.
+    c.advance(5_000);
+    r.poll();
+    assert!(scope_bodies(&h).is_empty());
 }

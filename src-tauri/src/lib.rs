@@ -439,6 +439,26 @@ fn end_process_now() -> ! {
     std::process::exit(0)
 }
 
+/// What CWLD remembers of its window: size, place and maximized, not whether it is visible.
+fn window_flags() -> tauri_plugin_window_state::StateFlags {
+    use tauri_plugin_window_state::StateFlags;
+    StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
+}
+
+/// Opens the window as it was when CWLD was closed. The very first time (nothing saved yet)
+/// it opens maximized. A place on a screen that is no longer there is not used: the window
+/// then opens where the system puts it.
+fn restore_window(app: &AppHandle) {
+    use tauri_plugin_window_state::{AppHandleExt, WindowExt};
+    let Some(win) = app.get_webview_window("main") else { return };
+    let saved = app.path().app_config_dir().map(|d| d.join(app.filename()).exists()).unwrap_or(false);
+    if saved {
+        let _ = win.restore_state(window_flags());
+    } else {
+        let _ = win.maximize();
+    }
+}
+
 /// Every 100 ms the safety readings (SWR), every fifth round the full status.
 fn start_ticker(app: AppHandle, core: Arc<AppCore>) {
     std::thread::spawn(move || {
@@ -465,7 +485,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
+        // Remembers the size, place and maximized state of the window. The main window is
+        // restored by hand in `setup`, so the very first start can open maximized.
+        .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(window_flags()).skip_initial_state("main").build())
         .setup(|app| {
+            restore_window(app.handle());
             let dir = app.path().app_config_dir()?;
             let core = Arc::new(AppCore::new(Some(dir.join("settings.json"))));
             if let Ok(docs) = app.path().document_dir() {
@@ -559,6 +583,11 @@ pub fn run() {
             // When CWLD ends, free the radio and the sound card and make sure the process is
             // really gone (a lingering process stops the installer of an update).
             if let tauri::RunEvent::Exit = event {
+                // The process ends hard below, so the window state is written here first.
+                {
+                    use tauri_plugin_window_state::AppHandleExt;
+                    let _ = app.save_window_state(window_flags());
+                }
                 if let Some(core) = app.try_state::<Arc<AppCore>>() {
                     release_within(core.inner().clone(), RELEASE_WAIT);
                 }

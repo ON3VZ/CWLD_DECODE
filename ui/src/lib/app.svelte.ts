@@ -20,6 +20,12 @@ import { nextSpot, SPEED_STEP, stepSpeed, type HotkeyAction } from './hotkeys';
 export const LOOKUP_DELAY_MS = 700;
 /** Pause after the last change of the QSO panel before Swisslog gets the new callsign. */
 export const LINK_CONTEXT_DELAY_MS = 400;
+/** A chip with {CALL} pressed this soon after the decoder changed the callsign waits for a second press. */
+export const CALL_GUARD_MS = 3000;
+/** How long the second press counts. */
+export const CALL_CONFIRM_MS = 5000;
+/** How long the callsign badge lights up after the decoder changed the callsign. */
+export const CALL_FLASH_MS = 2000;
 
 /** Chooses the log program: one at a time, so a QSO never reaches two log programs. */
 export function chooseLogger(link: LinkSettings, which: Logger): LinkSettings {
@@ -277,6 +283,7 @@ class AppState {
    * turning the tuning knob does not leave a trail of empty tabs.
    */
   newConversation(freq = this.status.frequency_hz) {
+    this.releaseLinkCall();
     const live = this.cur;
     this.tail = null;
     if (live && live.messages.length === 0) {
@@ -509,6 +516,10 @@ class AppState {
   }
 
   async init(api: Api) {
+    this.linkHeld = '';
+    this.linkCtxSent = '';
+    this.autoCallAt = 0;
+    this.callConfirm = null;
     this.api = api;
     this.escArmedUntil = 0;
     this.resetTx();
@@ -908,8 +919,10 @@ class AppState {
     this.touch(this.cur);
     if (from === 'rx') {
       const before = this.qso.call;
+      const liveBefore = this.cur.qso.call;
       this.applyHeard(text, m);
       if (this.qso.call !== before) this.noteCallChange();
+      if (this.cur.qso.call !== liveBefore && this.cur.qso.call) this.noteAutoCall();
       // In contest mode, after our exchange, propose what the other station sent back.
       if (this.settings?.contest_mode && this.qso.call && this.exchangeSent) {
         const sug = suggestFrom(text, this.settings.contest, this.qso.call);
@@ -1019,12 +1032,73 @@ class AppState {
     }
   }
 
+  // ---- The station {CALL} sends to ----
+
+  /** When the decoder last changed the callsign of the live QSO by itself (ms). */
+  private autoCallAt = 0;
+  /** True for a short while after the decoder changed the callsign: the badge lights up. */
+  callFlash = $state(false);
+  private callFlashTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A held chip waiting for its second press: for this callsign, until this time. */
+  private callConfirm: { call: string; until: number } | null = null;
+
+  private noteAutoCall() {
+    this.autoCallAt = Date.now();
+    this.callConfirm = null;
+    this.callFlash = true;
+    if (this.callFlashTimer) clearTimeout(this.callFlashTimer);
+    this.callFlashTimer = setTimeout(() => {
+      this.callFlash = false;
+      this.callFlashTimer = null;
+    }, CALL_FLASH_MS);
+  }
+
+  /** The callsign `{CALL}` fills in now, and where it comes from. */
+  get callTarget(): { call: string; locked: boolean } {
+    const live = this.cur;
+    return { call: live.qso.call.trim().toUpperCase(), locked: live.callLocked };
+  }
+
+  /** The badge: locks the callsign of the live QSO, or hands it back to the decoder. */
+  toggleLiveLock() {
+    const live = this.cur;
+    if (live.callLocked) {
+      if (this.viewingLive) this.unlockCall();
+      else live.callLocked = false;
+    } else if (live.qso.call.trim()) {
+      live.callLocked = true;
+      this.callConfirm = null;
+    }
+  }
+
+  /**
+   * True when a text with {CALL} must wait: the decoder changed the callsign less than 3 s ago
+   * and the operator did not lock it. A second press within 5 s for the same callsign sends.
+   */
+  private holdForCallChange(templates: string[]): boolean {
+    if (!templates.some((tpl) => tpl.includes('{CALL}'))) return false;
+    if (this.sendTexts.call_guard === false) return false;
+    const live = this.cur;
+    if (live.callLocked) return false;
+    const now = Date.now();
+    if (now - this.autoCallAt >= CALL_GUARD_MS) return false;
+    const call = live.qso.call.trim().toUpperCase();
+    if (this.callConfirm && this.callConfirm.call === call && now < this.callConfirm.until) {
+      this.callConfirm = null;
+      return false;
+    }
+    this.callConfirm = { call, until: now + CALL_CONFIRM_MS };
+    this.notice = t('call.guard', { call });
+    return true;
+  }
+
   async sendChip(template: string) {
     const r = expand(template, this.vars);
     if (r.missing.length) {
       this.error = t('composer.missing', { vars: r.missing.join(', ') });
       return;
     }
+    if (this.holdForCallChange([template])) return;
     await this.send(r.text);
   }
 
@@ -1147,34 +1221,55 @@ class AppState {
    * Callsign, report and locator of the live QSO as Swisslog should follow them, or null when
    * Swisslog is not the log program or its live status is off.
    */
-  linkContextNow(): { call: string; report: string; grid: string } | null {
+  linkContextNow(): { call: string; report: string; grid: string; chosen: boolean } | null {
     const l = this.settings?.link;
     if (!l || this.logger !== 'swisslog' || !l.swisslog_live) return null;
     // Practice stations are made up: Swisslog must not follow them into its entry window.
-    if (this.policy === 'practice') return { call: '', report: '', grid: '' };
-    const q = this.cur.qso;
+    if (this.policy === 'practice') return { call: '', report: '', grid: '', chosen: true };
+    const live = this.cur;
+    const q = live.qso;
     const call = q.call.trim().toUpperCase();
     const grid = this.lookupGrid && this.lookupGrid.call === call ? this.lookupGrid.grid : '';
-    return { call, report: (q.rst ?? '').trim().toUpperCase(), grid };
+    return { call, report: (q.rst ?? '').trim().toUpperCase(), grid, chosen: live.callLocked };
   }
 
   private linkCtxTimer: ReturnType<typeof setTimeout> | null = null;
   private linkCtxSent = '';
+  /**
+   * The callsign Swisslog holds. Once one is there, only the operator changes it (typing,
+   * clicking, locking), or logging, a new QSO or clearing the entry frees it. A callsign the
+   * decoder fills in by itself never replaces it, so a busy pile-up cannot overwrite what the
+   * operator is editing in Swisslog.
+   */
+  private linkHeld = '';
+
+  /** Frees the callsign Swisslog holds (after logging, a new QSO, or clearing the entry). */
+  releaseLinkCall() {
+    this.linkHeld = '';
+  }
 
   /** Tells the core about a changed QSO, at most once per pause in typing. Called by an effect in App. */
   pushLinkContext() {
     const c = this.linkContextNow();
     if (!c) {
       this.linkCtxSent = '';
+      this.linkHeld = '';
       return;
     }
-    const key = `${c.call}|${c.report}|${c.grid}`;
+    let { call, grid } = c;
+    if (c.chosen || !this.linkHeld) {
+      this.linkHeld = call.length >= 3 ? call : '';
+    } else if (call !== this.linkHeld) {
+      call = this.linkHeld;
+      grid = '';
+    }
+    const key = `${call}|${c.report}|${grid}`;
     if (key === this.linkCtxSent) return;
     if (this.linkCtxTimer) clearTimeout(this.linkCtxTimer);
     this.linkCtxTimer = setTimeout(() => {
       this.linkCtxTimer = null;
       this.linkCtxSent = key;
-      this.api.linkContext(c.call, c.report, c.grid).catch(() => {});
+      this.api.linkContext(call, c.report, grid).catch(() => {});
     }, LINK_CONTEXT_DELAY_MS);
   }
 
@@ -1597,6 +1692,11 @@ class AppState {
   async setCqRepeatSettings(pause: number, max: number) {
     await this.saveTexts(textsOf({ send_texts: { ...this.sendTexts, cq_pause_s: pause, cq_max: max } }));
   }
+  /** Switches the second press after a changed callsign on or off. */
+  async setCallGuard(on: boolean) {
+    await this.saveTexts({ ...this.sendTexts, call_guard: on });
+  }
+
   async setPaddleWait(on: boolean) {
     await this.saveTexts({ ...this.sendTexts, paddle_wait: on });
     if (!on && this.held.length) this.releaseHeld();
@@ -2580,6 +2680,7 @@ class AppState {
         this.error = t('composer.missing', { vars: r.missing.join(', ') });
         return true;
       }
+      if (this.holdForCallChange([k.template])) return true;
       await this.send(r.text);
       if (this.error) return true;
       this.noteSent(key, k.template);
@@ -2654,6 +2755,7 @@ class AppState {
       this.error = t('composer.missing', { vars: missing.join(', ') });
       return;
     }
+    if (this.holdForCallChange([f5.template, f2.template, '{CALL}'])) return;
     await this.send(parts.map((p) => p.text).join(' '));
     if (this.error) return;
     this.noteSent('F2', f2.template);
@@ -2729,6 +2831,7 @@ class AppState {
           this.error = t('composer.missing', { vars: r.missing.join(', ') });
           return;
         }
+        if (this.holdForCallChange([k.template])) return;
         await this.send(r.text);
         if (this.error) return;
         this.noteSent(a.key, k.template);
@@ -2807,6 +2910,7 @@ class AppState {
     this.notice = t('log.saved', { call });
     this.qso = { ...this.qso, call: '', name: '', qth: '' };
     this.callLocked = false;
+    this.releaseLinkCall();
     this.resetEntry();
     await this.refreshLog();
     this.persist();
@@ -2816,6 +2920,7 @@ class AppState {
   clearEntry() {
     this.qso = { ...this.qso, call: '', name: '', qth: '' };
     this.callLocked = false;
+    this.releaseLinkCall();
     this.resetEntry();
   }
 

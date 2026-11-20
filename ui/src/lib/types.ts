@@ -188,6 +188,8 @@ export interface SendTexts {
   cq_max: number;
   /** Hold typed text while the paddle keys. */
   paddle_wait: boolean;
+  /** Hold a chip with {CALL} for a second press right after the decoder changed the callsign. */
+  call_guard: boolean;
 }
 
 /** One DX cluster node. */
